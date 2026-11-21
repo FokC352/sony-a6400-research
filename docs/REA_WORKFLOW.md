@@ -14,6 +14,19 @@ Use REA with Ghidra through WSL as the preferred analysis tool for substantial A
 - The Windows REA/Ghidra provider rejected this ARM ELF in the recorded trial. Prefer the verified WSL route. If WSL returns `E_ACCESSDENIED` under the sandbox, retry through the normal tool escalation mechanism before diagnosing a broken installation. Report actual approval-review rejection if it occurs.
 - Do not run REA setup, register agent integrations, install unrelated providers, change global configuration or reinstall the working environment as an incidental analysis step. Check the existing installation first if a tool fails. See `docs/experiments/0008-rea-tool-trial.md` for the original setup and limitations.
 
+### Optional WSL launcher settings
+
+The batch launcher supports two explicit environment overrides:
+
+- `A6400_REA_LAUNCHER`: absolute Linux path to a configured REA wrapper that accepts `mcp`.
+- `A6400_REA_WSL_DISTRO`: name of an installed WSL distribution. This setting is ignored when the batch launcher runs natively on Linux.
+
+When the launcher override is unset, the selected [toolchain profile](TOOLCHAIN.md)
+provides the runtime paths. A wrapper override must match the selected profile's
+REA and Ghidra versions; it does not bypass inventory or provider identity checks.
+Empty or invalid overrides fail rather than silently using the default. Batch
+receipts record the command used to start the session.
+
 ### Fresh Windows contributor installation
 
 Use the [official WSL installation instructions](https://learn.microsoft.com/windows/wsl/install) to install WSL 2 and Ubuntu 26.04 LTS. Installing WSL can require administrator approval and a restart; do not restart automatically. Native Windows Node.js and Ghidra alone do not remove REA's recorded ARM ELF restriction.

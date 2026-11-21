@@ -37,6 +37,7 @@ See [docs/INDEX.md](docs/INDEX.md) and [docs/CURRENT_STATE.md](docs/CURRENT_STAT
 
 - Before deriving a new contract or repeating research, consult [docs/RELATED_REPOSITORIES.md](docs/RELATED_REPOSITORIES.md) for relevant upstream work. Pin useful findings to exact commits and identity-matched evidence; upstream claims are leads, not verified local contracts or authorization to run tools.
 - Use small components and shared path/memory rules (`project_paths.py`). Prefer `rg`, constructed fixtures, and focused ABI/state/error/provenance/ARM checks. Generated fixtures belong under `artifacts/tests/`.
+- Pass the repository root URI explicitly as `workspaceRoot` to Pylance MCP tools that accept it. Discover the URI with `pylanceWorkspaceRoots` if needed; see [Pylance MCP troubleshooting](CONTRIBUTING.MD#pylance-mcp).
 - Launch first-party scripts as modules from the repository root (`python -m tools.research.<tool>`, `python -m legacy.<prototype>`).
 
 ```powershell
