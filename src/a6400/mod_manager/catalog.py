@@ -143,7 +143,203 @@ BUILTIN_RUNTIME_MODS: tuple[BuiltinModSpec, ...] = (
     ),
 )
 
-BUILTIN_MOD_FILENAMES: frozenset[str] = frozenset(spec.filename.lower() for spec in BUILTIN_RUNTIME_MODS)
+SUPPORTED_CATALOG_TARGETS: tuple[str, ...] = ("ilce_6400", "ilce_6400a")
+
+BUILTIN_RUNTIME_MODS_ILCE6400A: tuple[BuiltinModSpec, ...] = (
+    BuiltinModSpec(
+        id="menu_touch_full",
+        title="Menu Touch Full (MTF2)",
+        filename="MenuTouchFull.mod",
+        summary="Full touch navigation across Sony's menu tabs, page dots, popups, and swipe paging.",
+        details=(
+            "Relocatable SMOD v2 port for ILCE-6400A (FW 1.01): tab taps, page-dot taps, horizontal swipe "
+            "paging, 1st-tap row select / 2nd-tap popup open, popup option taps, vertical swipe scrolling, "
+            "and outside-tap close."
+        ),
+        status="usable",
+        target_note="ILCE-6400A (FW 1.01) · QEMU/Unicorn Verified",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/MenuTouchFull.mod",
+            "mods/ilce_6400a/MenuTouchFull.mod",
+        ),
+        artifact_globs=("artifacts/tests/mods-ilce6400a-*/mtf/MenuTouchFull.mod",),
+        default_enabled=True,
+    ),
+    BuiltinModSpec(
+        id="arrivederci",
+        title="Arrivederci v5 (ARRI Classic Look)",
+        filename="Arrivederci.mod",
+        summary="ARRI LogC3 Classic tone curve, Q10 matrix, SABIN filters, and 3D LUT for ILCE-6400A S-Log3.",
+        details=(
+            "Port of Arrivederci v5 to ILCE-6400A (FW 1.01): swaps S-Log3 EC gamma (0x03e560c4), B8 "
+            "S-Gamut3.Cine matrix (0x0444fdc8), SABIN 4K tap tables, and 3D LUT (0x044b191b / 0x0444ed96)."
+        ),
+        status="usable",
+        target_note="ILCE-6400A (FW 1.01) · Movie PP S-Log3",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/Arrivederci.mod",
+            "mods/ilce_6400a/Arrivederci.mod",
+        ),
+        artifact_globs=("artifacts/tests/mods-ilce6400a-*/arrivederci/Arrivederci.mod",),
+        requires_ack=True,
+        warning=(
+            "Turn Arrivederci OFF in camera MENU -> Mods before power-off "
+            "(color matrix persists in Backup.bin)."
+        ),
+    ),
+    BuiltinModSpec(
+        id="mods_tab_look",
+        title="Mods Tab Icon (ModsTabLook)",
+        filename="ModsTabLook.mod",
+        summary="Renders the custom MODS tab icon artwork instead of reusing the 6th tab star icon.",
+        details=(
+            "Relocatable SMOD v2 module with AUTO_ON flag targeting ILCE-6400A libObj.so (+0x7e662e). "
+            "Automatically enables once listed by Mod Loader v2."
+        ),
+        status="usable",
+        target_note="ILCE-6400A (FW 1.01) · QEMU/Unicorn Verified",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/ModsTabLook.mod",
+            "mods/ilce_6400a/ModsTabLook.mod",
+        ),
+        artifact_globs=("artifacts/tests/mods-ilce6400a-*/mtl/ModsTabLook.mod",),
+    ),
+    BuiltinModSpec(
+        id="open_gate_sensor",
+        title="Open Gate 3:2 (Sensor Stage)",
+        filename="OpenGateSensor.mod",
+        summary="Experimental 5400x3600 3:2 sensor readout on 4K 24p/25p while keeping the stock 3840x2160 encoder.",
+        details=(
+            "Patches ILCE-6400A 1.01 sensor mode 16/17 records (0x03e27de0/0x03e27e2c) and 24p/25p timings "
+            "(0x03e2833c/0x03e28504) only, leaving libmpr and DMM stock."
+        ),
+        status="experimental",
+        target_note="ILCE-6400A (FW 1.01) · Offline/QEMU Verified",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/OpenGateSensor.mod",
+            "mods/ilce_6400a/OpenGateSensor.mod",
+        ),
+        exclusive_group="open_gate",
+        requires_ack=True,
+        warning=(
+            "Experimental, emulator-verified only. Retargets 4K 24p/25p readout to 5400x3600 3:2 "
+            "while keeping stock 3840x2160 encoder canvas. Test this stage before Full."
+        ),
+    ),
+    BuiltinModSpec(
+        id="open_gate_32",
+        title="Open Gate 3:2 (Full 3240x2160 Canvas)",
+        filename="OpenGate32.mod",
+        summary="Experimental 5400x3600 3:2 sensor readout plus libmpr/DMM/VPI/VENC 4K canvas retargeted to 3240x2160.",
+        details=(
+            "Full SMOD v2 port for ILCE-6400A 1.01 patching sensor timings, DMM/VPI/VENC 4K tables, "
+            "and runtime-located libmpr.so 4K resolution records. Restores exact stock words on OFF."
+        ),
+        status="experimental",
+        target_note="ILCE-6400A (FW 1.01) · Offline/QEMU Verified",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/OpenGate32.mod",
+            "mods/ilce_6400a/OpenGate32.mod",
+        ),
+        exclusive_group="open_gate",
+        requires_ack=True,
+        warning=(
+            "Experimental, emulator-verified only. Retargets sensor to 5400x3600 3:2 plus libmpr/DMM "
+            "4K canvas to 3240x2160. Verify Sensor Stage first."
+        ),
+    ),
+    BuiltinModSpec(
+        id="open_gate_5400_test",
+        title="Open Gate 5400 Test (LIRO Only)",
+        filename="OpenGate_5400_Test.mod",
+        summary="Experimental 5400x3600 sensor + DMM/VPI/VENC LIRO RAM test leaving libmpr.so untouched.",
+        details="Applies the 27 u32 + 14 u16 av-cam.bin 1.01 OpenGate swaps in LIRO RAM with m=skip.",
+        status="experimental",
+        target_note="ILCE-6400A (FW 1.01) · Diagnostic",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/OpenGate_5400_Test.mod",
+            "mods/ilce_6400a/OpenGate_5400_Test.mod",
+        ),
+        exclusive_group="open_gate",
+        requires_ack=True,
+        warning="Diagnostic LIRO-only OpenGate test; mutually exclusive with other OpenGate stages.",
+    ),
+    BuiltinModSpec(
+        id="rcraw_enable_test",
+        title="RCRAW Enable Test",
+        filename="RCRAW_Enable_Test.mod",
+        summary="Guarded >8-bit RCRAW global enable toggle (0x043f2b04) and AIF0 W1/W2 diagnostic logger.",
+        details=(
+            "Swaps RCRAW_EN (0x043f2b04) 0 <-> 1 on ILCE-6400A 1.01 and logs RDRAW (0x043f2ec0), "
+            "D1534 (0x043f2828), AIF0 W1/W2, and 0xF30317C8 to /tmp_bt/mods/rcraw_enable_test.log."
+        ),
+        status="experimental",
+        target_note="ILCE-6400A (FW 1.01) · Diagnostic",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/RCRAW_Enable_Test.mod",
+            "mods/ilce_6400a/RCRAW_Enable_Test.mod",
+        ),
+        requires_ack=True,
+        warning="Diagnostic >8-bit RCRAW gate probe; logs state transitions under /tmp_bt/mods/.",
+    ),
+    BuiltinModSpec(
+        id="rcraw_w2_probe",
+        title="RCRAW W2 Read-Only Probe",
+        filename="RCRAW_W2_Probe.mod",
+        summary="Strictly read-only AIF0/AIF1 W1/W2 and SET_RAW_EXTERNAL_OUTPUT (0x044295bc) snapshot.",
+        details="Opens /dev/mem O_RDONLY and records AIF0/AIF1 DMA channel registers plus RAW_EXT state.",
+        status="usable",
+        target_note="ILCE-6400A (FW 1.01) · Read-Only Diagnostic",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/RCRAW_W2_Probe.mod",
+            "mods/ilce_6400a/RCRAW_W2_Probe.mod",
+        ),
+    ),
+    BuiltinModSpec(
+        id="photon_bin_6mp",
+        title="PhotonBin 6MP (Low-Light RAW Convergence)",
+        filename="PhotonBin6MP.mod",
+        summary=(
+            "Pre-demosaic 4x4->2x2 Bayer / 2x2 Mono RAW photon convergence into 6 MP .ARW "
+            "plus IMX284 Mconv HCG and 14-bit 1H2H analog overrides via nested menu."
+        ),
+        details=(
+            "Combines Option 3 IMX284 floating-diffusion conversion gain (Force HCG +9.8 dB / Auto / LCG) "
+            "and Bulb/Silent 14-bit 1H2H readout overrides in av-cam.bin with Option 1 pre-demosaic "
+            "4-photosite convergence (3008x2008 / 3000x2000 active) into 16-bit Uncompressed, 14-bit "
+            "Uncompressed, or 14-bit Sony cRAW .ARW files. Configurable live via a 6-item nested submenu."
+        ),
+        status="experimental",
+        target_note="ILCE-6400A (FW 1.01) · QEMU/Unicorn Verified",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/PhotonBin6MP.mod",
+            "mods/ilce_6400a/PhotonBin6MP.mod",
+        ),
+        artifact_globs=("artifacts/mods/ilce_6400a/photon_bin_6mp/PhotonBin6MP.mod",),
+    ),
+    BuiltinModSpec(
+        id="usb_streaming_test",
+        title="USB Streaming Test (QEMU Action)",
+        filename="UsbStreamingTest.mod",
+        summary="QEMU-guarded command-item mod triggering UsbControl configure/start on ILCE-6400A 1.01.",
+        details=(
+            "Verifies ILCE-6400A 1.01 libUsbControl.so, libMWF.so, and libc-2.11.2.so FNV-1a and prologue "
+            "bytes before dispatching UsbControl events. Refuses execution outside QEMU by default."
+        ),
+        status="experimental",
+        target_note="ILCE-6400A (FW 1.01) · QEMU Only",
+        candidate_paths=(
+            "bundled_mods/ilce_6400a/UsbStreamingTest.mod",
+            "mods/ilce_6400a/UsbStreamingTest.mod",
+        ),
+        requires_ack=True,
+        warning="QEMU-only action item; refuses real-camera execution unless explicitly compiled with override.",
+    ),
+)
+
+BUILTIN_MOD_FILENAMES: frozenset[str] = frozenset(
+    spec.filename.lower() for spec in (*BUILTIN_RUNTIME_MODS, *BUILTIN_RUNTIME_MODS_ILCE6400A)
+)
 
 
 @dataclass(frozen=True)
@@ -280,16 +476,20 @@ def build_catalog(
     root: Path | None = None,
     data_dir: Path | None = None,
     bundle_dir: Path | None = None,
+    target_id: str = "ilce_6400",
 ) -> dict[str, object]:
     """Build the validated runtime mod and PMCA tweak catalog."""
+    if target_id not in SUPPORTED_CATALOG_TARGETS:
+        raise ValueError(f"Unsupported catalog target_id: {target_id!r}")
     base_root = repo_root(root)
     b_root = Path(bundle_dir).resolve() if bundle_dir is not None else bundle_root()
     d_dir = user_data_dir(data_dir, root=base_root)
 
+    specs = BUILTIN_RUNTIME_MODS_ILCE6400A if target_id == "ilce_6400a" else BUILTIN_RUNTIME_MODS
     runtime_mods: list[dict[str, object]] = []
-    for spec in BUILTIN_RUNTIME_MODS:
+    for spec in specs:
         resolved = None
-        if spec.id == "arrivederci":
+        if spec.id == "arrivederci" and target_id == "ilce_6400":
             resolved = find_arrivederci_v5(root=base_root, data_dir=d_dir, bundle_dir=b_root)
         if resolved is None:
             resolved = _resolve_mod_candidate(spec, base_root, b_root)
@@ -306,9 +506,10 @@ def build_catalog(
         status = spec.status
         summary = spec.summary
         details = spec.details
-        release_version = None
+        release_version = "v5-ilce6400a" if (spec.id == "arrivederci" and target_id == "ilce_6400a" and available) else None
         update_available = None
-        if spec.id == "arrivederci" and smod_dict is not None:
+
+        if spec.id == "arrivederci" and target_id == "ilce_6400" and smod_dict is not None:
             if smod_dict["sha256"] == ARRIVEDERCI_V5_ASSET["sha256"]:
                 release_version = "v5"
                 title = "Arrivederci v5 (ARRI Classic Look)"
@@ -376,6 +577,10 @@ def build_catalog(
     ]
 
     return {
+        "target_id": target_id,
+        "target_model": "ILCE-6400A" if target_id == "ilce_6400a" else "ILCE-6400",
+        "firmware_version": "1.01" if target_id == "ilce_6400a" else "2.00",
+        "supported_targets": list(SUPPORTED_CATALOG_TARGETS),
         "max_active_runtime_mods": MAX_ACTIVE_RUNTIME_MODS,
         "runtime_mods": runtime_mods,
         "pmca_tweaks": pmca_tweaks,

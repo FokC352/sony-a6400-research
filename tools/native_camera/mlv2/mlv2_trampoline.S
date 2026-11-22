@@ -4,8 +4,22 @@
 /* Mod Loader v2: the v1 view-hook trampolines (verbatim), default enter_selected variant.
  * Generated from tools/native_camera/mod_loader_trampoline.S. Return addresses are written as
  * viewUnified2.so offsets so package.py can record them for relocation. */
+#ifdef MLV2_TARGET_ILCE6400A
+#ifndef MLV2_VIEW_BASE
+#define MLV2_VIEW_BASE 0x12f46000
+#endif
+#define MLV2_OFF_SR_CONT1 0x5af8b5
+#define MLV2_OFF_SR_CONT3 0x5af8c1
+#define MLV2_OFF_RF_CONT  0x5afcdf
+#define MLV2_OFF_OI_CONT  0x5b029d
+#else
 #ifndef MLV2_VIEW_BASE
 #define MLV2_VIEW_BASE 0x155e6000
+#endif
+#define MLV2_OFF_SR_CONT1 0x5ab665
+#define MLV2_OFF_SR_CONT3 0x5ab671
+#define MLV2_OFF_RF_CONT  0x5aba8f
+#define MLV2_OFF_OI_CONT  0x5ac04d
 #endif
 
 .global ml_hook_set_root
@@ -47,8 +61,8 @@ ml_hook_set_root:
     ldr r2, 3f
     bx r2
 .align 2
-1:  .word MLV2_VIEW_BASE + 0x5ab665
-3:  .word MLV2_VIEW_BASE + 0x5ab671
+1:  .word MLV2_VIEW_BASE + MLV2_OFF_SR_CONT1
+3:  .word MLV2_VIEW_BASE + MLV2_OFF_SR_CONT3
 
 .thumb_func
 ml_orig_refresh:
@@ -67,7 +81,7 @@ ml_orig_refresh:
     ldr r2, 2f
     bx r2
 .align 2
-2:  .word MLV2_VIEW_BASE + 0x5aba8f
+2:  .word MLV2_VIEW_BASE + MLV2_OFF_RF_CONT
 
 .thumb_func
 ml_hook_refresh:
@@ -100,4 +114,4 @@ ml_hook_open_item:
     ldr.w ip, 4f
     bx ip
 .align 2
-4:  .word MLV2_VIEW_BASE + 0x5ac04d
+4:  .word MLV2_VIEW_BASE + MLV2_OFF_OI_CONT

@@ -1,4 +1,5 @@
 """Package Mod Loader v2: shim payload (+ entry points) and core.bin (MlCoreHeader + code)."""
+import argparse
 import hashlib
 import json
 import struct
@@ -9,11 +10,16 @@ root = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(root))
 from tools.research.pack_mod import extract_elf_text, fnv1a_32  # noqa: E402
 
-SHIM_ADDR, SHIM_CAP = 0x05662800, 2048
+SHIM_CAP = 2048
 SHIM_MOVE, VIEW_MOVE = 0x1000, 0x10000      # shim-reloc.elf: shim and view base moved by these
 CORE_MAGIC, CORE_VERSION, CORE_MAX = 0x52434C4D, 2, 64 * 1024
 
-out = Path(sys.argv[1])
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("out", type=Path)
+parser.add_argument("--target", choices=("ilce_6400", "ilce_6400a"), default="ilce_6400")
+args = parser.parse_args()
+out = args.out
+SHIM_ADDR = 0x05D76800 if args.target == "ilce_6400a" else 0x05662800
 shim_addr, shim, ssyms = extract_elf_text((out / "shim.elf").read_bytes(), expected_code_addr=SHIM_ADDR)
 if len(shim) > SHIM_CAP or shim[:4] != b"\0\0\0\0":
     raise SystemExit("shim too large or slot word not zero")
@@ -61,13 +67,20 @@ print(json.dumps(info, indent=2))
 # Guard request (ML2Q v1): v2 hook entries plus the hook entries of every known v1 build, so an
 # "upgrade" recognizes whichever v1 loader is resident. Triples come from the v1 install requests
 # (header words 5..7) and are re-checked against those files when they are present.
-V1_BUILDS = {
-    "sd-standalone-v1": ((0x45E4E7D, 0x45E4ECD, 0x45E4EDD),
-                         "artifacts/publish/mod-loader-sd/artifacts/hardware/sd-standalone-v1/mod-loader-install.req"),
-    "lifecycle-v1": ((0x45E4EA1, 0x45E4EF1, 0x45E4F01),
-                     "artifacts/tests/arri-mod-loader-size-2026-11-16/lifecycle-reqs/mod-loader-install.req"),
-}
+if args.target == "ilce_6400a":
+    V1_BUILDS = {
+        "none": ((0, 0, 0), None),
+    }
+else:
+    V1_BUILDS = {
+        "sd-standalone-v1": ((0x45E4E7D, 0x45E4ECD, 0x45E4EDD),
+                             "artifacts/publish/mod-loader-sd/artifacts/hardware/sd-standalone-v1/mod-loader-install.req"),
+        "lifecycle-v1": ((0x45E4EA1, 0x45E4EF1, 0x45E4F01),
+                         "artifacts/tests/arri-mod-loader-size-2026-11-16/lifecycle-reqs/mod-loader-install.req"),
+    }
 for name, (triple, rel) in V1_BUILDS.items():
+    if rel is None:
+        continue
     req = root / rel
     if req.exists() and struct.unpack_from("<3I", req.read_bytes(), 20) != triple:
         raise SystemExit(f"v1 entries for {name} do not match {rel}")

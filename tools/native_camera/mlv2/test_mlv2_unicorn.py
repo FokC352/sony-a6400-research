@@ -20,14 +20,18 @@ sys.path.insert(0, str(root))
 from tools.research.pack_mod import extract_elf_text, pack_smod, fnv1a_32  # noqa: E402
 
 B = Path(sys.argv[1])
-SHIM = 0x05662800
-SET_TEXT, SET_MODE = 0x157356D0, 0x1573BA68
-ANCHOR = 0x1615EC40
+shim_addr, shim_code, shim_syms = extract_elf_text((B / "shim.elf").read_bytes())
+IS_A6400A = shim_addr == 0x05D76800
+SHIM = 0x05D76800 if IS_A6400A else 0x05662800
+SET_TEXT = 0x130958DC if IS_A6400A else 0x157356D0
+SET_MODE = 0x1309BC9C if IS_A6400A else 0x1573BA68
+MENU_REFRESH = 0x134F6360 if IS_A6400A else 0x15B92110
+VIEW_PAGE_BASE = 0x13090000 if IS_A6400A else 0x15700000
+ANCHOR = 0x13ABFC40 if IS_A6400A else 0x1615EC40
 MENU, NODES, STUBS, TARGETS, V1CODE = 0x30000000, 0x31000000, 0x32000000, 0x33000000, 0x34000000
 MMAP0, STACK, STOP = 0x40000000, 0x50000000, 0x5F000000
 ORIG12 = bytes.fromhex("2de9f04788b04ff014080122")
 
-_, shim_code, shim_syms = extract_elf_text((B / "shim.elf").read_bytes(), expected_code_addr=SHIM)
 core_bin = (B / "core.bin").read_bytes()
 testmod = (B / "TestMod.mod").read_bytes()
 
@@ -49,9 +53,12 @@ class Camera:
         m.mem_map(self.shim_at & ~0xfff, 0x2000, uc.UC_PROT_READ | uc.UC_PROT_EXEC)   # RX like the real cave
         m.mem_write(self.shim_at, self.shim_image or shim_code)
         vb = self.view_bias
-        for base, size in ((0x15700000 + vb, 0x100000), ((ANCHOR + vb) & ~0xfff, 0x1000), (MENU, 0x20000), (NODES, 0x10000),
+        for base, size in ((VIEW_PAGE_BASE + vb, 0x100000), ((MENU_REFRESH + vb) & ~0xfff, 0x2000),
+                           ((ANCHOR + vb) & ~0xfff, 0x1000), (MENU, 0x20000), (NODES, 0x10000),
                            (STUBS, 0x1000), (TARGETS, 0x1000), (V1CODE, 0x1000), (STACK - 0x10000, 0x10000), (STOP, 0x1000)):
             m.mem_map(base, size)
+        after_rf = (shim_syms["ml_after_refresh"] - SHIM + self.shim_at) | 1
+        m.mem_write(MENU_REFRESH + vb, bytes.fromhex("10b50446014a904710bd00bf") + struct.pack("<I", after_rf))
         m.mem_write(TARGETS + 0x100, ORIG12)
         m.mem_write(TARGETS + 0x200, ORIG12)
         # Firmware root node: 6 tabs; vtable entries are stubs returning 0; tab5 props answer 1.
@@ -94,6 +101,8 @@ class Camera:
             self.ret()
         elif pc == SET_MODE + self.view_bias:
             self.ret()
+        elif pc == MENU_REFRESH + self.view_bias:
+            self.texts.clear()
         elif STUBS <= pc < STUBS + 0x1000:
             i = (pc - STUBS) // 4
             if i in (23, 32):                               # tab5 int/resid props
@@ -190,16 +199,16 @@ class Camera:
         self.call("ml_after_refresh", MENU)
         return [t for off, t in self.texts if off != 0x5470]
 
-    def items(self):
+    def items(self, page_idx=0):
         kids = self.u32(self.root + 4)
         tab = self.u32(kids + 24)
         pages = self.u32(tab + 4)
-        page0 = self.u32(pages)
-        items = self.u32(page0 + 4)
-        return [self.u32(items + 4 * i) for i in range(self.u32(page0 + 8))]
+        page = self.u32(pages + 4 * page_idx)
+        items = self.u32(page + 4)
+        return [self.u32(items + 4 * i) for i in range(self.u32(page + 8))]
 
-    def press(self, index):
-        self.call("ml_before_enter", MENU, self.items()[index])
+    def press(self, index, page_idx=0):
+        self.call("ml_before_enter", MENU, self.items(page_idx)[index])
 
 
 def check(cond, msg):
@@ -409,60 +418,85 @@ if b"/tmp_bt/mlv2/reload" in core_bin:
     check(res == "reload_scan 00000001", f"disabled mod: nothing to replace ({res})")
 
 if len(sys.argv) > 3:
-    print("Scenario 10: imported v1 MenuTouchFull is replaced by the SMOD v2 build")
     mtf_dir = Path(sys.argv[3])
     mtf_v2 = (mtf_dir / "MenuTouchFull.mod").read_bytes()
-    mtf_v1 = (root / "mods/menu_touch_full/MenuTouchFull.mod").read_bytes()
-    MTF_HOOKS = ((0x06309D48, bytes.fromhex("2de9f04788b04ff014080122")),
-                 (0x06309E54, bytes.fromhex("2de9f04788b04ff014090122")))
-    v1_hooks = [mtf_v1[68 + 40 * i:108 + 40 * i] for i in range(2)]
-    v1 = bytearray(8192)
-    struct.pack_into("<3I", v1, 0, 0x444F4D53, 1, 1)
-    hdr = struct.unpack_from("<6I", mtf_v1, 44)           # code_addr, code_size, state_addr, state_size, hooks, fnv
-    entry_v1 = (b"Menu Touch Full".ljust(32, b"\0") + b"/tmp_bt/mods/MenuTouchFull.mod".ljust(64, b"\0") +
-                bytes([1, 2, 0, 1]) + struct.pack("<5I", hdr[0], hdr[1], hdr[2], hdr[3], hdr[5]) +
-                b"".join(v1_hooks) + bytes(440 - 120 - 80))
-    v1[0x418:0x418 + 440] = entry_v1                       # enabled, 2 hooks, SMOD flags 1 (state init)
-    cam = Camera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/MenuTouchFull.mod": mtf_v1}, v1_state=bytes(v1))
-    cam.m.mem_map(0x06309000, 0x1000)
-    for (target, _), rec in zip(MTF_HOOKS, v1_hooks):
-        cam.m.mem_write(target, rec[24:24 + 12])           # the v1 loader had applied both hooks
-    check(cam.open_menu() == ["Menu Touch Full", "ON"], "enabled v1 MenuTouchFull imported as ON")
-    cam.files["/tmp_bt/mods/MenuTouchFull.mod"] = mtf_v2
-    check(cam.open_menu() == ["Menu Touch Full", "ON*"], "replacing the file marks the running v1 copy as changed (ON*)")
-    cam.press(0)
-    check(all(bytes(cam.m.mem_read(t, 12)) == o for t, o in MTF_HOOKS), "OFF reverts both v1 hooks")
-    check(cam.open_menu() == ["Menu Touch Full", "OFF"], "next rescan lists the v2 file, OFF")
-    cam.press(0)
-    word = struct.unpack("<I", bytes(cam.m.mem_read(0x06309D48 + 8, 4)))[0]
     msyms = {p[2]: int(p[0], 16) for p in (ln.split() for ln in (mtf_dir / "mtf.sym").read_text().splitlines())
              if len(p) == 3}
-    base = word - (msyms["mt_full_release"] | 1)
     code_size = struct.unpack_from("<I", mtf_v2, 44)[0]
-    check(base >= MMAP0 and base % 0x1000 == 0 and
-          bytes(cam.m.mem_read(0x06309D48, 8)) == bytes.fromhex("dff804f000bf00bf"),
-          f"v2 ON: release hook points into the core-allocated mapping at {base:#x}")
-    check(struct.unpack("<I", bytes(cam.m.mem_read(0x06309E54 + 8, 4)))[0] == base + (msyms["mt_full_press"] | 1),
-          "v2 ON: press hook fixed up to the same base")
-    st = struct.unpack("<6I", bytes(cam.m.mem_read(base + code_size, 24)))
-    check(st[0] == 0x4D544632 and st[1] == 2 and st[2] == 2 and st[5] == 16, "on() published the MTF2 state in the bss")
-    cam.press(0)
-    check(all(bytes(cam.m.mem_read(t, 12)) == o for t, o in MTF_HOOKS), "v2 OFF restores both prologues")
-    st = struct.unpack("<3I", bytes(cam.m.mem_read(base + code_size, 12)))
-    check(st[0] == 0 and st[2] == 0, "off() cleared magic and enabled before the hooks were reverted")
+    if IS_A6400A:
+        MTF_REL, MTF_PRS = 0x0659AE98, 0x0659AFA4
+    else:
+        MTF_REL, MTF_PRS = 0x06309D48, 0x06309E54
+    MTF_HOOKS = ((MTF_REL, bytes.fromhex("2de9f04788b04ff014080122")),
+                 (MTF_PRS, bytes.fromhex("2de9f04788b04ff014090122")))
+    if not IS_A6400A:
+        print("Scenario 10: imported v1 MenuTouchFull is replaced by the SMOD v2 build")
+        mtf_v1 = (root / "mods/menu_touch_full/MenuTouchFull.mod").read_bytes()
+        v1_hooks = [mtf_v1[68 + 40 * i:108 + 40 * i] for i in range(2)]
+        v1 = bytearray(8192)
+        struct.pack_into("<3I", v1, 0, 0x444F4D53, 1, 1)
+        hdr = struct.unpack_from("<6I", mtf_v1, 44)           # code_addr, code_size, state_addr, state_size, hooks, fnv
+        entry_v1 = (b"Menu Touch Full".ljust(32, b"\0") + b"/tmp_bt/mods/MenuTouchFull.mod".ljust(64, b"\0") +
+                    bytes([1, 2, 0, 1]) + struct.pack("<5I", hdr[0], hdr[1], hdr[2], hdr[3], hdr[5]) +
+                    b"".join(v1_hooks) + bytes(440 - 120 - 80))
+        v1[0x418:0x418 + 440] = entry_v1                       # enabled, 2 hooks, SMOD flags 1 (state init)
+        cam = Camera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/MenuTouchFull.mod": mtf_v1,
+                      "/proc/self/maps": (
+                          b"05d18000-0700e000 r-xp 00000000 fc:0f 22409      /usr/lib/libObj.so\n"
+                          b"155e6000-15e92000 r-xp 00000000 fc:0f 22532      /usr/lib/viewUnified2.so\n"
+                          b"1615f000-16bfe000 r-xp 00000000 fc:0f 22443      /usr/lib/CautionConfig.so\n"
+                      )}, v1_state=bytes(v1))
+        cam.m.mem_map(MTF_REL & ~0xfff, 0x1000)
+        cam.m.mem_map(0x064B5000, 0x1000)
+        for (target, _), rec in zip(MTF_HOOKS, v1_hooks):
+            cam.m.mem_write(target, rec[24:24 + 12])           # the v1 loader had applied both hooks
+        check(cam.open_menu() == ["Menu Touch Full", "ON"], "enabled v1 MenuTouchFull imported as ON")
+        cam.files["/tmp_bt/mods/MenuTouchFull.mod"] = mtf_v2
+        check(cam.open_menu() == ["Menu Touch Full", "ON*"], "replacing the file marks the running v1 copy as changed (ON*)")
+        cam.press(0)
+        check(all(bytes(cam.m.mem_read(t, 12)) == o for t, o in MTF_HOOKS), "OFF reverts both v1 hooks")
+        check(cam.open_menu() == ["Menu Touch Full", "OFF"], "next rescan lists the v2 file, OFF")
+        cam.press(0)
+        word = struct.unpack("<I", bytes(cam.m.mem_read(MTF_REL + 8, 4)))[0]
+        base = word - (msyms["mt_full_release"] | 1)
+        check(base >= MMAP0 and base % 0x1000 == 0 and
+              bytes(cam.m.mem_read(MTF_REL, 8)) == bytes.fromhex("dff804f000bf00bf"),
+              f"v2 ON: release hook points into the core-allocated mapping at {base:#x}")
+        check(struct.unpack("<I", bytes(cam.m.mem_read(MTF_PRS + 8, 4)))[0] == base + (msyms["mt_full_press"] | 1),
+              "v2 ON: press hook fixed up to the same base")
+        st = struct.unpack("<6I", bytes(cam.m.mem_read(base + code_size, 24)))
+        check(st[0] == 0x4D544632 and st[1] == 2 and st[2] == 2 and st[5] == 16, "on() published the MTF2 state in the bss")
+        cam.press(0)
+        check(all(bytes(cam.m.mem_read(t, 12)) == o for t, o in MTF_HOOKS), "v2 OFF restores both prologues")
+        st = struct.unpack("<3I", bytes(cam.m.mem_read(base + code_size, 12)))
+        check(st[0] == 0 and st[2] == 0, "off() cleared magic and enabled before the hooks were reverted")
 
 
 if len(sys.argv) > 3 and b"/tmp_bt/mlv2/reload" in core_bin:
     print("Scenario 12: MenuTouchFull reload starts the new copy with fresh gesture state")
-    cam = Camera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/MenuTouchFull.mod": mtf_v2})
-    cam.m.mem_map(0x06309000, 0x1000)
+    extra_files = {}
+    if IS_A6400A:
+        extra_files["/proc/self/maps"] = (
+            b"05fc2000-0729e000 r-xp 00000000 fc:0f 2111       /usr/lib/libObj.so\n"
+            b"12f46000-137f3000 r-xp 00000000 fc:0f 2240       /usr/lib/viewUnified2.so\n"
+            b"13ac0000-1455f000 r-xp 00000000 fc:0f 2148       /usr/lib/CautionConfig.so\n"
+        )
+    else:
+        extra_files["/proc/self/maps"] = (
+            b"05d18000-0700e000 r-xp 00000000 fc:0f 22409      /usr/lib/libObj.so\n"
+            b"155e6000-15e92000 r-xp 00000000 fc:0f 22532      /usr/lib/viewUnified2.so\n"
+            b"1615f000-16bfe000 r-xp 00000000 fc:0f 22443      /usr/lib/CautionConfig.so\n"
+        )
+    cam = Camera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/MenuTouchFull.mod": mtf_v2, **extra_files})
+    cam.m.mem_map(MTF_REL & ~0xfff, 0x1000)
+    cam.m.mem_map((0x067A862E if IS_A6400A else 0x064B54B6) & ~0xfff, 0x1000)
     for target, orig in MTF_HOOKS:
         cam.m.mem_write(target, orig)
     cam.open_menu()
     cam.press(0)
 
     def mtf_base():
-        return struct.unpack("<I", bytes(cam.m.mem_read(0x06309D48 + 8, 4)))[0] - (msyms["mt_full_release"] | 1)
+        return struct.unpack("<I", bytes(cam.m.mem_read(MTF_REL + 8, 4)))[0] - (msyms["mt_full_release"] | 1)
 
     base1 = mtf_base()
     st1 = base1 + code_size
@@ -471,7 +505,7 @@ if len(sys.argv) > 3 and b"/tmp_bt/mlv2/reload" in core_bin:
     base2 = mtf_base()
     check(res.startswith("reload_ok") and base2 != base1 and texts == ["Menu Touch Full", "ON"],
           f"same file reloaded into a new mapping {base1:#x} -> {base2:#x} ({res})")
-    check(struct.unpack("<I", bytes(cam.m.mem_read(0x06309E54 + 8, 4)))[0] == base2 + (msyms["mt_full_press"] | 1),
+    check(struct.unpack("<I", bytes(cam.m.mem_read(MTF_PRS + 8, 4)))[0] == base2 + (msyms["mt_full_press"] | 1),
           "both hooks point at the new copy")
     st_old = struct.unpack("<3I", bytes(cam.m.mem_read(st1, 12)))
     check(st_old[0] == 0 and st_old[2] == 0 and bytes(cam.m.mem_read(st1 + 24, 32)) == b"\x5a" * 32,
@@ -497,19 +531,32 @@ if len(sys.argv) > 4 and layout_aware:
         struct.pack_into("<I", shim, o, (struct.unpack_from("<I", shim, o)[0] + (VB if r >> 30 else TB)) & 0xFFFFFFFF)
     check(shim == bytearray(shim_code) or nrel > 0, f"request carries {nrel} shim relocations")
     reloc_mod = Path(sys.argv[4]).read_bytes()
-    maps = (f"{0x05660000 + TB:08x}-{0x05663000 + TB:08x} r-xp 00000000 fc:0f 22470      /usr/lib/libtestcmd.so\n"
-            f"{0x05d18000 + OB:08x}-{0x0700e000 + OB:08x} r-xp 00000000 fc:0f 22409      /usr/lib/libObj.so\n"
-            f"{0x07016000 + OB:08x}-{0x07106000 + OB:08x} rw-p 012f6000 fc:0f 22409      /usr/lib/libObj.so\n"
-            f"{0x155e6000 + VB:08x}-{0x15e92000 + VB:08x} r-xp 00000000 fc:0f 22532      /usr/lib/viewUnified2.so\n"
-            f"{0x1615f000 + CB:08x}-{0x16bfe000 + CB:08x} r-xp 00000000 fc:0f 22443      /usr/lib/CautionConfig.so\n").encode()
+    if IS_A6400A:
+        maps = (f"{0x05d74000 + TB:08x}-{0x05d77000 + TB:08x} r-xp 00000000 fc:0f 2173       /usr/lib/libtestcmd.so\n"
+                f"{0x05fc2000 + OB:08x}-{0x0729e000 + OB:08x} r-xp 00000000 fc:0f 2111       /usr/lib/libObj.so\n"
+                f"{0x072a6000 + OB:08x}-{0x07390000 + OB:08x} rw-p 012dc000 fc:0f 2111       /usr/lib/libObj.so\n"
+                f"{0x12f46000 + VB:08x}-{0x137f3000 + VB:08x} r-xp 00000000 fc:0f 2240       /usr/lib/viewUnified2.so\n"
+                f"{0x13ac0000 + CB:08x}-{0x1455f000 + CB:08x} r-xp 00000000 fc:0f 2148       /usr/lib/CautionConfig.so\n").encode()
+        mtl_lookup = 0x067A862E
+        want = {0x134F5681: VB, 0x073C7000: OB, 0x14579428: CB, 0x0659AEA5: OB}
+        singleton_acc = 0x06599E7D
+    else:
+        maps = (f"{0x05660000 + TB:08x}-{0x05663000 + TB:08x} r-xp 00000000 fc:0f 22470      /usr/lib/libtestcmd.so\n"
+                f"{0x05d18000 + OB:08x}-{0x0700e000 + OB:08x} r-xp 00000000 fc:0f 22409      /usr/lib/libObj.so\n"
+                f"{0x07016000 + OB:08x}-{0x07106000 + OB:08x} rw-p 012f6000 fc:0f 22409      /usr/lib/libObj.so\n"
+                f"{0x155e6000 + VB:08x}-{0x15e92000 + VB:08x} r-xp 00000000 fc:0f 22532      /usr/lib/viewUnified2.so\n"
+                f"{0x1615f000 + CB:08x}-{0x16bfe000 + CB:08x} r-xp 00000000 fc:0f 22443      /usr/lib/CautionConfig.so\n").encode()
+        mtl_lookup = 0x064B54B6
+        want = {0x15B91431: VB, 0x0713D000: OB, 0x16C183E8: CB, 0x06309D55: OB}
+        singleton_acc = 0x06308D31
 
     class Moved(Camera):
         shim_at, shim_image, view_bias = SHIM + TB, bytes(shim), VB
 
     cam = Moved({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/MenuTouchFull.mod": reloc_mod,
                  "/proc/self/maps": maps})
-    cam.m.mem_map((0x06309000 + OB) & ~0xfff, 0x1000)
-    cam.m.mem_map((0x064B54B6 + OB) & ~0xfff, 0x1000)     # libObj alcor lookup: no ModsTabLook hook
+    cam.m.mem_map((MTF_REL + OB) & ~0xfff, 0x1000)
+    cam.m.mem_map((mtl_lookup + OB) & ~0xfff, 0x1000)     # libObj alcor lookup: no ModsTabLook hook
     for target, orig in MTF_HOOKS:
         cam.m.mem_write(target + OB, orig)
     texts = cam.open_menu()
@@ -519,19 +566,18 @@ if len(sys.argv) > 4 and layout_aware:
     check("tab_icon_tab6 " + f"{OB & 0xFFFFFFFF:08x}" in cam.log,
           "no ModsTabLook hook at the moved libObj.so lookup: the tab uses the sixth tab's icon")
     cam.press(0)
-    word = struct.unpack("<I", bytes(cam.m.mem_read(0x06309D48 + OB + 8, 4)))[0]
+    word = struct.unpack("<I", bytes(cam.m.mem_read(MTF_REL + OB + 8, 4)))[0]
     base = word - (msyms["mt_full_release"] | 1)
-    check(base >= MMAP0 and bytes(cam.m.mem_read(0x06309D48 + OB, 8)) == bytes.fromhex("dff804f000bf00bf"),
-          f"release hook applied at the moved libObj.so target {0x06309D48 + OB:#x}")
+    check(base >= MMAP0 and bytes(cam.m.mem_read(MTF_REL + OB, 8)) == bytes.fromhex("dff804f000bf00bf"),
+          f"release hook applied at the moved libObj.so target {MTF_REL + OB:#x}")
     code_size = struct.unpack_from("<I", reloc_mod, 44)[0]
     code_file = reloc_mod[68 + 80:68 + 80 + code_size]
     live = bytes(cam.m.mem_read(base, code_size))
     moved_words = {o: (struct.unpack_from("<I", live, o)[0] - struct.unpack_from("<I", code_file, o)[0]) & 0xFFFFFFFF
                    for o in range(0, code_size, 4) if live[o:o + 4] != code_file[o:o + 4]}
     # Find known references by value; compiler changes can move literal pools.
-    want = {0x15B91431: VB, 0x0713D000: OB, 0x16C183E8: CB, 0x06309D55: OB}
     literals = {o: word for o, (word,) in enumerate(struct.iter_unpack("<I", code_file))
-                if word in want or word == 0x06308D31}
+                if word in want or word == singleton_acc}
     check(want.keys() <= set(literals.values())
           and all(moved_words.get(o * 4) == (want.get(value, OB) & 0xFFFFFFFF)
                   for o, value in literals.items()),
@@ -546,7 +592,9 @@ if len(sys.argv) > 4 and layout_aware:
 if len(sys.argv) > 5 and layout_aware:
     print("Scenario 14: auto-on ModsTabLook in a moved layout; a user OFF sticks")
     mtl = Path(sys.argv[5]).read_bytes()
-    MTL_HOOK, MTL_ORIG = 0x064B54B6, bytes.fromhex("f8b500af0d460446fff7e2ff")
+    MTL_HOOK = 0x067A862E if IS_A6400A else 0x064B54B6
+    MTL_RET = [0x067A85FF + OB, 0x067A863B + OB] if IS_A6400A else [0x064B5487 + OB, 0x064B54C3 + OB]
+    MTL_ORIG = bytes.fromhex("f8b500af0d460446fff7e2ff")
     check(struct.unpack_from("<I", mtl, 8)[0] & 0xC == 0xC, "ModsTabLook file carries the relocation and auto-on flags")
     cam = Moved({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/ModsTabLook.mod": mtl, "/proc/self/maps": maps})
     cam.m.mem_map((MTL_HOOK + OB) & ~0xfff, 0x1000)
@@ -558,8 +606,10 @@ if len(sys.argv) > 5 and layout_aware:
     check(struct.unpack_from("<I", live, 2)[0] == 0xF000F8DF, "hook at the moved alcor lookup: the core's tab-icon check sees it")
     base = struct.unpack_from("<I", live, 6)[0] & ~1
     mtl_code = mtl[68 + 40:68 + 40 + struct.unpack_from("<I", mtl, 44)[0]]
-    words = [struct.unpack("<I", bytes(cam.m.mem_read((base & ~0xFFF) + o, 4)))[0] for o in (0x154, 0x158)]
-    check(words == [0x064B5487 + OB, 0x064B54C3 + OB], "trampoline return addresses moved with libObj.so")
+    live_mtl = bytes(cam.m.mem_read(base & ~0xFFF, len(mtl_code)))
+    moved_mtl = [struct.unpack_from("<I", live_mtl, o)[0]
+                 for o in range(0, len(mtl_code), 4) if live_mtl[o:o + 4] != mtl_code[o:o + 4]]
+    check(moved_mtl == MTL_RET, "trampoline return addresses moved with libObj.so")
     cam.press(0)
     check(bytes(cam.m.mem_read(MTL_HOOK + OB, 12)) == MTL_ORIG, "user OFF restores the original lookup")
     check(cam.open_menu() == ["Mods Tab Look", "OFF"], "the next scan does not switch it ON again")
@@ -569,25 +619,34 @@ if (B / "ActionTest.mod").exists():
     action_mod = (B / "ActionTest.mod").read_bytes()
     _, _, tsyms = extract_elf_text((B / "test_mod.elf").read_bytes(), expected_code_addr=0)
     check(struct.unpack_from("<I", action_mod, 8)[0] & 0x10 == 0x10, "file carries the action flag")
-    OP_NEW, EV_CTOR, EV_PUSH, EV_SLOT = 0x05E15974, 0x05E14E20, 0x05E18D5C, 0x07089984
-    ref_maps = b"".join(row + b"\n" for row in (
-        b"05d18000-0700e000 r-xp 00000000 fc:0f 22409      /usr/lib/libObj.so",
-        b"07016000-07106000 rw-p 012f6000 fc:0f 22409      /usr/lib/libObj.so"))
+    if IS_A6400A:
+        OP_NEW, EV_CTOR, EV_PUSH, EV_SLOT = 0x060BD48C, 0x060BC938, 0x067F8C48, 0x07319874
+        ref_maps = b"".join(row + b"\n" for row in (
+            b"05fc2000-0729e000 r-xp 00000000 fc:0f 2111       /usr/lib/libObj.so",
+            b"072a6000-07390000 rw-p 012dc000 fc:0f 2111       /usr/lib/libObj.so"))
+        ev_pages = ((0x060BC000, 0x3000), (0x067F8000, 0x2000), (0x067A8000, 0x1000), (0x07319000, 0x2000))
+        ev_ptr_slot, ev_mgr_obj, ev_alloc = 0x07319A00, 0x0731A5A5, 0x07319B00
+    else:
+        OP_NEW, EV_CTOR, EV_PUSH, EV_SLOT = 0x05E15974, 0x05E14E20, 0x05E18D5C, 0x07089984
+        ref_maps = b"".join(row + b"\n" for row in (
+            b"05d18000-0700e000 r-xp 00000000 fc:0f 22409      /usr/lib/libObj.so",
+            b"07016000-07106000 rw-p 012f6000 fc:0f 22409      /usr/lib/libObj.so"))
+        ev_pages = ((0x05E14000, 0x6000), (0x064B5000, 0x1000), (0x07089000, 0x2000))
+        ev_ptr_slot, ev_mgr_obj, ev_alloc = 0x07089A00, 0x0708A5A5, 0x07089B00
 
     class EventCamera(Camera):
         def __init__(self, files):
             super().__init__(files)
             self.events = []
-            self.m.mem_map(0x05E14000, 0x6000)
-            self.m.mem_map(0x064B5000, 0x1000)                 # ModsTabLook check reads here
-            self.m.mem_map(0x07089000, 0x1000)
-            self.m.mem_write(EV_SLOT, struct.pack("<I", 0x07089A00))
-            self.m.mem_write(0x07089A00, struct.pack("<I", 0x0708A5A5))
+            for pg, sz in ev_pages:
+                self.m.mem_map(pg, sz)
+            self.m.mem_write(EV_SLOT, struct.pack("<I", ev_ptr_slot))
+            self.m.mem_write(ev_ptr_slot, struct.pack("<I", ev_mgr_obj))
 
         def code(self, m, pc, size, _):
             r = [m.reg_read(x) for x in (A.UC_ARM_REG_R0, A.UC_ARM_REG_R1, A.UC_ARM_REG_R2, A.UC_ARM_REG_R3)]
             if pc == OP_NEW:
-                self.ret(0x07089B00 if r[0] == 16 else 0)
+                self.ret(ev_alloc if r[0] == 16 else 0)
             elif pc == EV_CTOR:
                 self.events.append(("ctor", r[0], r[1], r[2] & 0xFF, r[3] & 0xFF)); self.ret(r[0])
             elif pc == EV_PUSH:
@@ -609,7 +668,7 @@ if (B / "ActionTest.mod").exists():
         if line.startswith("action_close "):
             base = int(line.split()[1], 16)
     check(base is not None and cam.u32(base + tsyms["t_counter"]) == 1, "press switched the mod ON (on() ran once)")
-    check(cam.events == [("ctor", 0x07089B00, 0x15010102, 4, 1), ("push", 0x0708A5A5, 0x07089B00, 1)],
+    check(cam.events == [("ctor", ev_alloc, 0x15010102, 4, 1), ("push", ev_mgr_obj, ev_alloc, 1)],
           f"MENU key event queued to the live event manager ({cam.events})")
     check(row_text(cam) == ["Active"], f"row shows Active ({row_text(cam)})")
     check(cam.open_menu() == ["USB Streaming Test", "Active"], "running state survives a rescan")
@@ -624,5 +683,107 @@ if (B / "ActionTest.mod").exists():
     check(any(l.startswith("action_close_unavailable") for l in cam.log) and not cam.events,
           "without a known libObj.so base no event is posted (reported, menu stays open)")
     check(cam.open_menu() == ["USB Streaming Test", "Active"], "the mod itself still started")
+
+if (B / "SubmenuTest.mod").exists():
+    print("Scenario 16: nested submenu (SMOD_V2_FLAG_SUBMENU) navigation, multi-page options, and live cfg callback")
+    sub_mod = (B / "SubmenuTest.mod").read_bytes()
+    _, tcode, tsyms = extract_elf_text((B / "test_mod.elf").read_bytes(), expected_code_addr=0)
+    check(struct.unpack_from("<I", sub_mod, 8)[0] & 0x20 == 0x20, "file carries SMOD_V2_FLAG_SUBMENU")
+    cam = Camera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/SubmenuTest.mod": sub_mod,
+                  "/tmp_bt/mods/TestMod.mod": testmod})
+    texts = cam.open_menu()
+    check(texts == ["Submenu Test", "OFF >", "Test Mod", "OFF"],
+          f"submenu mod shows 'OFF >' chevron alongside regular mod ({texts})")
+    cam.press(0)  # Enter Submenu Test nested submenu
+    title = [t for off, t in cam.texts if off == 0x5470]
+    rows_p1 = [t for off, t in cam.texts if off != 0x5470]
+    check(title == ["Submenu Test"], f"header title switched to mod name ({title})")
+    check(rows_p1 == [
+        "< Back", "",
+        "Mod Status", "OFF",
+        "Binning Mode", "2x2 Bayer",
+        "Photon Gain", "+2 EV (4x)",
+        "Spatial Kernel", "Box Sum",
+        "ARW Output", "16-bit Uncomp",
+    ], f"submenu Page 1 renders < Back, Mod Status, and 4 default options ({rows_p1})")
+    kids = cam.u32(cam.root + 4)
+    tab_node = cam.u32(kids + 24)
+    check(cam.u32(tab_node + 8) == 2 and len(cam.items(0)) == 6 and len(cam.items(1)) == 1,
+          "submenu builds 2 pages (6 rows on Page 1, 1 row on Page 2)")
+
+    # Customize Binning Mode (row 2 -> 2x2 Mono) while mod is still OFF, then check Page 2
+    cam.texts.clear()
+    cam.press(2, page_idx=0)
+    check([t for _, t in cam.texts] == ["2x2 Mono"], "cycling option while OFF updates value text")
+    cam.m.mem_write(MENU + 0x1F4, struct.pack("<I", 2))
+    cam.texts.clear()
+    cam.call("ml_after_refresh", MENU)
+    check([t for off, t in cam.texts if off != 0x5470] == ["FD Conv Gain", "Force HCG"],
+          "submenu Page 2 renders remaining option row")
+
+    # Return to Page 1, turn Mod Status ON (row 1), verify bss_cfg_off populated BEFORE on()
+    cam.m.mem_write(MENU + 0x1F4, struct.pack("<I", 1))
+    cam.press(1, page_idx=0)
+    hook = bytes(cam.m.mem_read(TARGETS + 0x100, 12))
+    base = struct.unpack("<I", hook[8:12])[0] - tsyms["t_hook"]
+    cfg_bytes = list(cam.m.mem_read(base + len(tcode) + 4, 5))
+    check(cfg_bytes == [1, 0, 1, 0, 0] and cam.u32(base + tsyms["t_counter"]) == 1,
+          f"pre-ON submenu selection synced to __smod_bss+4 ({cfg_bytes}) and on() ran once")
+
+    # Cycle Photon Gain (row 3) while ON -> updates bss live and invokes t_cfg(2) (+0x1000)
+    cam.texts.clear()
+    cam.press(3, page_idx=0)
+    cfg_bytes = list(cam.m.mem_read(base + len(tcode) + 4, 5))
+    check(cfg_bytes == [1, 1, 1, 0, 0] and cam.u32(base + tsyms["t_counter"]) == 0x1001,
+          f"live option cycle updated __smod_bss+4 ({cfg_bytes}) and called t_cfg(2)")
+
+    # Press < Back (row 0) -> returns to top-level Mods with 'ON >'
+    cam.press(0, page_idx=0)
+    check([t for off, t in cam.texts if off == 0x5470] == ["Mods"] and
+          [t for off, t in cam.texts if off != 0x5470] == ["Submenu Test", "ON >", "Test Mod", "OFF"],
+          "pressing < Back returns to Mods tab showing 'ON >'")
+
+    # Re-enter submenu, turn Mod Status OFF, close & reopen MENU -> custom selections persist!
+    cam.press(0)
+    cam.press(1, page_idx=0)
+    check(bytes(cam.m.mem_read(TARGETS + 0x100, 12)) == ORIG12, "turning OFF inside submenu reverts hook")
+    check(cam.open_menu() == ["Submenu Test", "OFF >", "Test Mod", "OFF"],
+          "reopening MENU resets to top-level Mods tab")
+    cam.press(0)
+    rows_after = [t for off, t in cam.texts if off != 0x5470]
+    check(rows_after[5] == "2x2 Mono" and rows_after[7] == "+1 EV (2x)",
+          f"custom submenu selections survive OFF + menu rescan ({rows_after})")
+
+if not IS_A6400A:
+    print("Scenario 17: ILCE-6400 CTX_VERSION=2 (mlv2-layout-build-4) live upgrade migrates active mods safely")
+    _, tcode, tsyms = extract_elf_text((B / "test_mod.elf").read_bytes(), expected_code_addr=0)
+    cam = Camera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/TestMod.mod": testmod})
+    cam.open_menu()
+    cam.press(0)  # Enable TestMod under v3 first to allocate its code mapping + active hook
+    shim_slot = cam.u32(SHIM)
+    v3_ctx = cam.u32(shim_slot + 16)
+    # Synthesize a live CTX_VERSION=2 context (0x5000 B) carrying the active V2Mod (460 B at +0x448)
+    v2_ctx_addr = 0x35000000
+    cam.m.mem_map(v2_ctx_addr, 0x5000)
+    v2_buf = bytearray(0x46D0)
+    struct.pack_into("<5I", v2_buf, 0, 0x58544332, 2, 1, 1, 1)
+    # Copy orig_root..opt_ptrs from v3_ctx (+0x18..+0x44C -> v2 +0x14..+0x448)
+    v2_buf[0x14:0x448] = bytes(cam.m.mem_read(v3_ctx + 0x18, 0x434))
+    # Copy the 460-byte V2Mod prefix of mods[0] from v3_ctx (+0x44C -> v2 +0x448)
+    v2_buf[0x448 : 0x448 + 460] = bytes(cam.m.mem_read(v3_ctx + 0x44C, 460))
+    # Point orig_root->children at v2_ctx's root_children (+0x140) as v2 had it
+    orig_root = struct.unpack_from("<I", v2_buf, 0x14)[0]
+    cam.m.mem_write(orig_root + 4, struct.pack("<I", v2_ctx_addr + 0x140))
+    v2_buf[0x46C8:0x46D0] = bytes(cam.m.mem_read(v3_ctx + 0x44C + 37 * 1564 + 4, 8))
+    cam.m.mem_write(v2_ctx_addr, bytes(v2_buf))
+    cam.m.mem_write(shim_slot + 16, struct.pack("<I", v2_ctx_addr))
+
+    cam.files["/tmp_bt/mlv2/core.bin"] = with_fnv_variant(core_bin, pad=16)
+    texts = cam.open_menu()
+    check(any(l.startswith("ctx_v2_migrated 00000001") for l in cam.log) and texts == ["Test Mod", "ON"],
+          f"CTX_VERSION=2 context migrated to v3 keeping enabled mod ON ({texts})")
+    cam.press(0)
+    check(bytes(cam.m.mem_read(TARGETS + 0x100, 12)) == ORIG12,
+          "migrated v3 core cleanly turns OFF mod that was enabled under CTX_VERSION=2")
 
 print("ALL SCENARIOS PASSED")

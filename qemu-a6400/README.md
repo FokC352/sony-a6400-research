@@ -148,6 +148,24 @@ with `--inputs`, `--loader` and `--mod`), see [Developing camera mods in QEMU](M
 Prepared inputs read from `/mnt/c` slow every guest disk access. The panel's `--inputs` copies them
 to the Linux filesystem once (boot to the menu 63 s → 35 s, E0577).
 
+### Booting captured `ILCE-6400A` 1.01 firmware
+
+With the verified `ILCE-6400A` 1.01 prepared inputs staged on Linux ext4 and the 384-byte powered
+sub-micro RX frames extracted from the camera's own WBI1 (`nflasha5.bin`, SHA-256 `5effe8d4…`,
+[E0666](../docs/evidence/0666-qemu-ilce-6400a-captured-firmware-boot.md)), pass `ULOGIO=` so the
+camera's own `/setting/ulogio.bin` is preserved:
+
+```bash
+ULOGIO= \
+EVSEL_LATE_US=500 \
+SUBMICRO_FRAMES="$HOME/a6400-inputs/submicro-a6400a/wbi-powered-384.bin" \
+SUBMICRO_FRAMES_SHA=5effe8d44b670f71fd7b537e44276718b57f072e48a10be45e621cb73c207695 \
+python3 -u qemu-a6400/tools/rear_panel.py \
+  --port 8641 \
+  --inputs "$HOME/a6400-inputs/a6400a-v101-captured" \
+  --log artifacts/qemu-a6400a/panel.log
+```
+
 ## Offline SD and USB scenarios
 
 These are separate gates. The SD regression runs on `sony-a6400`. The USB

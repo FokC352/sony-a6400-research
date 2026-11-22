@@ -219,25 +219,90 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-21",
+    as_of="2026-11-22",
     latest=EvidenceRef(
-        evidence_id="E0665",
-        path="docs/evidence/0665-qemu-boots-from-the-public-updater.md",
-        date="2026-11-21",
-        title="QEMU reaches the a6400 shooting screen and the step-32 wait without a camera capture",
+        evidence_id="E0669",
+        path="docs/evidence/0669-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
+        date="2026-11-22",
+        title="Standalone Option B SD-card auto-boot (FAT32/exFAT MLV2.TAR) verified for ILCE-6400A 1.01",
         demonstrated=(
-            "qemu_packaged_inputs builds a byte-identical emmc.img and powered sub-micro frames from "
-            "Sony's public a6400 updater; stock firmware draws its P-mode OSD and stops at the packaged "
-            "step-32 wait (module 3 0x0326, request 0x032E, Ydet counter 0), read by QMP xp alone."
+            "Universal FAT32/exFAT mlv2_card_read.elf (4,972 B), freestanding mlv2_sd_boot_hook.so, "
+            "dynamic-PID mlv2_sd_boot.sh, and MLV2.TAR pass FAT32/exFAT/kill-switch tests and live "
+            "QEMU ILCE-6400A 1.01 no-card stock + SD auto-boot + hot-removal runs."
         ),
         boundary=(
-            "ulogio.bin still comes from the ZV-E10 updater; bars leads to an x02 request set, not E0591's "
-            "step 42; no bars picture on console; zero-filled partitions are not camera content."
+            "One-time /setting + /etc/ld.so.preload Jiritsu installation (a6400a_sd_boot_install.py) "
+            "remains closed by default and awaits supervised owner execution on physical ILCE-6400A."
         ),
-        tier="OFFLINE PUBLIC UPDATERS + QEMU",
+        tier="OFFLINE FAT32/EXFAT + CAPTURED A6400A QEMU",
     ),
-    headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
+    headline="ILCE-6400A SD auto-boot + 10 mods | PhotonBin 6MP + SMNU | QEMU ILCE-6400A stock UI",
     cards=(
+        EvidenceRef(
+            evidence_id="E0668",
+            path="docs/evidence/0668-photonbin-6mp-and-mlv2-nested-submenus.md",
+            date="2026-11-22",
+            title="PhotonBin 6MP low-light .ARW mod and Mod Loader v2 nested submenus (SMNU)",
+            demonstrated=(
+                "Mod Loader v2 CTX_VERSION=3 adds FNV-verified SMNU nested submenus (16/16 Unicorn PASS); "
+                "PhotonBin6MP.mod combines 4x4->2x2 Bayer/Mono convergence with IMX284 Mconv HCG + 14-bit "
+                "1H2H overrides, verified in Unicorn and live QEMU ILCE-6400A 1.01."
+            ),
+            boundary=(
+                "IMX284 has no true charge-domain binning (ECDrvParam[+0x20]=0x1000=0.00 dB); physical "
+                "still-capture execution on camera hardware has not yet been run."
+            ),
+            tier="OFFLINE UNICORN + CAPTURED A6400A QEMU",
+        ),
+        EvidenceRef(
+            evidence_id="E0667",
+            path="docs/evidence/0667-ilce-6400a-mod-loader-v2-and-mods-port.md",
+            date="2026-11-22",
+            title="Mod Loader v2 and all nine SMOD v2 runtime mods ported and verified on ILCE-6400A 1.01",
+            demonstrated=(
+                "Mod Loader v2 (shim @ 0x05D76800, core.bin, mlv2_guard) and all 9 ILCE-6400 mods "
+                "(MenuTouchFull, ModsTabLook, Arrivederci v5, OpenGate32/Sensor/5400_Test, RCRAW_Enable_Test, "
+                "RCRAW_W2_Probe, UsbStreamingTest) pass Unicorn + live QEMU ILCE-6400A 1.01 rear_panel e2e."
+            ),
+            boundary=(
+                "Physical ILCE-6400A execution not yet run; USB Senser FileControl remains blocked on 6400A "
+                "(msc_blocked without an active debugger), and QEMU lacks a touch controller for MTF2 clicks."
+            ),
+            tier="OFFLINE UNICORN + CAPTURED A6400A QEMU",
+        ),
+        EvidenceRef(
+            evidence_id="E0666",
+            path="docs/evidence/0666-qemu-ilce-6400a-captured-firmware-boot.md",
+            date="2026-11-21",
+            title="QEMU boots captured ILCE-6400A 1.01 firmware to the stock rear-LCD UI and interactive menu",
+            demonstrated=(
+                "Captured ILCE-6400A 1.01 (17 partitions, own ulogio.bin, WBI powered sub-micro frames) boots "
+                "all 4 CPUs, 9 mounts, 40 .ko modules, LIRO and im.elf SetContentTarget/EEStart with zero "
+                "exceptions, rendering the P-mode OSD, S1 wake and interactive Setup/Camera Settings menus."
+            ),
+            boundary=(
+                "Preloaded Backup.bin/av-cam.bin and powered WBI Slot B model bootloader/sub-micro handoff; "
+                "enabling SUBMICRO_LENS_POWER=1 + LIVEVIEW_SOURCE=bars without an ILCE-6400A IDT_CAM preload "
+                "faults liro-kliro_101 at 0x63909ba8 (~5.77 s guest time)."
+            ),
+            tier="OFFLINE CAPTURED A6400A + QEMU",
+        ),
+        EvidenceRef(
+            evidence_id="E0665",
+            path="docs/evidence/0665-qemu-boots-from-the-public-updater.md",
+            date="2026-11-21",
+            title="QEMU reaches the a6400 shooting screen and the step-32 wait without a camera capture",
+            demonstrated=(
+                "qemu_packaged_inputs builds a byte-identical emmc.img and powered sub-micro frames from "
+                "Sony's public a6400 updater; stock firmware draws its P-mode OSD and stops at the packaged "
+                "step-32 wait (module 3 0x0326, request 0x032E, Ydet counter 0), read by QMP xp alone."
+            ),
+            boundary=(
+                "ulogio.bin still comes from the ZV-E10 updater; bars leads to an x02 request set, not E0591's "
+                "step 42; no bars picture on console; zero-filled partitions are not camera content."
+            ),
+            tier="OFFLINE PUBLIC UPDATERS + QEMU",
+        ),
         EvidenceRef(
             evidence_id="E0664",
             path="docs/evidence/0664-shutter-works-drive-mode-decides.md",

@@ -39,6 +39,22 @@ MLV2_HOOKS = {
     "refresh": (0x15B91A80, 16),
     "open_item": (0x15B92044, 12),
 }
+TARGET_MLV2_LAYOUTS: dict[str, dict[str, Any]] = {
+    "ilce_6400": {
+        "ref_view_base": REF_VIEW_BASE,
+        "ref_testcmd_base": REF_TESTCMD_BASE,
+        "hooks": MLV2_HOOKS,
+    },
+    "ilce_6400a": {
+        "ref_view_base": 0x12F46000,
+        "ref_testcmd_base": 0x05D74000,
+        "hooks": {
+            "set_root": (0x134F58A4, 16),
+            "refresh": (0x134F5CD0, 16),
+            "open_item": (0x134F6294, 12),
+        },
+    },
+}
 GUARD_REMOTE = "/tmp_bt/mlv2_guard"
 REQ_REMOTE = "/tmp_bt/mlv2.req"
 
@@ -194,8 +210,17 @@ class CameraService:
             raise RuntimeError(f"PID {pid} is {comm!r}, expected 'im.elf'; aborting safely.")
         return pid
 
-    def _read_im_layout(self, dbg: Any, im_pid: int) -> dict[str, int | None]:
+    def _read_im_layout(
+        self,
+        dbg: Any,
+        im_pid: int,
+        *,
+        target_id: str = "ilce_6400",
+    ) -> dict[str, int | None]:
         """Resolve ``viewUnified2.so`` and ``libtestcmd.so`` runtime bases from ``/proc/<pid>/maps``."""
+        spec = TARGET_MLV2_LAYOUTS.get(target_id, TARGET_MLV2_LAYOUTS["ilce_6400"])
+        ref_view = int(spec["ref_view_base"])
+        ref_testcmd = int(spec["ref_testcmd_base"])
         maps_bytes, _ = dbg.read_all(f"/proc/{im_pid}/maps", limit=512 * 1024)
         view_base: int | None = None
         testcmd_base: int | None = None
@@ -217,14 +242,22 @@ class CameraService:
             "im_pid": im_pid,
             "view_base": view_base,
             "testcmd_base": testcmd_base,
-            "view_bias": (view_base - REF_VIEW_BASE) if view_base is not None else None,
-            "testcmd_bias": (testcmd_base - REF_TESTCMD_BASE) if testcmd_base is not None else None,
+            "view_bias": (view_base - ref_view) if view_base is not None else None,
+            "testcmd_bias": (testcmd_base - ref_testcmd) if testcmd_base is not None else None,
         }
 
-    def _read_hooks(self, dbg: Any, im_pid: int = IM_PID, view_bias: int = 0) -> dict[str, str]:
+    def _read_hooks(
+        self,
+        dbg: Any,
+        im_pid: int = IM_PID,
+        view_bias: int = 0,
+        *,
+        target_id: str = "ilce_6400",
+    ) -> dict[str, str]:
+        hooks = TARGET_MLV2_LAYOUTS.get(target_id, TARGET_MLV2_LAYOUTS["ilce_6400"])["hooks"]
         return {
             name: dbg.memory(im_pid, (addr + view_bias) & 0xFFFFFFFF, size).hex()
-            for name, (addr, size) in MLV2_HOOKS.items()
+            for name, (addr, size) in hooks.items()
         }
 
     @staticmethod
@@ -234,7 +267,7 @@ class CameraService:
             for e in entries
         ]
 
-    def _inspect_debugger_state(self, dbg: Any) -> dict[str, object]:
+    def _inspect_debugger_state(self, dbg: Any, *, target_id: str = "ilce_6400") -> dict[str, object]:
         info = self._probe_debugger_info(dbg)
         uptime_parts = self._exec(dbg, "cat /proc/uptime").strip().split()
         uptime = uptime_parts[0] if uptime_parts else ""
@@ -246,11 +279,12 @@ class CameraService:
         try:
             im_pid = self._find_im_pid(dbg)
             comm = "im.elf"
-            layout = self._read_im_layout(dbg, im_pid)
-            view_bias = layout["view_bias"]
-            testcmd_bias = layout["testcmd_bias"]
-            if view_bias is not None:
-                hooks = self._read_hooks(dbg, im_pid, view_bias)
+            if target_id in TARGET_MLV2_LAYOUTS:
+                layout = self._read_im_layout(dbg, im_pid, target_id=target_id)
+                view_bias = layout["view_bias"]
+                testcmd_bias = layout["testcmd_bias"]
+                if view_bias is not None:
+                    hooks = self._read_hooks(dbg, im_pid, view_bias, target_id=target_id)
         except RuntimeError:
             pass
         core_present = (
@@ -298,14 +332,7 @@ class CameraService:
 
     def detect_camera(self, *, mlv2_status: dict[str, object] | None = None) -> dict[str, object]:
         """Passively detect connected camera state without forcing any USB mode switch."""
-        dbg_details: dict[str, object] | None = None
-        dbg_error: str | None = None
-        try:
-            with self.transport.debugger_session() as dbg:
-                dbg_details = self._inspect_debugger_state(dbg)
-        except Exception as exc:
-            dbg_error = f"{type(exc).__name__}: {exc}"
-
+        target_id = str((mlv2_status or {}).get("target_id") or "ilce_6400")
         msc_identity: dict[str, str] | None = None
         msc_error: str | None = None
         try:
@@ -313,20 +340,47 @@ class CameraService:
         except Exception as exc:
             msc_error = f"{type(exc).__name__}: {exc}"
 
+        msc_model = (msc_identity or {}).get("model_name") or ""
+        msc_fw = (msc_identity or {}).get("firmware_version") or ""
+        msc_spec = find_debugger_target_by_model(msc_model, msc_fw or None) if msc_model else None
+        if msc_spec is not None:
+            inspect_target_id = msc_spec.target_id
+        elif msc_model:
+            inspect_target_id = "unknown"
+        else:
+            inspect_target_id = target_id
+
+        dbg_details: dict[str, object] | None = None
+        dbg_error: str | None = None
+        try:
+            with self.transport.debugger_session() as dbg:
+                dbg_details = self._inspect_debugger_state(dbg, target_id=inspect_target_id)
+        except Exception as exc:
+            dbg_error = f"{type(exc).__name__}: {exc}"
+
         if dbg_details is not None:
-            model_name = (msc_identity or {}).get("model_name") or "ILCE-6400"
+            default_model = "ILCE-6400A" if target_id == "ilce_6400a" else "ILCE-6400"
+            model_name = msc_model or default_model
             model_code = (msc_identity or {}).get("model_code") or ""
-            firmware_version = (msc_identity or {}).get("firmware_version") or ""
-            spec = find_debugger_target_by_model(model_name, firmware_version or None)
+            firmware_version = msc_fw
+            spec = msc_spec if msc_model else find_debugger_target_by_model(model_name, firmware_version or None)
             hook_state = "unknown"
             hooks = dbg_details.get("hooks", {})
             testcmd_bias = dbg_details.get("testcmd_bias")
-            if mlv2_status and mlv2_status.get("available") and hooks and testcmd_bias is not None:
+            hook_defs = TARGET_MLV2_LAYOUTS.get(inspect_target_id, {}).get("hooks", {})
+            if (
+                mlv2_status
+                and mlv2_status.get("available")
+                and inspect_target_id == target_id
+                and hook_defs
+                and hooks
+                and testcmd_bias is not None
+            ):
                 entries = mlv2_status.get("entry_ints") or []
                 expect = self._expected_v2_branches(entries, int(testcmd_bias))
                 if len(entries) == 3 and all(
                     bytes.fromhex(hooks[k])[:8] == e
-                    for k, e in zip(MLV2_HOOKS, expect)
+                    for k, e in zip(hook_defs, expect)
                     if k in hooks
                 ):
                     hook_state = "v2"
@@ -581,6 +635,28 @@ class CameraService:
             wants_runtime_ops and camera.get("connected") and not camera.get("debugger_active")
         )
 
+        if (
+            camera.get("connected")
+            and camera.get("state") not in ("msc_blocked", "msc_unsupported")
+            and (wants_runtime_ops or needs_runtime_sync)
+        ):
+            cam_spec = find_debugger_target_by_model(
+                str(camera.get("model_name") or ""),
+                str(camera.get("firmware_version") or "") or None,
+            )
+            cat_target = str(catalog.get("target_id") or "ilce_6400")
+            if cam_spec is not None and cam_spec.target_id != cat_target:
+                if cam_spec.target_id in TARGET_MLV2_LAYOUTS:
+                    blocking_errors.append(
+                        f"Catalog target {cat_target!r} does not match connected camera {cam_spec.model_name} "
+                        f"({cam_spec.target_id!r}). Switch target profile first."
+                    )
+                else:
+                    blocking_errors.append(
+                        f"Mod Loader v2 runtime mods are not qualified for {cam_spec.model_name} "
+                        f"({cam_spec.target_id!r}); disable runtime mods to apply PMCA tweaks only."
+                    )
+
         if needs_debugger_bootstrap:
             confirmation_items.append(
                 {
@@ -600,6 +676,13 @@ class CameraService:
                     or "No verified Mod Loader v2 build (core.bin, mlv2.req, mlv2_guard_arm) available."
                 )
             )
+        elif needs_runtime_sync:
+            mlv2_target = str(mlv2_status.get("target_id") or "ilce_6400")
+            cat_target = str(catalog.get("target_id") or "ilce_6400")
+            if mlv2_target != cat_target:
+                blocking_errors.append(
+                    f"Mod Loader v2 build target {mlv2_target!r} does not match catalog target {cat_target!r}."
+                )
 
         has_changes = bool(
             tweak_changes
@@ -781,6 +864,8 @@ class CameraService:
     ) -> dict[str, object]:
         build_dir = Path(str(mlv2_status["path"]))
         verified_mlv2 = validate_mlv2_build(build_dir)
+        target_id = str(verified_mlv2.get("target_id") or "ilce_6400")
+        hook_defs = TARGET_MLV2_LAYOUTS.get(target_id, TARGET_MLV2_LAYOUTS["ilce_6400"])["hooks"]
         core_bytes = (build_dir / "core.bin").read_bytes()
         req_bytes = (build_dir / "mlv2.req").read_bytes()
         guard_bytes = (build_dir / "mlv2_guard_arm").read_bytes()
@@ -788,6 +873,7 @@ class CameraService:
 
         receipt: dict[str, object] = {
             "mlv2_build": str(build_dir),
+            "target_id": target_id,
             "core_sha256": verified_mlv2["core_sha256"],
             "mods_pushed": [],
             "mods_reloaded": [],
@@ -797,7 +883,7 @@ class CameraService:
         with self.transport.debugger_session() as dbg:
             receipt["uptime_before"] = self._exec(dbg, "cat /proc/uptime").strip()
             im_pid = self._find_im_pid(dbg)
-            layout = self._read_im_layout(dbg, im_pid)
+            layout = self._read_im_layout(dbg, im_pid, target_id=target_id)
             if layout["view_bias"] is None or layout["testcmd_bias"] is None:
                 raise RuntimeError(
                     f"Could not locate viewUnified2.so / libtestcmd.so in /proc/{im_pid}/maps; aborting safely."
@@ -811,7 +897,7 @@ class CameraService:
             receipt["view_bias"] = view_bias
             receipt["testcmd_bias"] = testcmd_bias
 
-            receipt["hooks_before"] = self._read_hooks(dbg, im_pid, view_bias)
+            receipt["hooks_before"] = self._read_hooks(dbg, im_pid, view_bias, target_id=target_id)
             writable_check = self._exec(
                 dbg, "mkdir -p /tmp_bt/mlv2 /tmp_bt/mods 2>/dev/null && echo OK"
             )
@@ -929,11 +1015,11 @@ class CameraService:
                         raise RuntimeError(f"Hot-reload hook verification mismatch for {fname}")
                 receipt["mods_reloaded"].append({"filename": fname, "base": hex(base)})
 
-            receipt["hooks_after"] = self._read_hooks(dbg, im_pid, view_bias)
+            receipt["hooks_after"] = self._read_hooks(dbg, im_pid, view_bias, target_id=target_id)
             expect = self._expected_v2_branches(entries, testcmd_bias)
             receipt["hooks_point_to_v2"] = all(
                 bytes.fromhex(receipt["hooks_after"][k])[:8] == e
-                for k, e in zip(MLV2_HOOKS, expect)
+                for k, e in zip(hook_defs, expect)
             )
             if not receipt["hooks_point_to_v2"]:
                 raise RuntimeError("Post-install hook verification failed: branches do not point to MLv2 shim.")

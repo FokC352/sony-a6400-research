@@ -6,7 +6,9 @@ Runtime mods for Sony **BIONZ X (`CXD90045`)** cameras load through a guarded RA
 > **Windows GUI (1-Click Install & ON/OFF Toggles):** Double-click [`scripts/launch_mod_manager.bat`](../scripts/launch_mod_manager.bat) or see **[BIONZ X Mod Manager GUI](../docs/MOD_MANAGER_GUI.md)** to toggle runtime mods & PMCA tweaks ON/OFF, sync SD cards, or build a standalone `.exe` bundle.
 
 > [!IMPORTANT]
-> **Target boundary:** The current loader and production mods target the **captured `ILCE-6400` 2.00 library layout**. The official 2.00 package and `ILCE-6400A` 1.01 do not match the shipped hook and data preimages. A matching version label or relocatable `.mod` does not qualify different library bytes.
+> **Target boundary:** Each camera/firmware build uses its own verified loader and `.mod` set—never mix builds across bodies:
+> - **`ILCE-6400` (`2.00` captured layout):** default `mlv2` (`0x05662800` cave) and root mod directories (`mods/menu_touch_full/`, `mods/arri_isp/arrivederci/`, etc.). The official `2.00` updater package differs from captured `ILCE-6400` user-space libraries.
+> - **`ILCE-6400A` (`1.01`):** `--target ilce_6400a` `mlv2` (`0x05D76800` cave) and **[`mods/ilce_6400a/`](ilce_6400a/README.md)** (all 9 `SMOD v2` mods verified in Unicorn and live QEMU `ILCE-6400A` `1.01`, [E0667](../docs/evidence/0667-ilce-6400a-mod-loader-v2-and-mods-port.md)). Captured `ILCE-6400A` `1.01` matches `Update_ILCE6400AV101.exe` bit-for-bit.
 
 See the [firmware qualification matrix and replay receipts](../docs/evidence/mods/2026-11-19-firmware-qualification.md) for what was verified on each build.
 

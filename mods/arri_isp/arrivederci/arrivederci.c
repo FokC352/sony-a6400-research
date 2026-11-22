@@ -15,10 +15,17 @@
 #include <stdint.h>
 #include "arrivederci_data.h"   /* GAMMA_*[96], COLOR_STOCK/ARRI[9], optional COLOR_LEGACY[9] */
 
-#define GAMMA_PA 0x03e5363cu
-#define COLOR_PA 0x0444b1d4u
+#ifdef TARGET_ILCE6400A
+#define GAMMA_PA     0x03e560c4u
+#define COLOR_PA     0x0444fdc8u
+#define CC_TUNING_PA 0x0444ed96u
+#define REFADR0_PA   0x044b191bu
+#else
+#define GAMMA_PA     0x03e5363cu
+#define COLOR_PA     0x0444b1d4u
 #define CC_TUNING_PA 0x0442d8b8u
-#define REFADR0_PA 0x04490025u
+#define REFADR0_PA   0x04490025u
+#endif
 
 static long sc3(long n, long a, long b, long c) {
     register long r0 __asm__("r0") = a, r1 __asm__("r1") = b, r2 __asm__("r2") = c;

@@ -82,6 +82,22 @@ ZV-E10 updater. The stock firmware draws its P-mode OSD and stops at the package
 wait, which QMP `xp` reads directly
 ([E0665](docs/evidence/0665-qemu-boots-from-the-public-updater.md)).
 
+Captured `ILCE-6400A` 1.01 in QEMU and full `SMOD v2` mod port: the 17-partition capture (`emmc.img`
+`ed231fc0…`), with its own `/setting/ulogio.bin` (`ULOGIO=`) and WBI-derived powered sub-micro RX
+frames (`5effe8d4…`), boots all four Cortex-A5 cores, 9 eMMC mounts, 40 live `.ko` modules, `LIRO`,
+and `im.elf` `SetContentTarget`/`EEStart` with zero exceptions, rendering the stock rear-LCD
+`P`-mode OSD, Auto Power Save + S1 wake, and interactive `Setup`/`Camera Settings` menus
+([E0666](docs/evidence/0666-qemu-ilce-6400a-captured-firmware-boot.md)). Mod Loader v2 (`shim` at
+`0x05D76800`, `core.bin`, `mlv2_guard`) and all nine available `ILCE-6400` runtime mods
+(`MenuTouchFull`, `ModsTabLook`, `Arrivederci` v5, `OpenGate32`, `OpenGateSensor`,
+`OpenGate_5400_Test`, `RCRAW_Enable_Test`, `RCRAW_W2_Probe`, and `UsbStreamingTest`) are now ported
+to `ILCE-6400A` 1.01 ([`mods/ilce_6400a/`](mods/ilce_6400a/README.md)) with strict target isolation
+in the BIONZ X Mod Manager, nested `SMNU` submenus + `PhotonBin 6MP`
+([E0668](docs/evidence/0668-photonbin-6mp-and-mlv2-nested-submenus.md)), and standalone FAT32/exFAT
+`MLV2.TAR` SD auto-boot ([E0669](docs/evidence/0669-ilce-6400a-standalone-sd-boot-and-exfat-reader.md)),
+passing all Unicorn suites and live QEMU `ILCE-6400A` 1.01 `rear_panel.py` + SD auto-boot sessions
+([E0667](docs/evidence/0667-ilce-6400a-mod-loader-v2-and-mods-port.md)).
+
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
 fresh runs. The optional mode preserves the older descriptor replay and
@@ -217,7 +233,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 | :--- | :--- | :--- | :--- |
 | **`ILCE-6400`** | `a6400` / `a6600` source | **Verified Execution Target** | Full QEMU & Unicorn L2/L3 execution, physical RAM-only mods |
 | **`ZV-E10`** | Shared build | **Verified Execution Target (RAM)** | Full Main Menu touch + 12-tile Fn menu touch verified on physical hardware (FW 2.02/2.03) via volatile direct DRAM injection into `im.elf`. Mod Loader currently untested on ZV-E10. UVC stack cataloged ([E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md)) |
-| **`ILCE-6400A`** | `1.01` packaged | **Sourced Reference** | Native `GetModelInfo` (`0032858730`), packaged Jiritsu command map and bounded offline DMM replies ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [E0525](docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md), [E0532](docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md)) |
+| **`ILCE-6400A`** | `1.01` captured + packaged | **Verified QEMU & Mod Target** | Captured 4-core QEMU stock UI boot ([E0666](docs/evidence/0666-qemu-ilce-6400a-captured-firmware-boot.md)), Mod Loader v2 + all 9 `SMOD v2` mods ported & verified in Unicorn + live QEMU ([E0667](docs/evidence/0667-ilce-6400a-mod-loader-v2-and-mods-port.md), [`mods/ilce_6400a/`](mods/ilce_6400a/README.md)), native `GetModelInfo` (`0032858730`), Jiritsu command map ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md)) |
 | **`ILCE-6600`** | `a6400` / `a6600` source | **Sourced Reference** | Identical 14,401 kernel function symbols; `0x413b` command delta |
 | **`ILCE-7C`** | Shared build | **Sourced Reference** | Identical 14,460 kernel function symbols |
 | **`ILCE-6100`**, **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)) |
@@ -242,7 +258,7 @@ The [2026-11-21 native-reader follow-ups](docs/evidence/0643-cxd90045-miscreg-ef
 
 Upstream recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in its integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=6423c4348a89)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=111b652d7917)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
