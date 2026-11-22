@@ -11,11 +11,11 @@ class Ep0Host:
         self.events = []
         self.deadline = deadline
 
-    def token(self, line, prefix):
-        deadline = time.monotonic() + 10
+    def token(self, line, prefix, *, retries=100):
+        deadline = time.monotonic() + max(10, retries * 0.05 + 5)
         if self.deadline is not None:
             deadline = min(deadline, self.deadline)
-        for _ in range(100):
+        for _ in range(retries):
             if time.monotonic() >= deadline:
                 break
             self.channel.sendall((line + '\n').encode('ascii'))
@@ -77,11 +77,11 @@ class Ep0Host:
             raise ValueError('Malformed status acknowledgement')
         return data
 
-    def bulk_in(self, ep_idx: int) -> bytes:
+    def bulk_in(self, ep_idx: int, *, retries=400) -> bytes:
         if ep_idx < 2 or (ep_idx & 1) == 0:
             raise ValueError(f'Expected odd non-EP0 IN endpoint index, got {ep_idx}')
         prefix = f'IN {ep_idx} '
-        return bytes.fromhex(self.token(f'IN {ep_idx}', prefix))
+        return bytes.fromhex(self.token(f'IN {ep_idx}', prefix, retries=retries))
 
     def bulk_out(self, ep_idx: int, data: bytes):
         if not 2 <= ep_idx < 16 or ep_idx & 1:

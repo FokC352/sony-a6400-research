@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Mod Loader v2 (shim + core). Usage: build_wsl.sh NEW_OUTPUT_DIR [--target ilce_6400|ilce_6400a]
+# Build Mod Loader v2 (shim + core). Usage: build_wsl.sh NEW_OUTPUT_DIR [--target ilce_6400|ilce_6400a|a6100]
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 OUT=$1
@@ -12,6 +12,11 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
+if [[ "$TARGET" == "a6400" ]]; then
+    TARGET="ilce_6400"
+elif [[ "$TARGET" == "ilce_6100" ]]; then
+    TARGET="a6100"
+fi
 mkdir "$OUT"
 D=tools/native_camera/mlv2
 CC=arm-linux-gnueabi-gcc
@@ -26,6 +31,12 @@ if [[ "$TARGET" == "ilce_6400a" ]]; then
     sed -e 's/0x05662800/0x05d77800/' -e 's/0x05663000/0x05d78000/' "$D/shim.ld" > "$OUT/shim-reloc.ld"
     RELOC_SHIM=0x05d77800u
     RELOC_VIEW=0x12f56000u
+elif [[ "$TARGET" == "a6100" ]]; then
+    target_defs=(-DMLV2_TARGET_A6100=1)
+    SHIM_LD="$D/shim.ld"
+    sed -e 's/0x05662800/0x05663800/' -e 's/0x05663000/0x05664000/' "$D/shim.ld" > "$OUT/shim-reloc.ld"
+    RELOC_SHIM=0x05663800u
+    RELOC_VIEW=0x155f6000u
 elif [[ "$TARGET" == "ilce_6400" ]]; then
     SHIM_LD="$D/shim.ld"
     sed -e 's/0x05662800/0x05663800/' -e 's/0x05663000/0x05664000/' "$D/shim.ld" > "$OUT/shim-reloc.ld"
@@ -67,7 +78,7 @@ python3 tools/native_camera/mlv2/package.py "$OUT" --target "$TARGET"
 
 # The joint debugger package invokes this separate worker in the background.
 # Only the matching archive can supply executable code to it.
-if [[ "${CI_SKIP_SYSROOT:-0}" != "1" ]]; then
+if [[ "${CI_SKIP_SYSROOT:-0}" != "1" && "$TARGET" != "a6100" ]]; then
     if [[ "$TARGET" == "ilce_6400" || -f "mods/ilce_6400a/MenuTouchFull.mod" ]]; then
         mkdir "$OUT/companion" "$OUT/card"
         "$CC" -DMLV2_BARE_ARM -nostdlib -static -O2 -ffreestanding -fno-builtin \

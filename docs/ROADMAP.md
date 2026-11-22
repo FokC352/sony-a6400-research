@@ -107,8 +107,13 @@ building on [E0533](evidence/0533-unicorn-native-thumb-userspace-continuation.md
 under `UnicornMachine` (`--mmio stop`, read-only `emmc.img`) through stock
 `/sbin/init`, 9 partition mounts, 39 `.ko` modules, `LIRO` `entry_pre`/`entry_main`,
 `im.elf` `DMP_2D_Initialize : 0`, and interactive `/bin/ash` (`uname -a`,
-`/proc/cpuinfo`, `mount`, `/proc/modules`) past 2.8B instructions. Next: single-core
-execution leaves `av-cam` CPUs 1–3 offline and no Unicorn GUI frame is claimed.
+`/proc/cpuinfo`, `mount`, `/proc/modules`) past 2.8B instructions.
+[E0676](evidence/0676-unicorn-sysv-vph-frame-clock.md) ports the QEMU SYSV/VPH
+frame clock and evsel `ext-vd` path onto that machine.
+[E0677](evidence/0677-unicorn-sio-gpio-oracle.md) adds SIO channel-3 start/done
+and GPIO port-1 input `0x32` from a QEMU MMIO capture. Next: replay captured
+`nflasha3` against those contracts. Single-core execution still leaves `av-cam`
+CPUs 1–3 offline, and no Unicorn GUI frame is claimed.
 
 Earlier no-peripheral QEMU startup (2026-11-17, [E0527](evidence/0527-qemu-task43-initialization-flag-wait.md)):
 two captured-profile boots identify Task 43's first display-initialization wait
@@ -149,14 +154,14 @@ file operation or device-acceptance claim is made.
 
 ## Local ILCE-6400A firmware-dump research
 
-These dated entries use the [local a6400A E0511–E0519 series](CURRENT_STATE.md#local-ilce-6400a-firmware-dump-research).
+These dated entries use the [local a6400A E0667–E0675 series](CURRENT_STATE.md#local-ilce-6400a-firmware-dump-research).
 
 a6400A native acquisition (2026-11-21,
 [E0643 complete allowed set](evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#8-read-only-cache-reclamation-atomic-ipc-and-all-17-allowed-partitions)):
 read-only `POSIX_FADV_DONTNEED` on packaged boot/asset files (`MemFree`
 `~24.7 MiB`), disabled block read-ahead, and atomic `rename` complete all **17
 allowed nonzero `nflasha*` partitions (`1,354,694,656` bytes)** under the
-unchanged 8-MiB floor (`nflasha5` matches E0517 bit-for-bit). Owned cleanup,
+unchanged 8-MiB floor (`nflasha5` matches E0673 bit-for-bit). Owned cleanup,
 `USBSTOR`, battery-removal recovery, and native postflight pass. Excluded
 `nflasha23` and whole-device `nflasha` stay omitted, and temporary Jiritsu
 files on `nflasha6` prevent claiming a factory-pristine offline backup.
@@ -179,16 +184,16 @@ Qualify the active backing or a reviewed size-limited private RAM mount
 before another acquisition; keep `/dev/nflasha23` excluded and do not infer
 a complete backup or weaken the mount/transfer guards.
 
-a6400A expanded acquisition qualification ([E0519](evidence/0519-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md)):
+a6400A expanded acquisition qualification ([E0675](evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md)):
 host access and native identity work, and the owner has expanded qualification
-beyond E0518's former scope. Existing captures remain hash-verified; no new
+beyond E0674's former scope. Existing captures remain hash-verified; no new
 partition bytes are acquired. The examined Jiritsu loader writes internal
 flash before loading a library; MPR's read-named route performs Fsys writes
 rather than arbitrary host streaming. Next: establish an actual general reader
 or a verified temporary execution/cleanup contract, not merely change drivers
 or run an unqualified payload.
 
-a6400A read-only normal-mode track ([E0518](evidence/0518-a6400a-readonly-msc-lun-capture-and-flash-boundary.md)):
+a6400A read-only normal-mode track ([E0674](evidence/0674-a6400a-readonly-msc-lun-capture-and-flash-boundary.md)):
 one genuine 2 MiB MSC LUN 1 image is captured and independently hash-verified
 through USBSTOR, without uploads, mode changes or storage writes. Its geometry
 matches configured nflasha23, but live backing attribution is not attested.
@@ -197,14 +202,14 @@ nflasha5 is skipped. Next: verify the backing contract and a genuine existing
 general reader. Remaining raw partitions/full firmware are blocked within the
 owner's selected no-upload/no-mode-change scope; do not bypass that scope.
 
-a6400A actual acquisition ([E0517](evidence/0517-a6400a-first-actual-nflasha5-capture.md)):
+a6400A actual acquisition ([E0673](evidence/0673-a6400a-first-actual-nflasha5-capture.md)):
 one real nflasha5 partition is saved and independently hash-verified at
 60 MiB. This is a fixed-node result, not a full firmware backup. Complete
 owner recovery/postflight after unacknowledged exit, then qualify a general
 raw reader or reviewed body-matched temporary helper for the remaining nodes.
 Continue offline on the captured image; no speculative live write is implied.
 
-a6400A supervised acquisition track ([E0516](evidence/0516-a6400a-guarded-fixed-acquisition-and-supervised-gate.md)):
+a6400A supervised acquisition track ([E0672](evidence/0672-a6400a-guarded-fixed-acquisition-and-supervised-gate.md)):
 the guarded fixed-node client now preserves actual PyUSB counts, exact
 60 MiB constructed disk/hash output, partial fragments and one-shot baseline
 ownership. Cooperative cancellation drains; unknown transfers do not get an
@@ -212,7 +217,7 @@ invented STOP. Next: fresh owner-assisted normal identity, existing reviewed
 driver/service entry, one nflasha5 attempt and explicit recovery/postflight.
 Other partitions remain separate read contracts; no physical dump is claimed.
 
-a6400A transfer track ([E0515](evidence/0515-a6400a-fixed-reader-framing-and-completion-controls.md)):
+a6400A transfer track ([E0671](evidence/0671-a6400a-fixed-reader-framing-and-completion-controls.md)):
 bounded fixed-node host parsing replays 60 MiB of constructed bytes from
 original remaining-count frames, with explicit short-I/O, cancellation/drain,
 deadline and release controls. Original extraction arms completion before
@@ -221,7 +226,7 @@ Next: a guarded 0336 adapter with real write counts, terminator/runtime
 cancellation and acknowledged exit/recovery contracts. No live acquisition
 is enabled; keep the camera disconnected.
 
-a6400A reader track ([E0514](evidence/0514-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)):
+a6400A reader track ([E0670](evidence/0670-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)):
 Ghidra and original-code controls identify local scratch vs routed memory
 requests, Jiritsu's stat-sized output and a level-3 fixed nflasha5 read-only
 mapping candidate. Explicit release works in fixtures, but failed-mapping state,
@@ -229,7 +234,7 @@ host framing and interrupted-transfer cleanup remain gates before reconnection.
 The own-image L3 prefix reaches access to the unsupplied preload namespace;
 do not fabricate absence or reuse the older body's preload hooks.
 
-a6400A offline access track ([E0513](evidence/0513-a6400a-offline-senser-dispatch-and-native-read-gates.md)):
+a6400A offline access track ([E0669](evidence/0669-a6400a-offline-senser-dispatch-and-native-read-gates.md)):
 stock dispatch has no FF01/FF03 factory; the generic 0x80/header prefix is
 reproduced in original-code windows. TERM_MODE is excluded, while selected
 RAM_READ entries pass only the admission gate. Follow their actual consumers
@@ -237,7 +242,7 @@ before proposing a live read; native network getters can enter write/delete
 paths. The own 1.01 L3 loader reaches brk(0) with no syscall replies.
 Next L2/L3 runs need explicit own-image sources, not just a profile flag.
 
-a6400A acquisition track ([E0512](evidence/0512-a6400a-live-senser-entry-and-recovery.md)):
+a6400A acquisition track ([E0668](evidence/0668-a6400a-live-senser-entry-and-recovery.md)):
 live authentication and service re-enumeration are verified, but no read/dump
 completed. Service WinUSB is now pre-staged and physically binds during entry.
 The actual file request returns status `0x80` and zero payload; normal USB
@@ -245,7 +250,7 @@ re-enumeration follows explicit but unacknowledged STOP attempts.
 Next: qualify a body-specific root reader/execution route. The existing updater
 catalog has no CXD90045 payload; do not use another body's image.
 
-a6400A debugger track (2026-11-14, [E0511](evidence/0511-a6400a-debugger-abi-and-live-channel-boundary.md)):
+a6400A debugger track (2026-11-14, [E0667](evidence/0667-a6400a-debugger-abi-and-live-channel-boundary.md)):
 original debugger ioctl, registration and node-deletion windows pass with
 explicit fixtures. One approved normal-mode channel IN returns `05/20/00` and
 zero bytes after successful model identity. No usable debugger, nonpersistent

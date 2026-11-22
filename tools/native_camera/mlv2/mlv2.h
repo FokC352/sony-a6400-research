@@ -13,25 +13,34 @@
 #ifdef MLV2_TARGET_ILCE6400A
 #define MLV2_REF_VIEW_BASE    0x12f46000u
 #define MLV2_REF_TESTCMD_BASE 0x05d74000u
-#ifndef MLV2_VIEW_BASE
-#define MLV2_VIEW_BASE        MLV2_REF_VIEW_BASE
-#endif
-#define MLV2_SET_TEXT         (MLV2_VIEW_BASE + 0x14f8dcu + 1u)
-#define MLV2_SET_MODE         (MLV2_VIEW_BASE + 0x155c9cu + 1u)
-#define MLV2_MENU_REFRESH     (MLV2_VIEW_BASE + 0x5b0360u + 1u)
+#define MLV2_SET_TEXT_OFF     0x14f8dcu
+#define MLV2_SET_MODE_OFF     0x155c9cu
+#define MLV2_MENU_REFRESH_OFF 0x5b0360u
 #define MLV2_V1_ANCHOR        0x13abfc40u
 #define MLV2_REF_SHIM_ADDR    0x05d76800u
+#elif defined(MLV2_TARGET_A6100)
+#define MLV2_REF_VIEW_BASE    0x155e6000u
+#define MLV2_REF_TESTCMD_BASE 0x05660000u
+#define MLV2_SET_TEXT_OFF     0x150030u
+#define MLV2_SET_MODE_OFF     0x1563c8u
+#define MLV2_V1_ANCHOR        (MLV2_REF_VIEW_BASE + 0xb7a658u)
+#define MLV2_REF_SHIM_ADDR    0x05662800u
 #else
 #define MLV2_REF_VIEW_BASE    0x155e6000u
 #define MLV2_REF_TESTCMD_BASE 0x05660000u
+#define MLV2_SET_TEXT_OFF     0x14f6d0u
+#define MLV2_SET_MODE_OFF     0x155a68u
+#define MLV2_MENU_REFRESH_OFF 0x5ac110u
+#define MLV2_V1_ANCHOR        0x1615ec40u   /* v1 anchor {magic, state}; also used by the tab icon */
+#define MLV2_REF_SHIM_ADDR    0x05662800u
+#endif
 #ifndef MLV2_VIEW_BASE
 #define MLV2_VIEW_BASE        MLV2_REF_VIEW_BASE
 #endif
-#define MLV2_SET_TEXT         (MLV2_VIEW_BASE + 0x14f6d0u + 1u)
-#define MLV2_SET_MODE         (MLV2_VIEW_BASE + 0x155a68u + 1u)
-#define MLV2_MENU_REFRESH     (MLV2_VIEW_BASE + 0x5ac110u + 1u)
-#define MLV2_V1_ANCHOR        0x1615ec40u   /* v1 anchor {magic, state}; also used by the tab icon */
-#define MLV2_REF_SHIM_ADDR    0x05662800u
+#define MLV2_SET_TEXT         (MLV2_VIEW_BASE + MLV2_SET_TEXT_OFF + 1u)
+#define MLV2_SET_MODE         (MLV2_VIEW_BASE + MLV2_SET_MODE_OFF + 1u)
+#ifndef MLV2_TARGET_A6100
+#define MLV2_MENU_REFRESH     (MLV2_VIEW_BASE + MLV2_MENU_REFRESH_OFF + 1u)
 #endif
 #define MLV2_V1_MAGIC         0x444f4d53u   /* "SMOD" */
 #define MLV2_V1_STATE_BYTES   8192u         /* tab icon cache lives at state + 8180 */

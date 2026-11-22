@@ -770,34 +770,55 @@ nak:
 #define TRBCTL_NORMAL         1U
 #define TRBCTL_LINK           8U
 
-static CxdDwc3Ep *strict_resolve_ep(CxdDwc3State *s, uint32_t ep_idx)
+static CxdDwc3Ep *strict_resolve_bulk_in_ep(CxdDwc3State *s, uint32_t ep_idx,
+                                            bool *ambiguous)
 {
-    CxdDwc3Ep *ep = &s->eps[ep_idx];
-    if (ep->trb_active || ep->cfg1 != 0) {
-        return ep;
-    }
-    for (uint32_t j = 2; j < DWC3_MAX_EPS; j++) {
-        if (((s->eps[j].cfg1 >> 25) & 0x1FU) == ep_idx) {
-            return &s->eps[j];
+    CxdDwc3Ep *match = NULL;
+
+    *ambiguous = false;
+    for (uint32_t i = 2; i < DWC3_MAX_EPS; i++) {
+        if (((s->dalepena & (1U << i)) || (s->dalepena & (1U << ep_idx))) &&
+            ((s->eps[i].cfg1 >> 25) & 0x1FU) == ep_idx) {
+            if (match) {
+                *ambiguous = true;
+                return NULL;
+            }
+            match = &s->eps[i];
         }
     }
-    return ep;
+    if (match) {
+        return match;
+    }
+    if (s->dalepena & (1U << ep_idx)) {
+        return &s->eps[ep_idx];
+    }
+    return NULL;
 }
 
 static void strict_bulk_in(CxdDwc3State *s, uint32_t ep_idx)
 {
-    CxdDwc3Ep *ep = strict_resolve_ep(s, ep_idx);
+    bool ambiguous = false;
+    CxdDwc3Ep *ep = strict_resolve_bulk_in_ep(s, ep_idx, &ambiguous);
     CxdDwc3Trb trb;
     char reply[64];
     uint32_t kind, capacity;
     uint64_t address;
 
-    if (!s->host_connected || !(s->dctl & DCTL_RUN_STOP) ||
-        !(s->dalepena & (1U << ep_idx))) {
+    if (!s->host_connected || !(s->dctl & DCTL_RUN_STOP)) {
         snprintf(reply, sizeof(reply), "NAK %u\n", ep_idx);
         strict_reply(s, reply);
         return;
     }
+    if (ambiguous) {
+        strict_reply(s, "ERROR ambiguous-bulk-in-endpoint\n");
+        return;
+    }
+    if (!ep) {
+        snprintf(reply, sizeof(reply), "NAK %u\n", ep_idx);
+        strict_reply(s, reply);
+        return;
+    }
+    uint32_t phys_ep = (uint32_t)(ep - s->eps);
     if (ep->stalled) {
         snprintf(reply, sizeof(reply), "STALL %u\n", ep_idx);
         strict_reply(s, reply);
@@ -869,7 +890,6 @@ static void strict_bulk_in(CxdDwc3State *s, uint32_t ep_idx)
         ep->trb_active = false;
     }
     ep->nrdy_pending = false;
-    uint32_t phys_ep = (uint32_t)(ep - s->eps);
     dwc3_push_depevt(s, phys_ep, DEPEVT_XFERCOMPLETE,
                      (trb.ctrl & TRB_CTRL_LST) ? 8U : 0U, 0);
     dwc3_emit_host_in(s, ep_idx, data, capacity);
@@ -877,8 +897,8 @@ static void strict_bulk_in(CxdDwc3State *s, uint32_t ep_idx)
     return;
 nak:
     if (!ep->nrdy_pending &&
-        ((ep->cfg1 & (1U << 10)) || (s->dalepena & (1U << ep_idx)))) {
-        dwc3_push_depevt(s, (uint32_t)(ep - s->eps), DEPEVT_XFERNOTREADY, 0, 0);
+        ((ep->cfg1 & (1U << 10)) || (s->dalepena & (1U << phys_ep)))) {
+        dwc3_push_depevt(s, phys_ep, DEPEVT_XFERNOTREADY, 0, 0);
         ep->nrdy_pending = true;
     }
     snprintf(reply, sizeof(reply), "NAK %u\n", ep_idx);

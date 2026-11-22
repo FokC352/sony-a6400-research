@@ -11,7 +11,37 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
-import usb.core
+try:
+    import usb.core
+except ModuleNotFoundError:
+    class _USBError(OSError):
+        def __init__(self, strerror, error_code=None, errno=None):
+            super().__init__(strerror)
+            self.backend_error_code = error_code
+            self.errno = errno
+
+    class _USBTimeoutError(_USBError):
+        pass
+
+    class _Device:
+        idVendor = 0
+        idProduct = 0
+
+        def get_active_configuration(self):
+            return []
+
+        def ctrl_transfer(self, *args, **kwargs):
+            return 0
+
+        def read(self, *args, **kwargs):
+            return b""
+
+        def write(self, *args, **kwargs):
+            return 0
+
+    usb = SimpleNamespace(
+        core=SimpleNamespace(USBError=_USBError, USBTimeoutError=_USBTimeoutError, Device=_Device)
+    )
 
 from project_paths import PROJECT_ROOT
 from tools.research import a6400a_fixed_acquire as acquisition

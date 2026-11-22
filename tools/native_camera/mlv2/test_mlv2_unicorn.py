@@ -129,9 +129,17 @@ class Camera:
                     self.files[path] = b""
                 res = self.next_fd; self.next_fd += 1; self.fds[res] = ["wfile", path, 0]
             elif a[1] & 0o40000:
-                names = sorted({p.rsplit("/", 1)[1] for p in self.files if p.rsplit("/", 1)[0] == path})
-                if names or path == "/tmp_bt/mods":
-                    res = self.next_fd; self.next_fd += 1; self.fds[res] = ["dir", names, False]
+                entries = {}
+                prefix = path + "/"
+                for p in self.files:
+                    if p.startswith(prefix):
+                        rem = p[len(prefix):]
+                        if "/" in rem:
+                            entries[rem.split("/", 1)[0]] = 4
+                        else:
+                            entries.setdefault(rem, 8)
+                if entries or path == "/tmp_bt/mods":
+                    res = self.next_fd; self.next_fd += 1; self.fds[res] = ["dir", sorted(entries.items()), False]
                 else:
                     res = -2
             elif path in self.files:
@@ -161,10 +169,10 @@ class Camera:
                 res = 0
             else:
                 buf = b""
-                for name in f[1]:
+                for name, dtype in f[1]:
                     nm = name.encode() + b"\0"
                     rl = (19 + len(nm) + 7) & ~7
-                    buf += struct.pack("<QqHB", 1, 0, rl, 8) + nm.ljust(rl - 19, b"\0")
+                    buf += struct.pack("<QqHB", 1, 0, rl, dtype) + nm.ljust(rl - 19, b"\0")
                 m.mem_write(a[1], buf); f[2] = True; res = len(buf)
         elif n == 10:                                       # unlink
             path = bytes(m.mem_read(a[0], 80)).split(b"\0")[0].decode()
@@ -758,32 +766,61 @@ if not IS_A6400A:
     print("Scenario 17: ILCE-6400 CTX_VERSION=2 (mlv2-layout-build-4) live upgrade migrates active mods safely")
     _, tcode, tsyms = extract_elf_text((B / "test_mod.elf").read_bytes(), expected_code_addr=0)
     cam = Camera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/TestMod.mod": testmod})
+    stock_kids = cam.u32(cam.root + 4)
     cam.open_menu()
-    cam.press(0)  # Enable TestMod under v3 first to allocate its code mapping + active hook
+    cam.press(0)  # Enable TestMod under current core first to allocate its code mapping + active hook
     shim_slot = cam.u32(SHIM)
-    v3_ctx = cam.u32(shim_slot + 16)
+    cur_ctx = cam.u32(shim_slot + 16)
+    ctx_dump = bytes(cam.m.mem_read(cur_ctx, 0x4000))
+    mod0_off = ctx_dump.index(b"Test Mod" + b"\0" * 24)
+    m0 = ctx_dump[mod0_off : mod0_off + 500]
+    v2_mod0 = m0[:32] + m0[32:96] + m0[136 : 136 + 364]
+    assert len(v2_mod0) == 460
     # Synthesize a live CTX_VERSION=2 context (0x5000 B) carrying the active V2Mod (460 B at +0x448)
     v2_ctx_addr = 0x35000000
     cam.m.mem_map(v2_ctx_addr, 0x5000)
     v2_buf = bytearray(0x46D0)
     struct.pack_into("<5I", v2_buf, 0, 0x58544332, 2, 1, 1, 1)
-    # Copy orig_root..opt_ptrs from v3_ctx (+0x18..+0x44C -> v2 +0x14..+0x448)
-    v2_buf[0x14:0x448] = bytes(cam.m.mem_read(v3_ctx + 0x18, 0x434))
-    # Copy the 460-byte V2Mod prefix of mods[0] from v3_ctx (+0x44C -> v2 +0x448)
-    v2_buf[0x448 : 0x448 + 460] = bytes(cam.m.mem_read(v3_ctx + 0x44C, 460))
-    # Point orig_root->children at v2_ctx's root_children (+0x140) as v2 had it
+    # Copy orig_root, orig_tab5, last_menu, vtable[72], root_children[8] (+0x18..+0x164 -> v2 +0x14..+0x160)
+    v2_buf[0x14:0x160] = ctx_dump[0x18:0x164]
+    v2_buf[0x448 : 0x448 + 460] = v2_mod0
     orig_root = struct.unpack_from("<I", v2_buf, 0x14)[0]
     cam.m.mem_write(orig_root + 4, struct.pack("<I", v2_ctx_addr + 0x140))
-    v2_buf[0x46C8:0x46D0] = bytes(cam.m.mem_read(v3_ctx + 0x44C + 37 * 1564 + 4, 8))
+    struct.pack_into("<II", v2_buf, 0x46C8, stock_kids, 6)
     cam.m.mem_write(v2_ctx_addr, bytes(v2_buf))
     cam.m.mem_write(shim_slot + 16, struct.pack("<I", v2_ctx_addr))
 
     cam.files["/tmp_bt/mlv2/core.bin"] = with_fnv_variant(core_bin, pad=16)
     texts = cam.open_menu()
     check(any(l.startswith("ctx_v2_migrated 00000001") for l in cam.log) and texts == ["Test Mod", "ON"],
-          f"CTX_VERSION=2 context migrated to v3 keeping enabled mod ON ({texts})")
+          f"CTX_VERSION=2 context migrated keeping enabled mod ON ({texts})")
     cam.press(0)
     check(bytes(cam.m.mem_read(TARGETS + 0x100, 12)) == ORIG12,
-          "migrated v3 core cleanly turns OFF mod that was enabled under CTX_VERSION=2")
+          "migrated core cleanly turns OFF mod that was enabled under CTX_VERSION=2")
+
+print("Scenario 18: 1-level subfolder menu, mutual exclusion, and < Back")
+_, _, tsyms = extract_elf_text((B / "test_mod.elf").read_bytes(), expected_code_addr=0)
+mod_a = bytearray(testmod)
+mod_a[12:44] = b"Look Alpha".ljust(32, b"\0")
+mod_b = bytearray(mod_variant(testmod, target=TARGETS + 0x200, syms=tsyms))
+mod_b[12:44] = b"Look Beta".ljust(32, b"\0")
+cam = Camera({
+    "/tmp_bt/mlv2/core.bin": core_bin,
+    "/tmp_bt/mods/looks/Alpha.mod": bytes(mod_a),
+    "/tmp_bt/mods/looks/Beta.mod": bytes(mod_b),
+})
+texts = cam.open_menu()
+check(texts[:2] == ["looks", ">"], f"subfolder listed at top level ({texts})")
+cam.press(0)  # Enter 'looks' folder
+check([t for off, t in cam.texts if off == 0x5470][-1] == "looks", "header shows folder name")
+cam.press(1)  # Enable Look Alpha
+check(bytes(cam.m.mem_read(TARGETS + 0x100, 12)) != ORIG12, "Look Alpha enabled inside folder")
+cam.press(2)  # Enable Look Beta -> mutually exclusive in folder, disables Look Alpha
+check(bytes(cam.m.mem_read(TARGETS + 0x100, 12)) == ORIG12 and bytes(cam.m.mem_read(TARGETS + 0x200, 12)) != ORIG12,
+      "enabling Look Beta automatically disabled Look Alpha in the same folder")
+cam.press(0)  # < Back
+check([t for off, t in cam.texts if off == 0x5470][-1] == "Mods" and
+      [t for off, t in cam.texts if off == 0x9350 + 0xB60][-1] == "Look Beta",
+      "returning to Mods shows active mod name on the folder row")
 
 print("ALL SCENARIOS PASSED")

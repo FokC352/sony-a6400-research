@@ -1,5 +1,5 @@
 # ILCE-6400A (FW 1.01) im.elf reference layout (library mappings and directly following bss)
-# from the E0667 booted captured-firmware /proc/151/maps snapshot. Mod Loader v2 ILCE-6400A
+# from the E0679 booted captured-firmware /proc/151/maps snapshot. Mod Loader v2 ILCE-6400A
 # firmware addresses refer to this layout.
 # Source: artifacts/qemu-a6400a/mlv2-maps-20261121/im_elf_maps.txt
 0401b000-04033000 r-xp 00000000 fc:07 584        /lib/ld-2.11.2.so

@@ -22,6 +22,7 @@ import time
 import os
 import errno
 import shlex
+import socket
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -276,9 +277,43 @@ class NativeExchange:
         return data
 
 
+class TcpExchange:
+    """RAM-only TCP protocol-v2 transport (avoids USB MSC/usb_extcmd)."""
+
+    def __init__(self, host, port=4640, timeout=8.0):
+        self.sock = socket.create_connection((host, port), timeout=timeout)
+        self.sock.settimeout(timeout)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+    def __call__(self, payload):
+        self.sock.sendall(payload)
+        chunks = []
+        remaining = FRAME_SIZE
+        while remaining > 0:
+            chunk = self.sock.recv(remaining)
+            if not chunk:
+                raise ConnectionError('Camera TCP debug connection closed')
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b''.join(chunks)
+
+    def close(self):
+        self.sock.close()
+
+
 @contextlib.contextmanager
-def connect(transport='auto'):
-    """Prefer the persistent WinUSB bulk transport, fall back to ext-command."""
+def connect(transport='auto', host=None, port=4640):
+    """Prefer TCP when requested, WinUSB bulk transport, then ext-command."""
+    if transport == 'tcp' or (transport == 'auto' and host):
+        target_host = host or os.environ.get('A6400_DEBUG_HOST')
+        if not target_host:
+            raise ValueError('TCP transport requires --host or A6400_DEBUG_HOST')
+        exchange = TcpExchange(target_host, port=port)
+        try:
+            yield Debugger(exchange)
+        finally:
+            exchange.close()
+        return
     if transport in ('auto', 'winusb'):
         try:
             from src.a6400.winusb_transport import open_winusb_exchange, TransportUnavailable
@@ -327,6 +362,9 @@ def connect_device():
     from pmca.usb.sony import SonyMscExtCmdDevice,SonyMtpExtCmdDevice
     with host_lock(),importDriver(None) as driver:
         devices=[d for d in listDevices(driver,True) if isinstance(d,(SonyMscExtCmdDevice,SonyMtpExtCmdDevice))]
+        if not devices:
+            time.sleep(.25)
+            devices=[d for d in listDevices(driver,True) if isinstance(d,(SonyMscExtCmdDevice,SonyMtpExtCmdDevice))]
         if len(devices)!=1:
             raise RuntimeError(f'Expected one existing MSC/MTP camera; found {len(devices)}. No mode switch attempted.')
         yield Debugger(NativeExchange(devices[0])), devices[0]
@@ -441,8 +479,12 @@ def recover_to_msc(output=None, timeout=30, transport='auto'):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--transport',choices=('auto','extcmd','winusb'),default='auto',
-                        help='auto prefers the E0402 WinUSB bulk transport, then ext-command')
+    parser.add_argument('--transport',choices=('auto','extcmd','winusb','tcp'),default='auto',
+                        help='auto prefers --host TCP, then E0402 WinUSB bulk, then ext-command')
+    parser.add_argument('--host',default=None,
+                        help='Camera IP/hostname for TCP transport (or set A6400_DEBUG_HOST)')
+    parser.add_argument('--port',type=int,default=4640,
+                        help='TCP debug port (default: 4640)')
     sub=parser.add_subparsers(dest='operation',required=True)
     for name in ('info','ps','stop','ping'):
         sub.add_parser(name)
@@ -468,13 +510,13 @@ def main():
     if args.operation=='recover':
         receipt = recover_to_msc(args.output, args.timeout, args.transport) if args.to_msc else None
         if receipt is None:
-            with connect(args.transport) as debugger:
+            with connect(args.transport, host=args.host, port=args.port) as debugger:
                 text = debugger.recover()
             print(text, end='')
             return 0
         print(json.dumps(receipt, indent=2))
         return 0 if receipt['result']=='msc_recovered' else 2
-    with connect(args.transport) as debugger:
+    with connect(args.transport, host=args.host, port=args.port) as debugger:
         if args.operation=='ping':
             print(debugger.ping(), end='')
         elif args.operation in ('info','ps','stop','threads','usb-state'):

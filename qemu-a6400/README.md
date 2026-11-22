@@ -152,7 +152,7 @@ to the Linux filesystem once (boot to the menu 63 s → 35 s, E0577).
 
 With the verified `ILCE-6400A` 1.01 prepared inputs staged on Linux ext4 and the 384-byte powered
 sub-micro RX frames extracted from the camera's own WBI1 (`nflasha5.bin`, SHA-256 `5effe8d4…`,
-[E0666](../docs/evidence/0666-qemu-ilce-6400a-captured-firmware-boot.md)), pass `ULOGIO=` so the
+[E0678](../docs/evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md)), pass `ULOGIO=` so the
 camera's own `/setting/ulogio.bin` is preserved:
 
 ```bash

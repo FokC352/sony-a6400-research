@@ -41,6 +41,9 @@
 # REAR_CONTROLS=1 (route host keys to emulated rear camera controls).
 # SHUTTER_EDGE_IRQ=1 (opt-in latched body shutter edges in the GIC).
 # REAR_LCD_DIAGNOSTIC=1 (E0572 device select on the run's qcow2 overlay).
+# PP_UNLOCK=1 (opt-in, default off, E9102): redirect the Soft Skin menu node to
+# the Picture Profile node with one 4-byte .dynsym st_value write on the run's
+# disposable overlay; PP_PARTITION_OFFSET overrides the rootfs partition start.
 # SUBMICRO_PAGE (E0527 capture, empty for no micro) or SUBMICRO_FRAMES
 # (the verified 384-byte A/C/B extract from that same capture).
 # SUBMICRO_LENS_POWER=1 (opt-in lens rail status in slot B; no lens protocol).
@@ -195,6 +198,24 @@ if [ "${REAR_LCD_DIAGNOSTIC:-0}" = 1 ]; then
     QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
     (cd "$R" && "$QEMU_IO" -f qcow2 \
         -c "write -q -s rear-lcd-sector.bin $LCD_OFF 512" emmc-overlay.qcow2)
+fi
+
+# PP_UNLOCK=1 (opt-in, default off, E9102): point the Soft Skin menu node at the
+# Picture Profile node by rewriting one .dynsym st_value inside the run's
+# disposable overlay. The dump, emmc.img and /setting are never modified; a
+# stock run is byte-for-byte unaffected. PP_PARTITION_OFFSET is the rootfs
+# partition start in emmc.img (a6100 nflasha15: user area 0x800000 + 0x2d800000).
+if [ "${PP_UNLOCK:-0}" = 1 ]; then
+    PP_OFFSET_ARGS=(--partition-offset "${PP_PARTITION_OFFSET:-0x2e000000}")
+    python3 -m tools.research.a6100_picture_profile unlock-offset \
+        --emmc "$D/emmc.img" "${PP_OFFSET_ARGS[@]}" \
+        --path /lib/CautionConfig.so --out "$R/pp-unlock.bin" \
+        --json "$R/pp-unlock.json" >&2
+    PP_OFF=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_offset"])' \
+             "$R/pp-unlock.json")
+    QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
+    (cd "$R" && "$QEMU_IO" -f qcow2 \
+        -c "write -q -s pp-unlock.bin $PP_OFF 4" emmc-overlay.qcow2)
 fi
 
 # E0527: the board replays the captured micro->CPU slots A/C/B on SIO ch3.

@@ -219,32 +219,49 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-22",
+    as_of="2026-11-21",
     latest=EvidenceRef(
-        evidence_id="E0669",
-        path="docs/evidence/0669-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
-        date="2026-11-22",
-        title="Standalone Option B SD-card auto-boot (FAT32/exFAT MLV2.TAR) verified for ILCE-6400A 1.01",
+        evidence_id="E9103",
+        path="docs/evidence/9103-a6100-mod-loader-port.md",
+        date="2026-11-21",
+        title="Mod Loader v2 (MLCR) & Film Simulations ported to ILCE-6100; multi-target SMOD v2 for ILCE-6400",
         demonstrated=(
-            "Universal FAT32/exFAT mlv2_card_read.elf (4,972 B), freestanding mlv2_sd_boot_hook.so, "
-            "dynamic-PID mlv2_sd_boot.sh, and MLV2.TAR pass FAT32/exFAT/kill-switch tests and live "
-            "QEMU ILCE-6400A 1.01 no-card stock + SD auto-boot + hot-removal runs."
+            "Offline Picture Profile gate analysis + opt-in PP_UNLOCK=1 overlay (E9101), procedure record (E9102), "
+            "and MLV2_TARGET=a6100 Mod Loader v2 QEMU execution with folder navigation, Film Simulations / Studio GUI, "
+            "FilmSimLive picker, and FilmTexture SMOD v2 builds targeting both ILCE-6100 1.00 and ILCE-6400 2.00."
         ),
         boundary=(
-            "One-time /setting + /etc/ld.so.preload Jiritsu installation (a6400a_sd_boot_install.py) "
-            "remains closed by default and awaits supervised owner execution on physical ILCE-6400A."
+            "ILCE-6100 Picture Profile unlock and MLCR port are verified in offline dumps and QEMU (no physical a6100 flash "
+            "write); ILCE-6400 Ver. 2.00 film-simulation addresses are binary/offline-verified against captured av-cam.bin "
+            "and libObj.so without a live hardware camera test."
         ),
-        tier="OFFLINE FAT32/EXFAT + CAPTURED A6400A QEMU",
+        tier="OFFLINE + QEMU + ARMv7 SMOD v2",
     ),
-    headline="ILCE-6400A SD auto-boot + 10 mods | PhotonBin 6MP + SMNU | QEMU ILCE-6400A stock UI",
+    headline="ILCE-6400A SD boot & 10 mods | ILCE-6100 MLCR & Film Sims | L3 OSD surface",
     cards=(
         EvidenceRef(
-            evidence_id="E0668",
-            path="docs/evidence/0668-photonbin-6mp-and-mlv2-nested-submenus.md",
+            evidence_id="E0681",
+            path="docs/evidence/0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
+            date="2026-11-22",
+            title="Standalone Option B SD-card auto-boot (FAT32/exFAT MLV2.TAR) verified for ILCE-6400A 1.01",
+            demonstrated=(
+                "Universal FAT32/exFAT mlv2_card_read.elf (4,972 B), freestanding mlv2_sd_boot_hook.so, "
+                "dynamic-PID mlv2_sd_boot.sh, and MLV2.TAR pass FAT32/exFAT/kill-switch tests and live "
+                "QEMU ILCE-6400A 1.01 no-card stock + SD auto-boot + hot-removal runs."
+            ),
+            boundary=(
+                "One-time /setting + /etc/ld.so.preload Jiritsu installation (a6400a_sd_boot_install.py) "
+                "remains closed by default and awaits supervised owner execution on physical ILCE-6400A."
+            ),
+            tier="OFFLINE FAT32/EXFAT + CAPTURED A6400A QEMU",
+        ),
+        EvidenceRef(
+            evidence_id="E0680",
+            path="docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md",
             date="2026-11-22",
             title="PhotonBin 6MP low-light .ARW mod and Mod Loader v2 nested submenus (SMNU)",
             demonstrated=(
-                "Mod Loader v2 CTX_VERSION=3 adds FNV-verified SMNU nested submenus (16/16 Unicorn PASS); "
+                "Mod Loader v2 adds FNV-verified SMNU nested submenus alongside 1-level folders; "
                 "PhotonBin6MP.mod combines 4x4->2x2 Bayer/Mono convergence with IMX284 Mconv HCG + 14-bit "
                 "1H2H overrides, verified in Unicorn and live QEMU ILCE-6400A 1.01."
             ),
@@ -255,8 +272,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
             tier="OFFLINE UNICORN + CAPTURED A6400A QEMU",
         ),
         EvidenceRef(
-            evidence_id="E0667",
-            path="docs/evidence/0667-ilce-6400a-mod-loader-v2-and-mods-port.md",
+            evidence_id="E0679",
+            path="docs/evidence/0679-ilce-6400a-mod-loader-v2-and-mods-port.md",
             date="2026-11-22",
             title="Mod Loader v2 and all nine SMOD v2 runtime mods ported and verified on ILCE-6400A 1.01",
             demonstrated=(
@@ -271,8 +288,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
             tier="OFFLINE UNICORN + CAPTURED A6400A QEMU",
         ),
         EvidenceRef(
-            evidence_id="E0666",
-            path="docs/evidence/0666-qemu-ilce-6400a-captured-firmware-boot.md",
+            evidence_id="E0678",
+            path="docs/evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md",
             date="2026-11-21",
             title="QEMU boots captured ILCE-6400A 1.01 firmware to the stock rear-LCD UI and interactive menu",
             demonstrated=(
@@ -286,6 +303,24 @@ STATUS_SNAPSHOT = StatusSnapshot(
                 "faults liro-kliro_101 at 0x63909ba8 (~5.77 s guest time)."
             ),
             tier="OFFLINE CAPTURED A6400A + QEMU",
+        ),
+        EvidenceRef(
+            evidence_id="E9006",
+            path="docs/evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md",
+            date="2026-11-21",
+            title="Captured DMM unit 0x4092e is OSD A/B; an opt-in mapping opens the authentic 640x480 surface",
+            demonstrated=(
+                "The preserved nflasha5 DMM table has two 0x4092e records (indices 28 and 32) whose extents are "
+                "OSD A/B: 0x23A80000 and 0x23B16000, size 0x96000, extent id 0x62, handles 0x041C/0x0420. "
+                "An opt-in policy returns the first record; the app allocates the full extent, "
+                "maps /dev/stream to physical 0x23A80000 and writes all 614,400 bytes. viewUnified2.so is loaded."
+            ),
+            boundary=(
+                "The surface is zero at 200M, so the full write is a clear/black frame; UI content and the draw "
+                "trigger are not established. The captured table is a preserved image, not live camera state. "
+                "No camera access."
+            ),
+            tier="OFFLINE CAPTURED PARTITION + ORIGINAL BINARY",
         ),
         EvidenceRef(
             evidence_id="E0665",
@@ -302,6 +337,38 @@ STATUS_SNAPSHOT = StatusSnapshot(
                 "step 42; no bars picture on console; zero-filled partitions are not camera content."
             ),
             tier="OFFLINE PUBLIC UPDATERS + QEMU",
+        ),
+        EvidenceRef(
+            evidence_id="E0677",
+            path="docs/evidence/0677-unicorn-sio-gpio-oracle.md",
+            date="2026-11-20",
+            title="Unicorn SIO and GPIO from the QEMU oracle",
+            demonstrated=(
+                "A 64000-record QEMU MMIO capture identifies SIO 0xF2405600 and GPIO 0xF2910110. "
+                "Unicorn now returns the oracle status word 0x18000000 and port-1 input 0x32, "
+                "channel 3 replays the hash-checked 384-byte sub-micro extract, "
+                "and ADC unit 1 completes with status 0x101 and released-key results 0x3FF."
+            ),
+            boundary=(
+                "No Unicorn nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+                "Rear-control, SD, and lens sub-micro edits stay off."
+            ),
+            tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        ),
+        EvidenceRef(
+            evidence_id="E0676",
+            path="docs/evidence/0676-unicorn-sysv-vph-frame-clock.md",
+            date="2026-11-20",
+            title="Unicorn SYSV/VPH frame clock and evsel ext-vd",
+            demonstrated=(
+                "With --qemu-peripherals, Unicorn advances the QEMU SYSV engine frame (IRQ 98), "
+                "60 Hz VPH vsync (IRQ 101/102), and evsel ext-vd (IRQ 83/84) on the 1 MHz instruction tick."
+            ),
+            boundary=(
+                "No captured nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+                "CPUs 1-3 stay offline. The evsel late-src phase is not ported."
+            ),
+            tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
         ),
         EvidenceRef(
             evidence_id="E0664",
@@ -693,13 +760,13 @@ STATUS_SNAPSHOT = StatusSnapshot(
             tier="OFFLINE ORIGINAL INSTRUCTIONS + CHECKED FIXTURES",
         ),
         EvidenceRef(
-            evidence_id="E0519",
-            path="docs/evidence/0519-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md",
+            evidence_id="E0675",
+            path="docs/evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md",
             date="2026-11-16",
             title="Local a6400A capture integrity and expanded-scope review",
             demonstrated=(
-                "The local E0517 60 MiB nflasha5 and E0518 2 MiB MSC LUN 1 captures matched "
-                "their recorded host hashes. E0519 reverified native identity and postflight "
+                "The local E0673 60 MiB nflasha5 and E0674 2 MiB MSC LUN 1 captures matched "
+                "their recorded host hashes. E0675 reverified native identity and postflight "
                 "without acquiring any new bytes."
             ),
             boundary=(

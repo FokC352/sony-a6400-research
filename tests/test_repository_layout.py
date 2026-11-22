@@ -29,6 +29,7 @@ MOVED_LAUNCHERS = {
     "launch_cinema_mpv.bat": ("scripts", "%~dp0..\\artifacts"),
     "launch_cinemahud_android.ps1": ("scripts", "Split-Path -Parent $PSScriptRoot"),
     "launch_cinemahud_ptp.bat": ("scripts", 'cd /d "%~dp0.."'),
+    "run_film_sim_studio.bat": ("scripts", "%~dp0..\\tools\\film_sim_studio.py"),
     "start_camera_shell.bat": ("scripts", '%~dp0..\\tools\\cam_live_terminal.py'),
 }
 

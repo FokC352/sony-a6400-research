@@ -2,10 +2,10 @@
 
 ## Per-body qualification
 
-The E0511–E0519 links in this section refer to the
+The E0667–E0675 links in this section refer to the
 [local a6400A evidence series](CURRENT_STATE.md#local-ilce-6400a-firmware-dump-research).
 
-[E0519](evidence/0519-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md)
+[E0675](evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md)
 re-verifies native identity and postflight in unchanged USBSTOR after the owner
 expands acquisition qualification. Feature 0x23 still returns 05/20/00 without
 data. Ghidra traces internal-flash writes before the examined Jiritsu library
@@ -14,7 +14,7 @@ bootstrap or general host reader. Existing captures pass hash checks, but no
 new partition bytes or helper are acquired/staged. Installation guards remain
 unchanged. Full firmware acquisition is still technically blocked.
 
-[E0518](evidence/0518-a6400a-readonly-msc-lun-capture-and-flash-boundary.md)
+[E0674](evidence/0674-a6400a-readonly-msc-lun-capture-and-flash-boundary.md)
 adds a separate opt-in, size-guarded reader for the a6400A's existing 2 MiB
 MSC LUN 1 through unchanged USBSTOR. Actual bytes and independent hashes
 agree; `nflasha23` backing remains unattested. No SD-sector read, upload,
@@ -23,14 +23,14 @@ but feature 0x23 IN still returns 05/20/00 with zero bytes. This is not a
 debugger, a general raw-partition reader or a complete firmware backup.
 The old inquiry/model-info and Senser allowlists are unchanged.
 
-[E0517](evidence/0517-a6400a-first-actual-nflasha5-capture.md) obtains one
+[E0673](evidence/0673-a6400a-first-actual-nflasha5-capture.md) obtains one
 actual a6400A raw partition: nflasha5, 60 MiB, with matching streaming and
 independent host hashes. The stock fixed callback is not the custom root
 debugger and cannot select other nodes. STOP is unacknowledged, normal
 WinUSB enumeration is not cleanup proof, and owner recovery/postflight remain
 explicit. The other partitions and persistent debugger are not qualified.
 
-[E0516](evidence/0516-a6400a-guarded-fixed-acquisition-and-supervised-gate.md)
+[E0672](evidence/0672-a6400a-guarded-fixed-acquisition-and-supervised-gate.md)
 adds a separate opt-in fixed-nflasha5 client, not the native root daemon. It
 requires fresh original-driver/native-model receipts, owner-confirmed 1.01,
 the same admitted 0336 handle and actual write counts. Exact-capacity
@@ -38,7 +38,7 @@ constructed disk/hash and interruption tests precede its supervised first
 use. Unknown transfers retain partial files and defer unqualified STOP;
 unacknowledged exit still requires recovery. No installer guard changes.
 
-[E0515](evidence/0515-a6400a-fixed-reader-framing-and-completion-controls.md)
+[E0671](evidence/0671-a6400a-fixed-reader-framing-and-completion-controls.md)
 adds bounded offline fixed-node transfer logic and exact 60 MiB constructed
 replay. Original completion extraction/destruction reaches the release
 callback under declared fixtures; delivery failure leaves the mapping active.
@@ -46,14 +46,14 @@ Cancellation drains valid input but never claims camera cleanup. The guarded
 live 0336 adapter and real exit/recovery remain unqualified. Keep the camera
 disconnected; the existing FF01 acquisition client is not this new reader.
 
-[E0514](evidence/0514-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)
+[E0670](evidence/0670-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)
 uses the connected Ghidra backend and original instructions to distinguish
 scratch/IPC/file read consumers. A stock fixed nflasha5 callback is a candidate,
 not a debugger or a general partition reader. It still needs bounded host
 streaming and normal/cancel/error recovery qualification before the next
 camera connection. No original installer or preload hook is enabled.
 
-[E0513](evidence/0513-a6400a-offline-senser-dispatch-and-native-read-gates.md)
+[E0669](evidence/0669-a6400a-offline-senser-dispatch-and-native-read-gates.md)
 explains the a6400A file-read refusal entirely offline: no FF01/FF03 factory is registered
 under any stock authentication table, and the reply builder itself generates
 version 3. TERM_MODE is excluded; other adjustment read names are not yet safe
@@ -61,7 +61,7 @@ reader contracts. Native features 1/2/4/6/7 have original registration controls,
 but the network handler can delete configuration/write backup before getters.
 Do not treat all native "Get" requests as read-only. No installer guard changes.
 
-[E0512](evidence/0512-a6400a-live-senser-entry-and-recovery.md) verifies live
+[E0668](evidence/0668-a6400a-live-senser-entry-and-recovery.md) verifies live
 a6400A Senser authentication and `054C:0336` enumeration under owner-authorized
 driver/mode changes. The initially missing service driver is now pre-staged
 and binds correctly in two repeated runs. The bounded file request returns
@@ -161,13 +161,13 @@ reclaims unmapped boot/asset page cache via read-only `POSIX_FADV_DONTNEED`
 via atomic `rename(output.tmp, output)`, and admits only typed
 inventory/chunk/removal operations. Default entry and arbitrary-shell guards
 are unchanged. Live raw reads complete and SHA-256 verify all **17 allowed
-nonzero `nflasha*` partitions (`1,354,694,656` bytes)**, matching E0517's
+nonzero `nflasha*` partitions (`1,354,694,656` bytes)**, matching E0673's
 `nflasha5` bit-for-bit. Inactive swap, owned cleanup, original USBSTOR and
 post-battery native responsiveness are observed. This does not qualify a
 general debugger, factory-pristine whole-eMMC backup or raw `nflasha23` access;
 original unacknowledged STOP receipts remain unchanged.
 
-[E0511](evidence/0511-a6400a-debugger-abi-and-live-channel-boundary.md)
+[E0667](evidence/0667-a6400a-debugger-abi-and-live-channel-boundary.md)
 adds opt-in original debugger ioctl/registration/list-deletion fixtures. An
 approved normal-mode, elevated observation verifies ILCE-6400A, but one feature
 `0x23` IN returns **05/20/00 with zero bytes**. No usable debugger channel is

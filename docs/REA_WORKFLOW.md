@@ -94,7 +94,7 @@ This command completed **both** original-target Ghidra queries:
 ```powershell
 .\venv\Scripts\python.exe -m tools.research.rea_wsl_batch `
   --target .\firmware\extracted_a6400a_v101\firmware.tar_unpacked\0700_part_image\dev\nflasha15_unpacked\lib\libsencore.so `
-  --inventory .\artifacts\analysis\e0513-a6400a-offline-service-contracts\inputs.json `
+  --inventory .\artifacts\analysis\e0669-a6400a-offline-service-contracts\inputs.json `
   --procedure ParseCheck --instructions ParseCheck `
   --report-dir .\artifacts\tools\rea\setup-20261115-arm-batch-02
 ```
@@ -137,15 +137,15 @@ explicit executable/distro argument boundaries, native Linux execution,
 invalid overrides, empty distro rejection and preservation of historical
 defaults. Combined launcher/cache/layout/status checks pass **39 tests**.
 The physically guarded full suite runs **1,766 tests, 1 failure, 4 errors,
-151 skips**. Failure/error IDs match E0513: the missing E0322 overlay input and
+151 skips**. Failure/error IDs match E0669: the missing E0322 overlay input and
 original-target `__pipe` symbol expectation are unchanged. A raw SD open is
 denied before access; real WSL subprocesses are also denied during ordinary
 unit tests. Complete validation inputs/logs are in
 `artifacts/analysis/rea-setup-20261115/full-validation/`.
 
-### Availability during E0513 (historical)
+### Availability during E0669 (historical)
 
-[E0513](evidence/0513-a6400a-offline-senser-dispatch-and-native-read-gates.md)
+[E0669](evidence/0669-a6400a-offline-senser-dispatch-and-native-read-gates.md)
 attempts the documented WSL launcher but Windows reports WSL is not installed.
 The failed receipt retains zero completed queries and the unchanged input.
 Connected Windows REA 6.9.0 reports Ghidra unconfigured; no existing installation
@@ -153,14 +153,14 @@ was found in the selected standard tool directories. No provider, Java or WSL
 was installed. That checkpoint uses Capstone disassembly and bounded Unicorn
 controls, not Ghidra output. Historical WSL paths below are not current readiness.
 
-[E0511](evidence/0511-a6400a-debugger-abi-and-live-channel-boundary.md) verifies
+[E0667](evidence/0667-a6400a-debugger-abi-and-live-channel-boundary.md) verifies
 that the Windows REA 6.9.0 MCP server responds and provides portable kernel-module
 and ELF export inspection. Ghidra is not configured in that server environment;
 no deep-analysis engine was started. This is distinct from the historical WSL
 installation below. Use the live `binary_session` result rather than assuming
 that a skill installation or a past environment establishes provider readiness.
 
-[E0512](evidence/0512-a6400a-live-senser-entry-and-recovery.md) reuses the
+[E0668](evidence/0668-a6400a-live-senser-entry-and-recovery.md) reuses the
 connected portable ELF-export inspector for the hash-matched a6400A
 `libsencore.so` (638 declared exports). Original service controls are replayed
 separately; no deep engine or camera-side instrumentation is started.

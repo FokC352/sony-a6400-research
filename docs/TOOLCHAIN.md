@@ -292,7 +292,7 @@ The remaining 48 individual tests need:
 | 15 | E0154/E0322 descriptor and overlay manifests |
 | 5 | Built touch/mod-loader payloads and native guard |
 | 3 | Audited carrier/helper/tree module outputs |
-| 2 | E0511 bridge and original kernel fixture |
+| 2 | E0667 bridge and original kernel fixture |
 | 2 | ILCE-7C 2.00 reference pulls |
 | 1 | Captured `libUsbControl` live-library evidence |
 | 1 | Pinned prebuilt USB debugger binaries |

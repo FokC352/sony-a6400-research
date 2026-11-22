@@ -90,8 +90,31 @@ jobs:
         run: |
           CI_SKIP_SYSROOT=1 bash tools/native_camera/mlv2/build_wsl.sh /tmp/ci-mlv2
           python tools/native_camera/mlv2/test_mlv2_unicorn.py /tmp/ci-mlv2
+          CI_SKIP_SYSROOT=1 MLV2_TARGET=a6100 bash tools/native_camera/mlv2/build_wsl.sh /tmp/ci-mlv2-a6100
           bash mods/menu_touch_full/build_mtf_v2_wsl.sh /tmp/ci-mtf
           python mods/menu_touch_full/test_mtf_v2_unicorn.py /tmp/ci-mtf
+
+      - name: Build and verify Film Simulation SMOD v2 mods (a6100 & a6400 ARMv7)
+        run: |
+          bash mods/film_sims/live_picker/build_live_wsl.sh a6400 /tmp/ci-live-a6400
+          bash mods/film_sims/live_picker/build_live_wsl.sh a6100 /tmp/ci-live-a6100
+          bash mods/film_sims/film_texture/build_wsl.sh /tmp/ci-film-tex/film_texture /tmp/ci-film-tex/luma_grain
+          python -c '
+          import struct
+          from pathlib import Path
+          for mod_dir in ("/tmp/ci-live-a6400", "/tmp/ci-live-a6100"):
+              raw = (Path(mod_dir) / "FilmSimLive.mod").read_bytes()
+              magic, ver, flags, name, code_size, fnv, bss, on_off, off_off, hooks = struct.unpack_from("<III32s6I", raw)
+              assert (magic, ver, flags, hooks) == (0x444F4D53, 2, 20, 1), (mod_dir, magic, ver, flags, hooks)
+              target, size, fixup = struct.unpack_from("<IBB", raw, 68)
+              assert (target, size) == (0x0655A528, 12), (mod_dir, hex(target), size)
+          for p, label in (("/tmp/ci-film-tex/film_texture/FilmTexture.mod", b"Film Texture"),
+                           ("/tmp/ci-film-tex/luma_grain/LumaGrain.mod", b"Luma Grain")):
+              raw = Path(p).read_bytes()
+              magic, ver, flags, name, code_size, fnv, bss, on_off, off_off, hooks = struct.unpack_from("<III32s6I", raw)
+              assert (magic, ver, flags, name.rstrip(b"\0"), hooks) == (0x444F4D53, 2, 0, label, 0)
+          '
+          python -m unittest tests.test_a6100_film_sim_studio tests.test_a6100_film_texture tests.test_a6100_classic_chrome -q
 
   pr-summary:
     name: CI Summary

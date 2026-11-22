@@ -164,6 +164,48 @@ def main():
                               bool(read(data+12)&1) and read(0xf020c40c)==0)
                         host.sendall(b'DISC\n')
                         token(command_out,'NAK 4')
+                        # E0476 Status Pre-Arm + Logical Bulk IN multi-TRB checks (independent ring state)
+                        write(0xf020c704,0x40000000)
+                        write(0xf020c400,0x10000);write(0xf020c408,4096)
+                        for ep in (0,1):
+                            reg=0xf020c800+16*ep
+                            write(reg+4,0x500);write(reg+8,0);write(reg+12,0x401)
+                        write(0xf020c720,3);write(0xf020c704,0x80000000)
+                        host.sendall(b'CONN\n')
+                        ack_events()
+                        arm(0,2,8)
+                        token('SETUP a181000102001a00','ACK 0 8')
+                        ack_events()
+                        write(0x16000,0x01010000)
+                        arm(1,5,26,address=0x16000)
+                        token('IN 1','IN 1 00000101'+'00'*22)
+                        ack_events()
+                        prearm_status=arm(0,4,64)
+                        token('OUT 0 -','ACK 0 0')
+                        check('pre-armed STATUS3 retires without NRDY',
+                              (read(prearm_status+12)&1)==0 and read(0x10008)==0x8040)
+                        ack_events()
+                        reg_in=0xf020c800+7*16
+                        write(reg_in+4,(9<<25)|0x500);write(reg_in+8,(512<<3)|(2<<1))
+                        write(reg_in+12,0x401)
+                        write(0xf020c720,(1<<6)|(1<<7)|3)
+                        trb_base=0x14000
+                        write(0x15000,0x00008d0c);write(0x15004,0x00000000);write(0x15008,0xd9ff0000)
+                        # TRB 0: 8 bytes, LST=0 (ctrl=0x811) -> HWO|IOC|NORMAL
+                        write(trb_base+0,0x15000);write(trb_base+4,0);write(trb_base+8,8);write(trb_base+12,(1<<4)|0x801)
+                        # TRB 1: 4 bytes, LST=1 (ctrl=0x813) -> HWO|LST|IOC|NORMAL
+                        write(trb_base+16,0x15008);write(trb_base+20,0);write(trb_base+24,4);write(trb_base+28,(1<<4)|0x803)
+                        write(reg_in+4,trb_base);write(reg_in+8,0);write(reg_in+12,0x406)
+                        token('IN 9','IN 9 0c8d000000000000')
+                        check('logical Bulk IN 9 resolves physical EP7 TRB0',
+                              (read(trb_base+12)&1)==0 and (read(trb_base+28)&1)==1)
+                        ack_events()
+                        token('IN 9','IN 9 0000ffd9')
+                        check('logical Bulk IN 9 advances to TRB1 and completes LST',(read(trb_base+28)&1)==0)
+                        check('logical Bulk IN 9 TRB0 XferComplete event',read(0x1000c)==0x4e)
+                        check('logical Bulk IN 9 TRB1 XferComplete LST event',read(0x10010)==0x804e)
+                        ack_events()
+                        host.sendall(b'DISC\n')
                     stream.close()
             finally:
                 proc.terminate();proc.wait(10)

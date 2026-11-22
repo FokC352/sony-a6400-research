@@ -87,16 +87,16 @@ Captured `ILCE-6400A` 1.01 in QEMU and full `SMOD v2` mod port: the 17-partition
 frames (`5effe8d4…`), boots all four Cortex-A5 cores, 9 eMMC mounts, 40 live `.ko` modules, `LIRO`,
 and `im.elf` `SetContentTarget`/`EEStart` with zero exceptions, rendering the stock rear-LCD
 `P`-mode OSD, Auto Power Save + S1 wake, and interactive `Setup`/`Camera Settings` menus
-([E0666](docs/evidence/0666-qemu-ilce-6400a-captured-firmware-boot.md)). Mod Loader v2 (`shim` at
+([E0678](docs/evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md)). Mod Loader v2 (`shim` at
 `0x05D76800`, `core.bin`, `mlv2_guard`) and all nine available `ILCE-6400` runtime mods
 (`MenuTouchFull`, `ModsTabLook`, `Arrivederci` v5, `OpenGate32`, `OpenGateSensor`,
 `OpenGate_5400_Test`, `RCRAW_Enable_Test`, `RCRAW_W2_Probe`, and `UsbStreamingTest`) are now ported
 to `ILCE-6400A` 1.01 ([`mods/ilce_6400a/`](mods/ilce_6400a/README.md)) with strict target isolation
 in the BIONZ X Mod Manager, nested `SMNU` submenus + `PhotonBin 6MP`
-([E0668](docs/evidence/0668-photonbin-6mp-and-mlv2-nested-submenus.md)), and standalone FAT32/exFAT
-`MLV2.TAR` SD auto-boot ([E0669](docs/evidence/0669-ilce-6400a-standalone-sd-boot-and-exfat-reader.md)),
+([E0680](docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md)), and standalone FAT32/exFAT
+`MLV2.TAR` SD auto-boot ([E0681](docs/evidence/0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md)),
 passing all Unicorn suites and live QEMU `ILCE-6400A` 1.01 `rear_panel.py` + SD auto-boot sessions
-([E0667](docs/evidence/0667-ilce-6400a-mod-loader-v2-and-mods-port.md)).
+([E0679](docs/evidence/0679-ilce-6400a-mod-loader-v2-and-mods-port.md)).
 
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
@@ -108,7 +108,7 @@ is bus-power/HID; UVC remains unverified
 | Goal | What it means | Current milestone |
 | :--- | :--- | :--- |
 | **1 · Emulate Every BIONZ X Model** | Run original bootloaders, Linux kernels (`ARM-CXD900X0`), and `im.elf` UI/ISP stacks offline in **QEMU** and **Unicorn** across the `CXD90045` family | **13 bodies / 9 kernels mapped** ([`PLATFORM_MODEL.md`](docs/PLATFORM_MODEL.md)); **8 registered profiles** (`ILCE-6400` verified execution target + 7 sourced reference profiles, [E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)) |
-| **2 · Universal Modding Across Models** | Position-independent (`SMOD v2`) runtime mods with per-library relocation (`--reloc-layout`), hot-reloadable in QEMU and RAM-only on physical cameras | **Mod Loader v2 (`MLCR`)** runs in QEMU ([E0577](docs/evidence/0577-qemu-real-mods-relocation-and-hot-reload.md)) and `ILCE-6400` RAM ([E0555](docs/evidence/0555-arrivederci-menu-exit-recompute-and-cc8-refill.md)); ships **MTF2 Touch** ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)), **Arrivederci ARRI Look** ([E0556](docs/evidence/0556-arrivederci-classic-fitted-matrix.md)), and **Open Gate 3:2** feasibility ([E0578](docs/evidence/0578-a6400-open-gate-3-2-recording-feasibility.md)) |
+| **2 · Universal Modding Across Models** | Position-independent (`SMOD v2`) runtime mods with per-library relocation (`--reloc-layout`), hot-reloadable in QEMU and RAM-only on physical cameras | **Mod Loader v2 (`MLCR`)** runs in QEMU on `ILCE-6400` ([E0577](docs/evidence/0577-qemu-real-mods-relocation-and-hot-reload.md)) and `ILCE-6100` ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) and `ILCE-6400` RAM ([E0555](docs/evidence/0555-arrivederci-menu-exit-recompute-and-cc8-refill.md)); ships **MTF2 Touch** ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)), **Arrivederci ARRI Look** ([E0556](docs/evidence/0556-arrivederci-classic-fitted-matrix.md)), **Film Simulations / Studio / Live Picker** (`ILCE-6100` & `ILCE-6400`, [E9101](docs/evidence/9101-a6100-picture-profile-gate.md), [E9102](docs/evidence/9102-a6100-picture-profile-camera-apply.md)), and **Open Gate 3:2** feasibility ([E0578](docs/evidence/0578-a6400-open-gate-3-2-recording-feasibility.md)) |
 | **3 · Custom OS & Open Camera Stack** | Replace closed camera bottlenecks with open, verified kernel/userspace modules—native composite USB webcam (UVC+PTP), persistent WinUSB debugging, custom OSD/ISP pipelines, and an open replacement OS layer | **USB Debugger v2** ([E0401](docs/evidence/0401-usb-debugger-v2-ring-recover-and-mode-boundary.md)), **29.8 FPS PTP Liveview** ([E0349](docs/evidence/0349-p1-foreign-get-jpeg-succeeds-in-pc-remote.md)), **Composite UVC+PTP enumeration** & EP0 pre-arm bridge ([E0476](docs/evidence/0476-status-prearm-fix-build-audit-unicorn.md)) |
 
 ---
@@ -137,7 +137,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 
 ### Parallel Offline Contract Follow-Ups
 
-- **Native Unicorn updater & main firmware:** [E0653](docs/evidence/0653-unicorn-updater-child-cow-and-hwcap.md) verifies `nflasha1` continuation past the post-`uname` child/COW fault and D16 `AT_HWCAP` parity (`0x0000E0D7`). [E0656](docs/evidence/0656-unicorn-main-firmware-boot.md) boots captured `nflasha3` main firmware on `UnicornMachine` (`--mmio stop`, read-only `emmc.img`) through stock `/sbin/init`, 9 partition mounts, 39 `.ko` modules, `LIRO` `entry_main`, `im.elf` `DMP_2D_Initialize : 0`, and `/bin/ash` (`uname -a`, `/proc/cpuinfo`, `mount`, `/proc/modules`); single-core execution leaves `av-cam` CPUs 1–3 offline and claims no Unicorn GUI frame.
+- **Native Unicorn updater & main firmware:** [E0653](docs/evidence/0653-unicorn-updater-child-cow-and-hwcap.md) verifies `nflasha1` continuation past the post-`uname` child/COW fault and D16 `AT_HWCAP` parity (`0x0000E0D7`). [E0656](docs/evidence/0656-unicorn-main-firmware-boot.md) boots captured `nflasha3` main firmware on `UnicornMachine` (`--mmio stop`, read-only `emmc.img`) through stock `/sbin/init`, 9 partition mounts, 39 `.ko` modules, `LIRO` `entry_main`, `im.elf` `DMP_2D_Initialize : 0`, and `/bin/ash` (`uname -a`, `/proc/cpuinfo`, `mount`, `/proc/modules`); single-core execution leaves `av-cam` CPUs 1–3 offline and claims no Unicorn GUI frame. [E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) adds the opt-in QEMU SYSV/VPH frame clock and evsel `ext-vd` path on that same machine. [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md) adds the oracle-backed SIO channel-3 start/done path, GPIO port-1 input `0x32`, and ADC done with released-key results `0x3FF`. A captured-firmware replay that passes the `ObjMic` wait is still open.
 - **USB delivery versus startup:** [E0524](docs/evidence/0524-original-local-osal-setconfig-route.md) executes isolated synchronous-to-asynchronous SETCONFIG delivery with balanced fixture ownership; startup state 0 does not handle that event. [E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md) uses the process's own heap and reaches states `1 -> 5 -> 6 -> 7`, but `created=0` at OTG `SET_MODE`. No event or hardware acknowledgement is fabricated.
 - **Allocator and GPU corrections:** [E0526](docs/evidence/0526-stella-allocator-size-isolation-and-padding-trial.md) shows that the isolated log constructor fits its `0x4C` request; padding is not a verified fix. [E0530](docs/evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md) verifies TGID completion/reset and distinguishes 128 KiB software-shared memory from the GPU BAR. [E0657](docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md) traces all former L3 heap aborts to Unicorn 2.1.4 Thumb-2 stale-`ITSTATE` skips (`1.50B` instructions, `0` ownership errors without padding), recovers `sugilite_open` 4-byte + `rm_rqueue_init` 128 KiB shared initialization, and verifies `24` Sugilite GPU jobs + `24` IRQ 76 completions presenting `viewRootPowerSw.uxc`'s transparent `640×480` OSD A/B root frames (`DefRootView` `CheckerBootState`/`CheckerBootType` await RTOS `av-cam.bin` producers).
 - **A6400A service packets:** [E0525](docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md) maps all 18 Jiritsu commands and seven repeatable packet fixtures. Opt-in [E0532](docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md) adds bounded single-extent DMM metadata/lifetime and an eighth synthetic reply. USB, authentication, filesystem operations and authentic allocation remain unsupported; the profile stays `reference`.
@@ -233,24 +233,25 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 | :--- | :--- | :--- | :--- |
 | **`ILCE-6400`** | `a6400` / `a6600` source | **Verified Execution Target** | Full QEMU & Unicorn L2/L3 execution, physical RAM-only mods |
 | **`ZV-E10`** | Shared build | **Verified Execution Target (RAM)** | Full Main Menu touch + 12-tile Fn menu touch verified on physical hardware (FW 2.02/2.03) via volatile direct DRAM injection into `im.elf`. Mod Loader currently untested on ZV-E10. UVC stack cataloged ([E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md)) |
-| **`ILCE-6400A`** | `1.01` captured + packaged | **Verified QEMU & Mod Target** | Captured 4-core QEMU stock UI boot ([E0666](docs/evidence/0666-qemu-ilce-6400a-captured-firmware-boot.md)), Mod Loader v2 + all 9 `SMOD v2` mods ported & verified in Unicorn + live QEMU ([E0667](docs/evidence/0667-ilce-6400a-mod-loader-v2-and-mods-port.md), [`mods/ilce_6400a/`](mods/ilce_6400a/README.md)), native `GetModelInfo` (`0032858730`), Jiritsu command map ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md)) |
+| **`ILCE-6400A`** | `1.01` captured + packaged | **Verified QEMU & Mod Target** | Captured 4-core QEMU stock UI boot ([E0678](docs/evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md)), Mod Loader v2 + 10 `SMOD v2` mods + `PhotonBin 6MP` (`SMNU`) + FAT32/exFAT SD auto-boot verified in Unicorn + live QEMU ([E0679](docs/evidence/0679-ilce-6400a-mod-loader-v2-and-mods-port.md), [E0680](docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md), [E0681](docs/evidence/0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md), [`mods/ilce_6400a/`](mods/ilce_6400a/README.md)), native `GetModelInfo` (`0032858730`), Jiritsu command map ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md)) |
 | **`ILCE-6600`** | `a6400` / `a6600` source | **Sourced Reference** | Identical 14,401 kernel function symbols; `0x413b` command delta |
 | **`ILCE-7C`** | Shared build | **Sourced Reference** | Identical 14,460 kernel function symbols |
-| **`ILCE-6100`**, **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)) |
+| **`ILCE-6100`** | Shared symbol list | **Verified MLCR + Film Sims (QEMU / Offline)** | Picture Profile gate decoded & opt-in `PP_UNLOCK=1` overlay ([E9101](docs/evidence/9101-a6100-picture-profile-gate.md), [E9102](docs/evidence/9102-a6100-picture-profile-camera-apply.md)); `MLV2_TARGET=a6100` Mod Loader v2 + multi-target Film Simulations (`mods/film_sims/`), Film Sim Studio (`tools/film_sim_studio.py`), `FilmSimLive`, and `FilmTexture` SMOD v2 mods built for both `ILCE-6100` 1.00 and offline-verified `ILCE-6400` 2.00 targets ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
+| **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)) |
 
 ---
 
 ## Local ILCE-6400A firmware-dump research
 
-The local 1.01 research retains two verified captures: [60 MiB from `nflasha5`](docs/evidence/0517-a6400a-first-actual-nflasha5-capture.md) and [2 MiB from normal-mode MSC LUN 1](docs/evidence/0518-a6400a-readonly-msc-lun-capture-and-flash-boundary.md). The binaries stay in ignored local storage; the evidence records give their paths and SHA-256 hashes. LUN 1's backing partition is unverified.
+The local 1.01 research retains two verified captures: [60 MiB from `nflasha5`](docs/evidence/0673-a6400a-first-actual-nflasha5-capture.md) and [2 MiB from normal-mode MSC LUN 1](docs/evidence/0674-a6400a-readonly-msc-lun-capture-and-flash-boundary.md). The binaries stay in ignored local storage; the evidence records give their paths and SHA-256 hashes. LUN 1's backing partition is unverified.
 
-The historical [expanded-scope review](docs/evidence/0519-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md) verified the existing captures but obtained no new partition bytes. A complete firmware dump remains unqualified. See the [local a6400A evidence series](docs/CURRENT_STATE.md#local-ilce-6400a-firmware-dump-research) for the full history.
+The historical [expanded-scope review](docs/evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md) verified the existing captures but obtained no new partition bytes. A complete firmware dump remains unqualified. See the [local a6400A evidence series](docs/CURRENT_STATE.md#local-ilce-6400a-firmware-dump-research) for the full history.
 
 The [E0643 supervised worker follow-up](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#5-supervised-ilce-6400a-temporary-worker-follow-up) implements single-slot 512-KiB RAM chunk transfers and preserves three failed startup receipts. Actual shell output exposes overlapping rootfs/ext2 mounts; RAM backing and partition acquisition remain unqualified. Owned files were removed, USBSTOR restored and native responsiveness verified after battery removal. No new raw partition bytes are claimed.
 
 The later [safe RAM qualification](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#6-safe-ram-workspace-qualification) identifies the existing candidate directories as nflasha7/ext2 and physically verifies a separate 2-MiB private tmpfs with nodev/nosuid/noexec. Unmount, owned-file removal, original USBSTOR and post-battery native responsiveness are verified. Pattern transfers remain blocked below the unchanged 8-MiB memory floor; no firmware partition bytes were acquired.
 
-The [2026-11-21 native-reader follow-ups](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#8-read-only-cache-reclamation-atomic-ipc-and-all-17-allowed-partitions) reclaim unmapped boot/asset page cache via read-only `POSIX_FADV_DONTNEED` (`MemFree` `8.5 -> 24.7 MiB` without lowering the 8-MiB guard), publish responses via atomic `rename`, and complete **all 17 allowed nonzero `nflasha*` partitions (`1,354,694,656` bytes: `nflashaB0`, `B1`, `1..7`, `10..13`, `15..18`)** with independent SHA-256 verification (`nflasha5` matches [E0517](docs/evidence/0517-a6400a-first-actual-nflasha5-capture.md) bit-for-bit). Owned files/tmpfs removal, `USBSTOR` restoration, owner battery-removal recovery, and native postflight are verified. Excluded `/dev/nflasha23` and whole-device `/dev/nflasha` remain omitted, and mounted extents (including `nflasha6`) are live snapshots rather than a factory-pristine whole-eMMC backup.
+The [2026-11-21 native-reader follow-ups](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#8-read-only-cache-reclamation-atomic-ipc-and-all-17-allowed-partitions) reclaim unmapped boot/asset page cache via read-only `POSIX_FADV_DONTNEED` (`MemFree` `8.5 -> 24.7 MiB` without lowering the 8-MiB guard), publish responses via atomic `rename`, and complete **all 17 allowed nonzero `nflasha*` partitions (`1,354,694,656` bytes: `nflashaB0`, `B1`, `1..7`, `10..13`, `15..18`)** with independent SHA-256 verification (`nflasha5` matches [E0673](docs/evidence/0673-a6400a-first-actual-nflasha5-capture.md) bit-for-bit). Owned files/tmpfs removal, `USBSTOR` restoration, owner battery-removal recovery, and native postflight are verified. Excluded `/dev/nflasha23` and whole-device `/dev/nflasha` remain omitted, and mounted extents (including `nflasha6`) are live snapshots rather than a factory-pristine whole-eMMC backup.
 
 ---
 
@@ -258,7 +259,36 @@ The [2026-11-21 native-reader follow-ups](docs/evidence/0643-cxd90045-miscreg-ef
 
 Upstream recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in its integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=111b652d7917)
+[E9001](docs/evidence/9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md)
+traces `Appframework`'s `CreateFramebuffer(640,480)` to a GRM-MA open for DMM
+unit `0x4092e`: `captured-e0044` refuses it (`-9`, with no captured base or
+handle) and the guest aborts, while checkpoint restore no longer fabricates a
+`sys__newselect` deadline.
+[E9002](docs/evidence/9002-grm-pool-policy-reconcile-and-glcommon-createframebuffer.md)
+fixes checkpoint resume so `--grm-pools` cannot be silently ignored (the
+restored policy is recorded, conflicts fail closed) and records that the
+labelled legacy single-pool boot passes `CreateFramebuffer(640,480)` without
+establishing the `0x4092e` unit mapping.
+[E9003](docs/evidence/9003-glcommon-post-createframebuffer-timer-wait.md) shows
+the next stop is a timer-paced wait: `Appframework` polls `0x00910042` and
+`0x00910041` until `--uipc-timer-service emulated` removes the poll storm, after
+which it idles without loading OSD or `viewUnified2`.
+[E9004](docs/evidence/9004-glcommon-wait-is-20ms-sleep-not-render.md) shows that
+wait is a fixed 20 ms sleep (19,815 us measured), and the 32 MiB surface is
+byte-identical across about 220 ticks: the app is waiting, not rendering.
+[E9005](docs/evidence/9005-rea-provider-limit-and-20ms-sites.md) records that REA
+cannot deep-analyze this ARM ELF on the current Windows host; a direct scan
+finds six 20,000 us sites in `libObj`, only one of which was seen in the early
+wait window.
+[E9006](docs/evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md)
+maps unit `0x4092e` to its captured OSD A extent (`0x23A80000`, `0x96000`):
+the app allocates it, maps `/dev/stream` there, writes the full 614,400-byte
+frame (currently a black clear) and loads `viewUnified2.so`.
+
+- **[E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) / [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md)** add opt-in QEMU SYSV/VPH/evsel frame clock and oracle-backed SIO ch3, GPIO `0x32`, and ADC `0x3FF` peripheral models to `UnicornMachine`.
+- **UVC / 5 GHz Wi-Fi Streaming & CinemaHUD tooling:** adds offline-tested UVC-PTP adapter (`uvc_ptp_adapter.c`), Run B26 pre-arm harness (`tools/research/run_b26_uvc_prearm.py`), BCM4339 5 GHz Wi-Fi liveview bootstrap/daemon/client (`tools/native_camera/wifi_5ghz_bootstrap.sh`, `camera-daemon/src/wifi_stream.c`, `tools/research/wifi_uvc_client.py`), and CinemaHUD updates.
+
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=db56ce7a8b8c)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
@@ -302,7 +332,7 @@ python3 -m unittest discover -s tests -q
 | Full offline suite (2091 tests) | `python -m unittest discover -s tests -q` |
 | Structure, profiles & doc sync | `python -m unittest tests.test_repository_layout tests.test_target_profiles tests.test_research_status_sync -v` |
 | Status card matches data | `python -m tools.research.render_research_status --check` |
-| Windows launchers | [`scripts/`](scripts/) (`launch_cinemahud_ptp.bat`, `launch_cinemahud_android.ps1`, `launch_cinema_mpv.bat`, `start_camera_shell.bat`) |
+| Windows launchers | [`scripts/`](scripts/) (`launch_cinemahud_ptp.bat`, `launch_cinemahud_android.ps1`, `launch_cinema_mpv.bat`, `run_film_sim_studio.bat`, `start_camera_shell.bat`) |
 
 Run scripts as Python modules from the repo root (`python -m tools.research.<tool>`). Firmware images, backups, and captured artifacts stay local and are excluded from Git.
 

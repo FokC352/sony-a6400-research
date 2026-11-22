@@ -9,7 +9,7 @@ Relocatable **`SMOD v2`** low-light photography mod for **Sony `ILCE-6400A` (FW 
    - **`FD Conv Gain` (`Mconv`, P2S reg `0x099C`):** Overrides Main (`PA 0x0379FEC6`) and ZAF (`PA 0x0379FF7C`) floating-diffusion conversion gain (`Force HCG` `+9.805 dB` / `3.092×` at all ISOs, `Stock Auto` ISO 400 crossover, or `Force LCG`).
    - **`14b 1H2H Read` (`ADnum = 2`):** Overrides `CaptureUtilityImager` Silent Shutter (`PA 0x038ECC48`) and Bulb (`PA 0x038ECC56`) gates so 14-bit dual-ADC readout remains active instead of dropping to 12-bit `1H1H`.
 
-See **[E0668](../../docs/evidence/0668-photonbin-6mp-and-mlv2-nested-submenus.md)** for full disassembly, SNR math, Unicorn test receipts, and live `ILCE-6400A` `1.01` QEMU menu screenshots.
+See **[E0680](../../docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md)** for full disassembly, SNR math, Unicorn test receipts, and live `ILCE-6400A` `1.01` QEMU menu screenshots.
 
 ---
 

@@ -5,7 +5,17 @@ import tempfile
 import unittest
 from unittest import mock
 from types import SimpleNamespace
-import usb.core
+
+try:
+    import usb.core
+except ModuleNotFoundError:
+    class _USBError(OSError):
+        def __init__(self, strerror, error_code=None, errno=None):
+            super().__init__(strerror)
+            self.backend_error_code = error_code
+            self.errno = errno
+
+    usb = SimpleNamespace(core=SimpleNamespace(USBError=_USBError))
 
 from project_paths import PROJECT_ROOT
 from tools.research import a6400a_senser_acquire as acquisition

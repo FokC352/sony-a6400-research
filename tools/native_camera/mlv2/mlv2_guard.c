@@ -50,6 +50,18 @@
 #else
 #define SHIM_ADDR             0x05662800u
 #define SHIM_CAP              2048u
+#define REQ_MAGIC             0x5132484du /* "ML2Q" */
+#define REF_VIEW_BASE         0x155e6000u
+#define REF_TESTCMD_BASE      0x05660000u
+#ifdef MLV2_TARGET_A6100
+#define HOOK_SET_ROOT         (REF_VIEW_BASE + 0x5acc0cu)
+#define HOOK_REFRESH          (REF_VIEW_BASE + 0x5ad038u)
+#define HOOK_OPEN_ITEM        (REF_VIEW_BASE + 0x5ad5fcu)
+#define RECT_TBL1_SLOT6       (REF_VIEW_BASE + 0x803984u)
+#define RECT_TBL2_SLOT6       (REF_VIEW_BASE + 0x803a04u)
+#define RECT_TBL1_SLOT6_FW200 (REF_VIEW_BASE + 0x803984u)
+#define RECT_TBL2_SLOT6_FW200 (REF_VIEW_BASE + 0x803a04u)
+#else
 #define HOOK_SET_ROOT         0x15b91654u
 #define HOOK_REFRESH          0x15b91a80u
 #define HOOK_OPEN_ITEM        0x15b92044u
@@ -57,10 +69,11 @@
 #define RECT_TBL2_SLOT6       0x15de8a84u
 #define RECT_TBL1_SLOT6_FW200 0x15de8a64u
 #define RECT_TBL2_SLOT6_FW200 0x15de8ae4u
-#define REF_VIEW_BASE         0x155e6000u
-#define REF_TESTCMD_BASE      0x05660000u
 #endif
+#endif
+#ifndef REQ_MAGIC
 #define REQ_MAGIC             0x5132484du /* "ML2Q" */
+#endif
 #define MAX_RELOCS            256u
 
 static const unsigned char orig_set_root[16] = {

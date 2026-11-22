@@ -415,7 +415,7 @@ exclusions. The actual library still matches
 `c3621c7ec30771604b1aaae25e51699340333486e1aa281a1cc5f4a543a99dff`.
 
 Original stock packet/upload consumers remain those qualified in
-[E0514](0514-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)
+[E0670](0670-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)
 and [E0525](0525-a6400a-jiritsu-senser-offline-packets.md). The native helper is
 authored code, not recovered Sony code or an emulated kernel. Its constructor
 uses the already-authored `vfork`/direct-exec path; the checker now validates
@@ -589,10 +589,10 @@ unmodified):
      `0x10000008` / `0x1000000a` in `_poll` completed all **8** remaining
      partitions (`4,819` native commands, `43,140` Jiritsu wire exchanges) in
      `live-07` with zero errors.
-3. **Independent cross-validation with E0517:**
+3. **Independent cross-validation with E0673:**
    `live-07`'s 120-chunk capture of `/dev/nflasha5` (`62,914,560` bytes) yields
    SHA-256 `d131b73f9c4610bdc3f549a65e94d70c11cc92d3071b878d65ef46a8fe13b3b6`,
-   matching [E0517](0517-a6400a-first-actual-nflasha5-capture.md)'s stock
+   matching [E0673](0673-a6400a-first-actual-nflasha5-capture.md)'s stock
    `0601/32` fixed-reader capture bit-for-bit.
 
 ### Tool identities, limits and final recovery

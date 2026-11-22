@@ -229,6 +229,7 @@ class UnicornMachine:
         self.instruction_limit = instruction_limit
         self.sample_interval = sample_interval
         self.slice_size = sample_interval if sample_interval > 0 else 250_000
+        self.progress_every = 0
         self.use_code_hook = use_code_hook
         # One-shot runner patches: {pc: [(virtual_address, size, value), ...]}.  They
         # let a bring-up experiment pre-seed runtime variables (e.g. the observed
@@ -303,6 +304,7 @@ class UnicornMachine:
         self.ex_table_fixups = 0
         self.ex_table_trace: list[dict] = []
         self.data_aborts_delivered = 0
+        self.direct_map_completions = 0
         self.data_abort_trace: list[dict] = []
         self._abort_last_pc = None
         self._abort_same_pc = 0
@@ -318,6 +320,7 @@ class UnicornMachine:
         self._next_jiffy_tick = timer_ticks_per_jiffy
         self._timer_irq_pending = 0
         self._soft_pending_irqs: set[int] = set()
+        self._edge_pending: set[int] = set()
         self._gic_active_irq = None
         self._gic_iar_served = False
         self._gic_regs: dict[tuple[str, int], int] = {
@@ -484,19 +487,27 @@ class UnicornMachine:
         self._instructions = 0
         self._build(ram_banks, mmio_ranges, sram)
         if self.qemu_peripherals:
-            from src.a6400.devices.cxd90045_peripherals import CxdPeripheralBus
+            from project_paths import PROJECT_ROOT
+            from src.a6400.devices.cxd90045_peripherals import (
+                CxdPeripheralBus, load_submicro_frames)
 
             def set_soft_irq(irq: int, level: bool) -> None:
+                # Latch until GICD_ISENABLER and the CPU/distributor enables
+                # actually allow the line. A GPIO edge or SIO done pulse must
+                # not enter the guest before that.
                 if level:
-                    self._soft_pending_irqs.add(irq)
+                    self._edge_pending.add(irq)
                 else:
+                    self._edge_pending.discard(irq)
                     self._soft_pending_irqs.discard(irq)
+                self._sync_frame_irqs(set())
 
             self._cxd_bus = CxdPeripheralBus(
                 set_irq=set_soft_irq,
                 mem_read=lambda addr, n: bytes(self.uc.mem_read(addr, n)),
                 mem_write=lambda addr, data: self.uc.mem_write(addr, data),
                 emmc_image=self.emmc_image,
+                submicro_frames=load_submicro_frames(PROJECT_ROOT),
             )
             self._sugilite_clk_regs.setdefault(0x80, 0x15)
 
@@ -1171,11 +1182,24 @@ class UnicornMachine:
                 cpu_side = not in_range(address, GIC_DIST)
                 offset = address - (GIC_CPU if cpu_side else GIC_DIST)
                 key = ('cpu', offset) if cpu_side else ('dist', offset)
+                if not cpu_side and 0x100 <= offset < 0x180:
+                    # GICD_ISENABLER is write-1-to-set. A later single-bit enable
+                    # must keep the frame-clock lines already enabled.
+                    self._gic_regs[key] = self._gic_regs.get(key, 0) | (value & 0xFFFFFFFF)
+                    self._sync_frame_irqs(set())
+                    return True
+                if not cpu_side and 0x180 <= offset < 0x200:
+                    en_key = ('dist', offset - 0x80)
+                    self._gic_regs[en_key] = (
+                        self._gic_regs.get(en_key, 0) & ~(value & 0xFFFFFFFF))
+                    self._gic_regs[key] = value & 0xFFFFFFFF
+                    return True
                 self._gic_regs[key] = value & 0xFFFFFFFF
                 if cpu_side and offset == GIC_ICCEOIR:
                     self._gic_active_irq = None
                     self._gic_eoir_writes += 1
                     self._sync_uart_irq()
+                    self._sync_frame_irqs(set())
                 if cpu_side and offset == GIC_ICCICR:
                     self._gic_enabled = bool(
                         (value & 1) and (self._gic_regs.get(('dist', 0x000), 0) & 1))
@@ -1356,13 +1380,13 @@ class UnicornMachine:
                 self._emulate_banked_restore(pc)
             self.uc.hook_add(UC_HOOK_CODE, banked_restore,
                              begin=restore_pc, end=restore_pc + 3)
-        # E0436: SWI dispatch implemented but gated off (it stalled early boot at
-        # cmpxchg_futex_value_locked under the current ABT/futex handling).
-        if (getattr(self, 'enable_svc_dispatch', False)
-                and not self.virtual_tlb_on_userspace):
-            # E0492: deferred activation - install the INTR hook only once user
-            # mode starts; a boot-wide hook stalls early init (E0436).
+        # Consume CPU exceptions inside emu_start. Without this hook Unicorn
+        # returns UC_ERR_EXCEPTION and the next emu_start re-raises before the
+        # redirected handler instruction retires. Exclusives are emulated in
+        # the hook so they are not delivered as data aborts (E0436).
+        if self.data_abort_delivery and not self._svc_hook_installed:
             self.uc.hook_add(UC_HOOK_INTR, self._on_interrupt)
+            self._svc_hook_installed = True
         ret_to_user = self._symbol_address('ret_to_user')
         if ret_to_user is not None:
             def ret_flush_hook(uc, address, size, user, pc=ret_to_user):
@@ -1542,11 +1566,40 @@ class UnicornMachine:
             self.uc.hook_add(UC_HOOK_CODE, trace_point, begin=pc, end=pc + 3)
 
     # ------------------------------------------------------------------ timer/IRQ
+    def _gic_spi_enabled(self, irq: int) -> bool:
+        if not self._gic_irq_enabled():
+            return False
+        word = self._gic_regs.get(('dist', 0x100 + (irq // 32) * 4), 0)
+        return bool((word >> (irq % 32)) & 1)
+
+    def _frame_clock_sliced(self) -> bool:
+        """Shrink slices once av-cam is actually taking frame or vsync IRQs."""
+        if self._cxd_bus is None:
+            return False
+        return any(self._gic_spi_enabled(irq) for irq in (83, 98, 101, 102, 129))
+
+    def _sync_frame_irqs(self, pulses: set[int]) -> None:
+        self._edge_pending.update(pulses)
+        for irq in list(self._edge_pending):
+            if self._gic_spi_enabled(irq) and irq != self._gic_active_irq:
+                self._soft_pending_irqs.add(irq)
+                self._edge_pending.discard(irq)
+        if self._cxd_bus is None:
+            return
+        for irq, level in self._cxd_bus.level_irqs():
+            if level and self._gic_spi_enabled(irq) and irq != self._gic_active_irq:
+                self._soft_pending_irqs.add(irq)
+            elif not level:
+                self._soft_pending_irqs.discard(irq)
+
     def _advance_timer(self, instructions: int) -> None:
         if not self.timer_irq_model:
             return
         self._instructions_executed += instructions
-        self._timer_counter += instructions * self.timer_ticks_per_instruction
+        delta = instructions * self.timer_ticks_per_instruction
+        self._timer_counter += delta
+        if self._cxd_bus is not None and delta:
+            self._sync_frame_irqs(self._cxd_bus.advance_us(delta))
         if self._instructions_executed < self.timer_irq_start_instructions:
             return
         if self._timer_counter >= self._next_jiffy_tick:
@@ -1938,6 +1991,35 @@ class UnicornMachine:
                 'sp_usr': f'0x{sp:08x}', 'lr_usr': f'0x{lr:08x}'})
         return True
 
+    def _request_direct_map_tlb(self, uc, address) -> bool:
+        """Keep the kernel direct map after paging_init switches TTBR.
+
+        QEMU at the same ``paging_init`` store (``0x60494b50``) still reads
+        the direct-map page. A TTBR write does not drop that TLB entry, and
+        the new L1 is empty. Unicorn's CPU walker faults. The virtual TLB
+        already maps ``PAGE_OFFSET`` linearly, which is that retained entry.
+        """
+        if self.virtual_tlb or getattr(self, '_direct_map_vtlb', False):
+            return False
+        if not (self.PAGE_OFFSET <= address < self.PAGE_OFFSET + 0x40000000):
+            return False
+        if not self._sctlr_mmu_on():
+            return False
+        try:
+            ttbr = self._read_cp15_ttbr0() & ~0x3FFF
+            l1 = struct.unpack('<I', uc.mem_read(
+                ttbr + ((address >> 20) & 0xFFF) * 4, 4))[0]
+        except Exception:
+            return False
+        if l1 & 3:
+            return False
+        if not self._pa_mapped(address - self.PAGE_OFFSET):
+            return False
+        self._direct_map_vtlb = True
+        self.direct_map_completions += 1
+        uc.emu_stop()
+        return True
+
     def _on_interrupt(self, uc, intno, user_data=None) -> None:
         """Dispatch ARM supervisor calls to the kernel SWI vector (E0436).
 
@@ -1946,17 +2028,51 @@ class UnicornMachine:
         abort.  Real ARM semantics: switch to SVC, LR_svc = pc+4,
         SPSR_svc = old CPSR, PC = 0xFFFF0008 (vector_swi).
         """
-        if intno in (3, 4):
-            # When UC_HOOK_INTR is registered Unicorn routes CPU exceptions to
-            # this hook instead of raising UC_ERR_EXCEPTION.  Re-dispatch them
-            # into the normal fault-delivery paths so demand paging/fixups work.
+        if intno in (1, 3, 4):
+            # UC_HOOK_INTR consumes the exception. Leaving it pending makes the
+            # next emu_start re-raise before the redirected PC retires.
             pc = uc.reg_read(UC_ARM_REG_PC)
             cpsr = uc.reg_read(UC_ARM_REG_CPSR)
+            key = (pc & ~1, intno)
+            if key == getattr(self, '_intr_key', None):
+                self._intr_same = getattr(self, '_intr_same', 0) + 1
+            else:
+                self._intr_key = key
+                self._intr_same = 1
+            if self._intr_same > 8:
+                self._intr_stopped = True
+                uc.emu_stop()
+                return
+            if intno != 3 and self.exclusive_fallback and self._emulate_exclusive(pc, cpsr):
+                # The exception stays pending inside this emu_start, so the
+                # retired PC is fetched on the next slice.
+                self._intr_key = None
+                self._intr_same = 0
+                self._exclusive_resume = True
+                uc.emu_stop()
+                return
             if intno == 3:
+                if self._request_direct_map_tlb(uc, pc & ~1):
+                    self._intr_key = None
+                    self._intr_same = 0
+                    return
                 self._deliver_prefetch_abort(pc, cpsr, pc)
             else:
-                address = self.last_dfar
-                self._deliver_data_abort(pc, cpsr, address, write=False)
+                pa = self._kernel_phys(pc) if pc >= self.PAGE_OFFSET else pc
+                decoded = self._decode_fault_address(pc, pa)
+                if decoded is not None:
+                    address, write = decoded
+                else:
+                    address, write = self.last_dfar, False
+                if self._request_direct_map_tlb(uc, address):
+                    self._intr_key = None
+                    self._intr_same = 0
+                    return
+                delivered = self._deliver_data_abort(pc, cpsr, address, write)
+                # Leave the faulting TB. A fresh emu_start fetches the handler
+                # after this hook has consumed the data abort.
+                if delivered:
+                    uc.emu_stop()
             return
         if intno != 2:  # UC_ARM_EXCEPTION_SUPERVISOR_CALL
             return
@@ -2103,27 +2219,45 @@ class UnicornMachine:
             handler = self._symbol_address('__pabt_svc')
         if handler is None:
             return False
-        scratch_pa = self.VECTOR_SCRATCH_PA + 0x10
-        scratch_va = scratch_pa + self.PAGE_OFFSET
         r0 = self.uc.reg_read(UC_ARM_REG_R0)
         saved_pc = (((pc & ~1) + (2 if (cpsr & 0x20) else 4))
                     if kind == 'und' else pc)
-        self.uc.mem_write(scratch_pa, struct.pack(
-            '<3I', r0 & 0xFFFFFFFF, saved_pc & 0xFFFFFFFF, cpsr & 0xFFFFFFFF))
+        frame = struct.pack(
+            '<3I', r0 & 0xFFFFFFFF, saved_pc & 0xFFFFFFFF, cpsr & 0xFFFFFFFF)
+        scratch_pa = self.VECTOR_SCRATCH_PA + 0x10
+        scratch_va = scratch_pa + self.PAGE_OFFSET
+        # The fixed scratch sits at PA 0x02002010 (VA 0x62002010). Early
+        # paging has not mapped that linear-map page yet, so __dabt_svc's
+        # `ldm r0` faults and the exception sticks. Park the frame under the
+        # live SVC stack, which is already mapped, when the guest walk misses.
+        if self._sctlr_mmu_on() and self._walk_kernel_pt(scratch_va) is None:
+            sp = self.uc.reg_read(UC_ARM_REG_SP)
+            scratch_va = (sp - 0x60) & ~7
+            scratch_pa = self._kernel_phys(scratch_va)
+        self.uc.mem_write(scratch_pa, frame)
         current_mode = cpsr & 0x1F
         if current_mode == 0x10:
             self.user_sp = self.uc.reg_read(UC_ARM_REG_SP)
             self._restore_user_sp = True
-        self.uc.reg_write(UC_ARM_REG_CPSR, 0x13 | 0xC0)
+        # Keep CPSR.A set. This boot enters with async aborts masked
+        # (QEMU parity); clearing A here makes the next fetch raise a
+        # prefetch abort before __dabt_svc's first instruction retires.
+        self.uc.reg_write(UC_ARM_REG_CPSR, 0x13 | 0x1C0)
         self.uc.reg_write(UC_ARM_REG_R0, scratch_va)
         self.uc.reg_write(UC_ARM_REG_PC, handler)
-        self._flush_tlb()
         return True
 
     def _flush_tlb(self) -> None:
         """Invalidate translated code; SoftMMU entries are flushed separately."""
         self.uc.ctl_flush_tb()
         self._tlb_flushes += 1
+
+    def _sctlr_mmu_on(self) -> bool:
+        try:
+            sctlr = self.uc.cpr_read(15, 0, 1, 0, 0, self._cp15_security(), False)
+        except Exception:
+            return False
+        return bool(sctlr & 1)
 
     def _cp15_security(self) -> int:
         # Unicorn's CP-register selector is secure=1, non-secure=0, not CPSR.M.
@@ -3579,31 +3713,85 @@ class UnicornMachine:
         candidates.sort(key=lambda item: item['bytes'], reverse=True)
         return candidates[:8]
 
+    @staticmethod
+    def _ex_table_memory_op(word: int) -> bool:
+        """ARM load/store or exclusive, the instructions __ex_table records."""
+        if (word & 0x0C000000) == 0x04000000:
+            return True
+        if (word & 0x0FF00FFF) == 0x01900F9F:  # LDREX
+            return True
+        if (word & 0x0FF00FF0) == 0x01800F90:  # STREX
+            return True
+        return False
+
     def _build_ex_table(self) -> None:
-        """Locate kernel exception-table (insn -> fixup) pairs in the image."""
+        """Locate the kernel __ex_table (sorted insn -> fixup pairs).
+
+        A whole-image scan of every word pair that looks like a kernel pointer
+        also matches kallsyms and the abort stubs. One of those collisions maps
+        ``__dabt_invalid`` onto itself, so a real data abort spins until the
+        instruction budget is gone. The real table is the long, strictly
+        increasing run whose faulting sites are loads and stores.
+        """
         self.ex_table = {}
+        self.ex_table_entries = 0
         if not self.ex_table_fixup:
             return
-        text_start = self.kernel_load + self.PAGE_OFFSET
-        text_end = text_start + len(self.kernel_raw)
         raw = self.kernel_raw
-        count = 0
-        # Exception-table entries are (insn, fixup) word pairs; collect every
-        # candidate pair whose words both fall inside the kernel image.  A random
-        # data collision cannot match a real faulting PC, so exact-PC lookup is
-        # safe and robust to the on-disk table ordering.
-        for offset in range(0, len(raw) - 7, 4):
-            insn, fixup = struct.unpack_from('<II', raw, offset)
-            if text_start <= insn < text_end and text_start <= fixup < text_end:
-                self.ex_table[insn] = fixup
-                count += 1
-        self.ex_table_entries = count
+        text_start = self.kernel_load + self.PAGE_OFFSET
+        text_end = text_start + len(raw)
+        best: tuple[int, int, int] | None = None
+        for align in (0, 4):
+            run_len = 0
+            run_mem = 0
+            prev = None
+            run_start = align
+
+            def consider() -> None:
+                nonlocal best
+                if run_len < 64 or run_mem / run_len < 0.90:
+                    return
+                if best is None or run_len > best[0]:
+                    best = (run_len, run_mem, run_start)
+
+            for offset in range(align, len(raw) - 7, 8):
+                insn, fixup = struct.unpack_from('<II', raw, offset)
+                ok = (
+                    text_start <= insn < text_end
+                    and text_start <= fixup < text_end
+                    and insn != fixup
+                    and (prev is None or insn > prev)
+                )
+                if ok:
+                    if run_len == 0:
+                        run_start = offset
+                        run_mem = 0
+                    run_len += 1
+                    prev = insn
+                    site = insn - text_start
+                    if 0 <= site <= len(raw) - 4:
+                        word = struct.unpack_from('<I', raw, site)[0]
+                        if self._ex_table_memory_op(word):
+                            run_mem += 1
+                else:
+                    consider()
+                    run_len = 0
+                    run_mem = 0
+                    prev = None
+            consider()
+        if best is None:
+            return
+        length, _mem, start = best
+        for index in range(length):
+            insn, fixup = struct.unpack_from('<II', raw, start + index * 8)
+            self.ex_table[insn] = fixup
+        self.ex_table_entries = length
 
     def _try_ex_table_fixup(self, pc: int) -> int | None:
         if not self.ex_table_fixup or not self.ex_table:
             return None
         fixup = self.ex_table.get(pc)
-        if fixup is None:
+        if fixup is None or fixup == pc:
             return None
         if len(self.ex_table_trace) < 64:
             self.ex_table_trace.append({
@@ -3702,6 +3890,8 @@ class UnicornMachine:
                             pass
                     self._try_inject_irq()
                     slice_size = min(self.slice_size, remaining)
+                    if self._frame_clock_sliced():
+                        slice_size = min(slice_size, self._cxd_bus.us_until_event())
                     pc_now = self.uc.reg_read(UC_ARM_REG_PC)
                     thumb = self.uc.reg_read(UC_ARM_REG_CPSR) & 0x20
                     self._last_unmapped = None
@@ -3710,6 +3900,20 @@ class UnicornMachine:
                         self._apply_pending_tlb_work()
                         self.uc.emu_start(pc_now | (1 if thumb else 0), 0,
                                           count=slice_size)
+                        if getattr(self, '_intr_stopped', False):
+                            stop_reason = 'repeated_fault'
+                            break
+                        if getattr(self, '_exclusive_resume', False):
+                            self._exclusive_resume = False
+                            self.exclusive_emulated += 1
+                            executed += 1
+                            remaining -= 1
+                            continue
+                        if getattr(self, '_direct_map_vtlb', False) and not self.virtual_tlb:
+                            self._direct_map_vtlb = False
+                            self._install_virtual_tlb()
+                            self._mmu_enabled = True
+                            continue
                         if self._user_refresh_requested:
                             self._user_refresh_requested = False
                             try:
@@ -3952,6 +4156,8 @@ class UnicornMachine:
                                                 continue
                                             except Exception:
                                                 pass
+                                            executed += 1
+                                            remaining = max(0, remaining - 1)
                                             if self._note_fault(pc, target, cpsr):
                                                 stop_reason = 'repeated_fault'
                                                 break
@@ -4058,6 +4264,10 @@ class UnicornMachine:
                         raise
                     executed += slice_size
                     remaining -= slice_size
+                    every = self.progress_every
+                    if every and executed // every != (executed - slice_size) // every:
+                        print(f'progress {executed} pc '
+                              f'{self.uc.reg_read(UC_ARM_REG_PC):#x}', flush=True)
                     self._fault_guard_count = 0
                     self._abort_same_pc = 0
                     self._undef_same_pc = 0
@@ -4178,6 +4388,12 @@ class UnicornMachine:
             'vfp_mvfr0_d16_hits': self.vfp_mvfr0_d16_hits,
             'vfp_mvfr0_sites': list(self.vfp_mvfr0_sites),
             'qemu_peripherals': self.qemu_peripherals,
+            'frame_clock': None if self._cxd_bus is None else {
+                'sysv_frames': self._cxd_bus.vph.frame,
+                'vsyncs': self._cxd_bus.vph.vsyncs,
+                'evsel_status': f'0x{self._cxd_bus.evsel.sta:08x}',
+                'edge_pending': sorted(self._edge_pending),
+            },
             'oracle_mmio_hits': {f'0x{addr:08x}': count
                                  for addr, count in self.oracle_mmio_hits.items()},
             'last_ifar': f'0x{self.last_ifar:08x}',
@@ -4232,6 +4448,7 @@ class UnicornMachine:
             'ex_table_fixups': self.ex_table_fixups,
             'ex_table_trace': self.ex_table_trace[:16],
             'data_aborts_delivered': self.data_aborts_delivered,
+            'direct_map_completions': self.direct_map_completions,
             'data_abort_trace': self.data_abort_trace[:32],
             'exclusive_patched': self.exclusive_patched,
             'exclusive_emulated': self.exclusive_emulated,

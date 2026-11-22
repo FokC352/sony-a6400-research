@@ -9,6 +9,7 @@
  *   - SRAM:       0xFE000000 .. 0xFE100000 (1 MiB)
  *   - A9MPCore:   0xF8000000 (GIC CPU @ 0xF8000100, GIC Dist @ 0xF8001000)
  *   - PL011 UART0:0xF2000000 (IRQ 150 -> SPI 118)
+ *   - PL011 UART3:0xF2003000 (IRQ 120 -> SPI 88, null chardev)
  *   - CXD4115 timer: 0xF2403000, channel n -> IRQ 153 + n (E0522)
  *   - 4 x Cortex-A5 (E0522: secondaries released through SRAM mailbox
  *     0xFE005010 + 4 * (cpu - 1) by cxd900x0_smp_init)
@@ -61,6 +62,8 @@
 #define CXD90045_PERIPH_BASE     0xF8000000ULL
 #define CXD90045_UART0_BASE      0xF2000000ULL
 #define CXD90045_UART0_SPI       (150 - 32)
+#define CXD90045_UART3_BASE      0xF2003000ULL
+#define CXD90045_UART3_SPI       (120 - 32)
 #define CXD90045_TIMER_BASE      0xF2403000ULL
 #define CXD90045_TIMER_IRQ0      153
 #define CXD90045_WDT_BASE        0xF2402000ULL
@@ -2407,6 +2410,15 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     pl011_create(CXD90045_UART0_BASE, pic[CXD90045_UART0_SPI], serial_hd(0));
+    /*
+     * UART3 is a second, independent PL011.  The kernel's udif table names it
+     * "uart3" at 0xF2003000 (size 0x1000, IRQ 120) and AMBA-probes it as
+     * uart_devs[3]; without the device the PrimeCell ID reads return 0 and
+     * registration fails.  The stock pl011 already exposes PID 0x00141011 /
+     * CID 0xB105F00D, matching the kernel's expected AMBA IDs.  No second
+     * -serial is passed, so the chardev is NULL and UART0/console is untouched.
+     */
+    pl011_create(CXD90045_UART3_BASE, pic[CXD90045_UART3_SPI], serial_hd(1));
 
     timer = qdev_new("cxd4115-timer");
     sysbus_realize_and_unref(SYS_BUS_DEVICE(timer), &error_fatal);
@@ -2664,6 +2676,51 @@ static void sony_a6400_init(MachineState *machine)
         qdev_prop_set_uint64(cc, "base", 0xF3120000ULL);
         sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
         sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0, 0xF3120000ULL, -600);
+    }
+
+    /*
+     * L0031: uncovered sub-windows of two more register blocks, modelled by
+     * the same generic cxd90045-camcore rule file (base selects the block
+     * table, window says where this sub-window starts).  Each window is
+     * mapped at -600: above the cxd90045.unmodelled catch-all (-1000) and
+     * below every existing device model, which therefore keep winning:
+     *   (0xF2400000 is left unmodelled: guest-written status words, see
+     *   cxd90045_camcore.c.)
+     *   - 0xF3C00000: 0xF3C04000..0xF3C08FFF; the P2S page
+     *     0xF3C00000..0xF3C00FFF and the evsel block 0xF3C30000 are not
+     *     covered.
+     *   - 0xF2910000: 0xF2912000/0x4000/0x5000; the 18-port GPIO model covers
+     *     only 0x100*18 = 0x1200 bytes (0xF2910000..0xF29111FF), so these
+     *     three pages are outside it, and DFS 0xF2916000 is not covered.
+     *   - 0xF3020000: 0xF3020800..0xF3020BFF (L0090); the AIF model at
+     *     0xF3020000 covers only its first 0x800 bytes.
+     */
+    {
+        static const struct {
+            hwaddr base;
+            hwaddr window;
+            uint64_t size;
+            const char *name;
+        } cc_windows[] = {
+            { 0xF3C00000ULL, 0xF3C04000ULL, 0x5000, "cxd90045.camcore-f3c0-4000" },
+            { 0xF2910000ULL, 0xF2912000ULL, 0x1000, "cxd90045.camcore-f291-2000" },
+            { 0xF2910000ULL, 0xF2914000ULL, 0x1000, "cxd90045.camcore-f291-4000" },
+            { 0xF2910000ULL, 0xF2915000ULL, 0x1000, "cxd90045.camcore-f291-5000" },
+            { 0xF3020000ULL, 0xF3020800ULL, 0x400,  "cxd90045.camcore-f302-0800" },
+        };
+        size_t k;
+
+        for (k = 0; k < ARRAY_SIZE(cc_windows); k++) {
+            DeviceState *cc = qdev_new("cxd90045-camcore");
+
+            qdev_prop_set_string(cc, "name", cc_windows[k].name);
+            qdev_prop_set_uint64(cc, "size", cc_windows[k].size);
+            qdev_prop_set_uint64(cc, "base", cc_windows[k].base);
+            qdev_prop_set_uint64(cc, "window", cc_windows[k].window);
+            sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
+            sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0,
+                                    cc_windows[k].window, -600);
+        }
     }
 
     /*
