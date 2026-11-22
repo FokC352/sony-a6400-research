@@ -221,7 +221,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 | **`ILCE-6600`** | `a6400` / `a6600` source | **Sourced Reference** | Identical 14,401 kernel function symbols; `0x413b` command delta |
 | **`ILCE-7C`** | Shared build | **Sourced Reference** | Identical 14,460 kernel function symbols |
 | **`ILCE-6100`** | Shared symbol list | **Verified MLCR + Film Sims (QEMU / Offline)** | Picture Profile gate decoded & opt-in `PP_UNLOCK=1` overlay ([E9101](docs/evidence/9101-a6100-picture-profile-gate.md), [E9102](docs/evidence/9102-a6100-picture-profile-camera-apply.md)); `MLV2_TARGET=a6100` Mod Loader v2 + multi-target Film Simulations (`mods/film_sims/`), Film Sim Studio (`tools/film_sim_studio.py`), `FilmSimLive`, and `FilmTexture` SMOD v2 mods built for both `ILCE-6100` 1.00 and offline-verified `ILCE-6400` 2.00 targets ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
-| **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)) |
+| **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)); PC Remote `0x0D9F` traced offline to a BK4 preset unit named by the stock USB service's DID table ([E0678](docs/evidence/0678-ilce-7rm4a-usb-pids-are-bk4-preset-units.md)) |
 
 ---
 
@@ -272,7 +272,7 @@ frame (currently a black clear) and loads `viewUnified2.so`.
 - **[E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) / [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md)** add opt-in QEMU SYSV/VPH/evsel frame clock and oracle-backed SIO ch3, GPIO `0x32`, and ADC `0x3FF` peripheral models to `UnicornMachine`.
 - **UVC / 5 GHz Wi-Fi Streaming & CinemaHUD tooling:** adds offline-tested UVC-PTP adapter (`uvc_ptp_adapter.c`), Run B26 pre-arm harness (`tools/research/run_b26_uvc_prearm.py`), BCM4339 5 GHz Wi-Fi liveview bootstrap/daemon/client (`tools/native_camera/wifi_5ghz_bootstrap.sh`, `camera-daemon/src/wifi_stream.c`, `tools/research/wifi_uvc_client.py`), and CinemaHUD updates.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=8fade13bb8a2)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=87196e7e5a86)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
