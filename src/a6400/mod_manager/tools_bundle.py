@@ -17,8 +17,11 @@ from tools.setup_usb_debugger import _download_bytes, ensure_payload_binaries, e
 from .smod import parse_smod
 
 RELOAD_MARKER = b"/tmp_bt/mlv2/reload"
-# Official ILCE-6400 FW 2.00 libtestcmd.so ends at 0x2790 (vs 0x275c in CE Linux 8.2.6.0).
+# Official ILCE-6400 FW 2.00 and ILCE-6400A FW 1.01 libtestcmd.so end at 0x2790 (vs 0x275c in CE Linux 8.2.6.0).
 FW200_SAFE_MIN_SHIM_ADDR = 0x05662790
+FW101_A6400A_SAFE_MIN_SHIM_ADDR = 0x05D76790
+A6400_SHIM_RANGE = (0x05662000, 0x05663000)
+A6400A_SHIM_RANGE = (0x05D76000, 0x05D77000)
 
 MLV2_RELEASE_REPO = "ivica00/bionz-x-research"
 MLV2_RELEASE_TAG = "mlv2-layout-build-4"
@@ -287,8 +290,14 @@ def validate_mlv2_build(build_dir: Path) -> dict[str, object]:
 
     shim_addr = struct.unpack_from("<I", req_bytes, 8)[0]
     entries = struct.unpack_from("<3I", req_bytes, 16)
+    target_id = (
+        "ilce_6400a"
+        if A6400A_SHIM_RANGE[0] <= shim_addr < A6400A_SHIM_RANGE[1]
+        else "ilce_6400"
+    )
     result: dict[str, object] = {
         "available": True,
+        "target_id": target_id,
         "path": str(build_dir),
         "core_sha256": core_sha,
         "request_sha256": req_sha,
@@ -312,8 +321,11 @@ def resolve_mlv2_build(
     root: Path | None = None,
     data_dir: Path | None = None,
     bundle_dir: Path | None = None,
+    target_id: str = "ilce_6400",
 ) -> dict[str, object]:
     """Locate and verify the active Mod Loader v2 build (override -> saved -> bundled -> release -> artifacts)."""
+    if target_id not in ("ilce_6400", "ilce_6400a"):
+        raise ValueError(f"Unsupported Mod Loader v2 target_id: {target_id!r}")
     base_root = repo_root(root)
     b_root = Path(bundle_dir).resolve() if bundle_dir is not None else bundle_root()
     candidates: list[tuple[str, Path]] = []
@@ -321,14 +333,18 @@ def resolve_mlv2_build(
     if override_dir:
         candidates.append(("override", Path(override_dir)))
     if data_dir is not None:
-        saved_dir = load_settings(data_dir).get("mlv2_dir")
+        saved_key = "mlv2_dir_ilce_6400a" if target_id == "ilce_6400a" else "mlv2_dir"
+        saved_dir = load_settings(data_dir).get(saved_key)
         if saved_dir:
             candidates.append(("saved", Path(saved_dir)))
 
-    candidates.append(("bundled", b_root / "bundled_tools" / "mlv2"))
-    candidates.append(("release", base_root / ".cache" / MLV2_RELEASE_TAG))
-    if data_dir is not None:
-        candidates.append(("release", Path(data_dir) / "cache" / MLV2_RELEASE_TAG))
+    if target_id == "ilce_6400a":
+        candidates.append(("bundled", b_root / "bundled_tools" / "mlv2_ilce_6400a"))
+    else:
+        candidates.append(("bundled", b_root / "bundled_tools" / "mlv2"))
+        candidates.append(("release", base_root / ".cache" / MLV2_RELEASE_TAG))
+        if data_dir is not None:
+            candidates.append(("release", Path(data_dir) / "cache" / MLV2_RELEASE_TAG))
 
     tests_dir = base_root / "artifacts" / "tests"
     if tests_dir.is_dir():
@@ -349,6 +365,13 @@ def resolve_mlv2_build(
             continue
         try:
             verified = validate_mlv2_build(candidate)
+            if verified.get("target_id") != target_id:
+                if source in ("override", "saved") and first_explicit_error is None:
+                    first_explicit_error = (
+                        f"Configured MLv2 build ({candidate}) targets {verified.get('target_id')}, "
+                        f"expected {target_id}"
+                    )
+                continue
             verified["source"] = source
             if source in ("override", "saved", "bundled"):
                 return verified
@@ -357,14 +380,16 @@ def resolve_mlv2_build(
             if source in ("override", "saved") and first_explicit_error is None:
                 first_explicit_error = f"Configured MLv2 build invalid ({candidate}): {exc}"
 
+    safe_min = FW101_A6400A_SAFE_MIN_SHIM_ADDR if target_id == "ilce_6400a" else FW200_SAFE_MIN_SHIM_ADDR
     if auto_valid:
         for verified in auto_valid:
-            if int(verified.get("shim_addr") or 0) >= FW200_SAFE_MIN_SHIM_ADDR:
+            if int(verified.get("shim_addr") or 0) >= safe_min:
                 return verified
         return auto_valid[0]
 
     return {
         "available": False,
+        "target_id": target_id,
         "path": None,
         "source": None,
         "core_sha256": None,
@@ -563,6 +588,7 @@ def prepare_tools(
     data_dir: Path | None = None,
     fetcher: Callable[[str], bytes] | None = None,
     progress_cb: Callable[[str], None] | None = None,
+    target_id: str = "ilce_6400",
 ) -> dict[str, object]:
     """Download/verify PMCA, USB debugger binaries, official MLv2 release, and Arrivederci v5."""
     base_root = repo_root(root)
@@ -587,7 +613,7 @@ def prepare_tools(
     if progress_cb:
         progress_cb(f"Ensuring official Arrivederci v5 ({MLV2_RELEASE_TAG})...")
     ensure_arrivederci_v5(root=base_root, data_dir=d_dir, fetcher=fetcher, progress_cb=progress_cb)
-    return get_toolchain_status(root=base_root, data_dir=d_dir)
+    return get_toolchain_status(root=base_root, data_dir=d_dir, target_id=target_id)
 
 
 def get_toolchain_status(
@@ -596,6 +622,7 @@ def get_toolchain_status(
     data_dir: Path | None = None,
     mlv2_override: Path | str | None = None,
     bundle_dir: Path | None = None,
+    target_id: str = "ilce_6400",
 ) -> dict[str, object]:
     """Collect a UI-ready status summary for every prerequisite component."""
     base_root = repo_root(root)
@@ -608,6 +635,7 @@ def get_toolchain_status(
         root=base_root,
         data_dir=d_dir,
         bundle_dir=bundle_dir,
+        target_id=target_id,
     )
     v5_path = find_arrivederci_v5(root=base_root, data_dir=d_dir, bundle_dir=bundle_dir)
     return {

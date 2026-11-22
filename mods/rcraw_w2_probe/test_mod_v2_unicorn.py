@@ -17,6 +17,11 @@ magic, ver, flags, name, code_size, fnv, bss, on_off, off_off, hooks = struct.un
 assert magic == 0x444F4D53 and ver == 2 and name.rstrip(b"\0") == b"RCRAW_W2_Probe" and hooks == 0
 code = mod[68 : 68 + code_size]
 
+IS_A6400A = "--target=ilce_6400a" in sys.argv or (
+    "--target" in sys.argv and sys.argv[sys.argv.index("--target") + 1] == "ilce_6400a"
+) or b"\x44\xf2\x29\x45" in code or b"\xbc\x95\x42\x04" in code
+RAW_PGOFF = 0x04429 if IS_A6400A else 0x04408
+RAW_OFF = 0x5BC if IS_A6400A else 0x0EC
 AIF0_PAGE = 0x30000000
 AIF1_PAGE = 0x30100000
 RAW_EXT_PAGE = 0x30200000
@@ -50,8 +55,8 @@ def run_probe(on: int) -> str:
     m.mem_write(AIF1_PAGE + 0x4A4, struct.pack("<I", 0x00200000))
     m.mem_write(AIF1_PAGE + 0x4AC, struct.pack("<I", 0x0001))
 
-    m.mem_write(RAW_EXT_PAGE + 0x0EC, b"\x01")
-    m.mem_write(RAW_EXT_PAGE + 0x0F4, struct.pack("<I", 0x00BF0274))
+    m.mem_write(RAW_EXT_PAGE + RAW_OFF, b"\x01")
+    m.mem_write(RAW_EXT_PAGE + RAW_OFF + 8, struct.pack("<I", 0x00BF0274))
 
     logs: list[str] = []
 
@@ -80,7 +85,7 @@ def run_probe(on: int) -> str:
                 raise AssertionError(f"unexpected open {path}")
         elif nr == 192:  # mmap2
             assert a[1:5] == [4096, 1, 1, 3], f"unexpected mmap2 args {a}"
-            ret = {0xF3002: AIF0_PAGE, 0xF3102: AIF1_PAGE, 0x04408: RAW_EXT_PAGE}[a[5]]
+            ret = {0xF3002: AIF0_PAGE, 0xF3102: AIF1_PAGE, RAW_PGOFF: RAW_EXT_PAGE}[a[5]]
         elif nr == 4 and a[0] == 4:  # write
             logs.append(bytes(mu.mem_read(a[1], a[2])).decode())
             ret = a[2]

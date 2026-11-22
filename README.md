@@ -82,6 +82,22 @@ ZV-E10 updater. The stock firmware draws its P-mode OSD and stops at the package
 wait, which QMP `xp` reads directly
 ([E0665](docs/evidence/0665-qemu-boots-from-the-public-updater.md)).
 
+Captured `ILCE-6400A` 1.01 in QEMU and full `SMOD v2` mod port: the 17-partition capture (`emmc.img`
+`ed231fc0…`), with its own `/setting/ulogio.bin` (`ULOGIO=`) and WBI-derived powered sub-micro RX
+frames (`5effe8d4…`), boots all four Cortex-A5 cores, 9 eMMC mounts, 40 live `.ko` modules, `LIRO`,
+and `im.elf` `SetContentTarget`/`EEStart` with zero exceptions, rendering the stock rear-LCD
+`P`-mode OSD, Auto Power Save + S1 wake, and interactive `Setup`/`Camera Settings` menus
+([E0678](docs/evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md)). Mod Loader v2 (`shim` at
+`0x05D76800`, `core.bin`, `mlv2_guard`) and all nine available `ILCE-6400` runtime mods
+(`MenuTouchFull`, `ModsTabLook`, `Arrivederci` v5, `OpenGate32`, `OpenGateSensor`,
+`OpenGate_5400_Test`, `RCRAW_Enable_Test`, `RCRAW_W2_Probe`, and `UsbStreamingTest`) are now ported
+to `ILCE-6400A` 1.01 ([`mods/ilce_6400a/`](mods/ilce_6400a/README.md)) with strict target isolation
+in the BIONZ X Mod Manager, nested `SMNU` submenus + `PhotonBin 6MP`
+([E0680](docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md)), and standalone FAT32/exFAT
+`MLV2.TAR` SD auto-boot ([E0681](docs/evidence/0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md)),
+passing all Unicorn suites and live QEMU `ILCE-6400A` 1.01 `rear_panel.py` + SD auto-boot sessions
+([E0679](docs/evidence/0679-ilce-6400a-mod-loader-v2-and-mods-port.md)).
+
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
 fresh runs. The optional mode preserves the older descriptor replay and
@@ -217,11 +233,11 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 | :--- | :--- | :--- | :--- |
 | **`ILCE-6400`** | `a6400` / `a6600` source | **Verified Execution Target** | Full QEMU & Unicorn L2/L3 execution, physical RAM-only mods |
 | **`ZV-E10`** | Shared build | **Verified Execution Target (RAM)** | Full Main Menu touch + 12-tile Fn menu touch verified on physical hardware (FW 2.02/2.03) via volatile direct DRAM injection into `im.elf`. Mod Loader currently untested on ZV-E10. UVC stack cataloged ([E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md)) |
-| **`ILCE-6400A`** | `1.01` packaged | **Sourced Reference** | Native `GetModelInfo` (`0032858730`), packaged Jiritsu command map and bounded offline DMM replies ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [E0525](docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md), [E0532](docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md)) |
+| **`ILCE-6400A`** | `1.01` captured + packaged | **Verified QEMU & Mod Target** | Captured 4-core QEMU stock UI boot ([E0678](docs/evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md)), Mod Loader v2 + 10 `SMOD v2` mods + `PhotonBin 6MP` (`SMNU`) + FAT32/exFAT SD auto-boot verified in Unicorn + live QEMU ([E0679](docs/evidence/0679-ilce-6400a-mod-loader-v2-and-mods-port.md), [E0680](docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md), [E0681](docs/evidence/0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md), [`mods/ilce_6400a/`](mods/ilce_6400a/README.md)), native `GetModelInfo` (`0032858730`), Jiritsu command map ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md)) |
 | **`ILCE-6600`** | `a6400` / `a6600` source | **Sourced Reference** | Identical 14,401 kernel function symbols; `0x413b` command delta |
 | **`ILCE-7C`** | Shared build | **Sourced Reference** | Identical 14,460 kernel function symbols |
 | **`ILCE-6100`** | Shared symbol list | **Verified MLCR + Film Sims (QEMU / Offline)** | Picture Profile gate decoded & opt-in `PP_UNLOCK=1` overlay ([E9101](docs/evidence/9101-a6100-picture-profile-gate.md), [E9102](docs/evidence/9102-a6100-picture-profile-camera-apply.md)); `MLV2_TARGET=a6100` Mod Loader v2 + multi-target Film Simulations (`mods/film_sims/`), Film Sim Studio (`tools/film_sim_studio.py`), `FilmSimLive`, and `FilmTexture` SMOD v2 mods built for both `ILCE-6100` 1.00 and offline-verified `ILCE-6400` 2.00 targets ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
-| **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)); PC Remote `0x0D9F` traced offline to a BK4 preset unit named by the stock USB service's DID table ([E0678](docs/evidence/0678-ilce-7rm4a-usb-pids-are-bk4-preset-units.md)) |
+| **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)) |
 
 ---
 
@@ -272,7 +288,7 @@ frame (currently a black clear) and loads `viewUnified2.so`.
 - **[E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) / [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md)** add opt-in QEMU SYSV/VPH/evsel frame clock and oracle-backed SIO ch3, GPIO `0x32`, and ADC `0x3FF` peripheral models to `UnicornMachine`.
 - **UVC / 5 GHz Wi-Fi Streaming & CinemaHUD tooling:** adds offline-tested UVC-PTP adapter (`uvc_ptp_adapter.c`), Run B26 pre-arm harness (`tools/research/run_b26_uvc_prearm.py`), BCM4339 5 GHz Wi-Fi liveview bootstrap/daemon/client (`tools/native_camera/wifi_5ghz_bootstrap.sh`, `camera-daemon/src/wifi_stream.c`, `tools/research/wifi_uvc_client.py`), and CinemaHUD updates.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=87196e7e5a86)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=dde2c8c04a67)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 

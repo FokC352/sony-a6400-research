@@ -1,15 +1,36 @@
 #!/bin/bash
 # Build UsbStreamingTest.mod (--action) and uvc_mod_daemon for QEMU MODS-tab UVC testing.
-# Usage: mods/usb_streaming_test/build_wsl.sh [OUT_DIR]
+# Usage: mods/usb_streaming_test/build_wsl.sh [OUT_DIR] [--target ilce_6400|ilce_6400a]
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-OUT="${1:-artifacts/mods/usb-streaming-test-1}"
+OUT="artifacts/mods/usb-streaming-test-1"
+if [[ $# -gt 0 && "$1" != --* ]]; then
+    OUT="$1"
+    shift
+fi
+TARGET="${MOD_TARGET:-ilce_6400}"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --target) TARGET="$2"; shift 2 ;;
+        --target=*) TARGET="${1#*=}"; shift ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+done
 mkdir -p "$OUT"
 
-SYM_DIR="artifacts/tests/qemu-usb-stimulus-e0596-captured-2"
-if [[ ! -f "$SYM_DIR/usb_symbols.h" ]]; then
-    echo "Missing $SYM_DIR/usb_symbols.h" >&2
-    exit 1
+if [[ "$TARGET" == "ilce_6400a" ]]; then
+    SYM_DIR="$OUT/usb_symbols_a6400a"
+    rm -rf "$SYM_DIR"
+    python3 -m tools.research.build_qemu_usb_stimulus --target ilce_6400a --output "$SYM_DIR"
+elif [[ "$TARGET" == "ilce_6400" ]]; then
+    SYM_DIR="artifacts/tests/qemu-usb-stimulus-e0596-captured-2"
+    if [[ ! -f "$SYM_DIR/usb_symbols.h" ]]; then
+        echo "Missing $SYM_DIR/usb_symbols.h" >&2
+        exit 1
+    fi
+else
+    echo "Unsupported target: $TARGET" >&2
+    exit 2
 fi
 
 CC=arm-linux-gnueabi-gcc

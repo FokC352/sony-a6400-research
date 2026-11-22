@@ -4,6 +4,18 @@
 #include "mlv2_sys.h"
 #include "usb_symbols.h"
 
+#ifndef USB_BASE_REF
+#define USB_BASE_REF  0x04857000u
+#define USB_FILE_FNV  0xa2ae986bu
+#define USB_FILE_LEN  94176u
+#define MWF_BASE_REF  0x040f7000u
+#define MWF_FILE_FNV  0x2b7c22d1u
+#define MWF_FILE_LEN  238108u
+#define LIBC_BASE_REF 0x042c1000u
+#define LIBC_FILE_FNV 0x7f95ef74u
+#define LIBC_FILE_LEN 984292u
+#endif
+
 #ifndef UVC_MOD_ALLOW_REAL_CAMERA
 static int contains(const char *s, const char *needle) {
     for (; *s; s++) {
@@ -151,9 +163,9 @@ __attribute__((used)) void uvc_mod_on(int on) {
     }
 #endif
 
-    if (!check_file("/usr/lib/libUsbControl.so", 0xa2ae986bu, 94176u) ||
-        !check_file("/usr/lib/libMWF.so", 0x2b7c22d1u, 238108u) ||
-        !check_file("/lib/libc-2.11.2.so", 0x7f95ef74u, 984292u)) {
+    if (!check_file("/usr/lib/libUsbControl.so", USB_FILE_FNV, USB_FILE_LEN) ||
+        !check_file("/usr/lib/libMWF.so", MWF_FILE_FNV, MWF_FILE_LEN) ||
+        !check_file("/lib/libc-2.11.2.so", LIBC_FILE_FNV, LIBC_FILE_LEN)) {
         log_value("identity_file_refused", 0);
         return;
     }
@@ -169,15 +181,15 @@ __attribute__((used)) void uvc_mod_on(int on) {
         return;
     }
 
-    uint32_t fn_ctrl_inst   = base_usb  + (F_CONTROL_INSTANCE - 0x04857000u);
-    uint32_t fn_send_event  = base_usb  + (F_SEND_EVENT       - 0x04857000u);
-    uint32_t fn_objmsg_ctor = base_mwf  + (F_OBJMSG_CTOR      - 0x040f7000u);
-    uint32_t fn_objmsg_dtor = base_mwf  + (F_OBJMSG_DTOR      - 0x040f7000u);
-    uint32_t fn_param_ctor  = base_mwf  + (F_PARAM_CTOR       - 0x040f7000u);
-    uint32_t fn_param_dtor  = base_mwf  + (F_PARAM_DTOR       - 0x040f7000u);
-    uint32_t fn_add_param   = base_mwf  + (F_ADD_PARAM        - 0x040f7000u);
-    uint32_t fn_malloc      = base_libc + (F_MALLOC           - 0x042c1000u);
-    uint32_t fn_free        = base_libc + (F_FREE             - 0x042c1000u);
+    uint32_t fn_ctrl_inst   = base_usb  + (F_CONTROL_INSTANCE - USB_BASE_REF);
+    uint32_t fn_send_event  = base_usb  + (F_SEND_EVENT       - USB_BASE_REF);
+    uint32_t fn_objmsg_ctor = base_mwf  + (F_OBJMSG_CTOR      - MWF_BASE_REF);
+    uint32_t fn_objmsg_dtor = base_mwf  + (F_OBJMSG_DTOR      - MWF_BASE_REF);
+    uint32_t fn_param_ctor  = base_mwf  + (F_PARAM_CTOR       - MWF_BASE_REF);
+    uint32_t fn_param_dtor  = base_mwf  + (F_PARAM_DTOR       - MWF_BASE_REF);
+    uint32_t fn_add_param   = base_mwf  + (F_ADD_PARAM        - MWF_BASE_REF);
+    uint32_t fn_malloc      = base_libc + (F_MALLOC           - LIBC_BASE_REF);
+    uint32_t fn_free        = base_libc + (F_FREE             - LIBC_BASE_REF);
 
     if (!same_code(fn_ctrl_inst,   usb_expected_CONTROL_INSTANCE) ||
         !same_code(fn_send_event,  usb_expected_SEND_EVENT) ||
@@ -196,7 +208,7 @@ __attribute__((used)) void uvc_mod_on(int on) {
     log_value("control", control);
     if (!control) return;
 
-    uint32_t iface_slot = base_usb + (USB_INTERFACE_SLOT - 0x04857000u);
+    uint32_t iface_slot = base_usb + (USB_INTERFACE_SLOT - USB_BASE_REF);
     uint32_t state = word(control + 0x104);
     log_value("initial_state", state);
     if (state == 7) {

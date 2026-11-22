@@ -29,7 +29,7 @@ Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and 
 | [A6400A Jiritsu packet mapping](evidence/0525-a6400a-jiritsu-senser-offline-packets.md) | Packaged service dispatch, Senser/OSAL layouts and reproducible offline packet fixtures; no USB backend |
 | [A6400A DMM metadata and lifetime](evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md) | Opt-in single-extent metadata, original share/access counters and bounded borrowed raw replies; memory-only sink, USB disabled |
 | [REA_WORKFLOW.md](REA_WORKFLOW.md) | Connected REA/provider availability and Ghidra / WSL workflow (`tools.research.rea_wsl_batch`) |
-| [QEMU workflow](../qemu-a6400/README.md) | Reproducible captured boot inputs, native eMMC regression checks, and the later device-model records through the viewfinder console |
+| [QEMU workflow](../qemu-a6400/README.md) | Reproducible captured boot inputs (`ILCE-6400` and `ILCE-6400A` [E0678](evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md)), native eMMC regression checks, and the later device-model records through the viewfinder console |
 | [TOOLCHAIN.md](TOOLCHAIN.md) | Qualified current/legacy research tools, dependency pins, QEMU compatibility checks and rollback |
 | [DEPENDENCY_WORKFLOW.md](DEPENDENCY_WORKFLOW.md) | Dependency and call-chain tracing workflow |
 | [VALIDATION.md](VALIDATION.md) | Differential validation and fidelity rules |

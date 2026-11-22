@@ -35,6 +35,19 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef MLV2_TARGET_ILCE6400A
+#define SHIM_ADDR             0x05d76800u
+#define SHIM_CAP              2048u
+#define HOOK_SET_ROOT         0x134f58a4u
+#define HOOK_REFRESH          0x134f5cd0u
+#define HOOK_OPEN_ITEM        0x134f6294u
+#define RECT_TBL1_SLOT6       0x1374940cu
+#define RECT_TBL2_SLOT6       0x1374948cu
+#define RECT_TBL1_SLOT6_FW200 0x1374940cu
+#define RECT_TBL2_SLOT6_FW200 0x1374948cu
+#define REF_VIEW_BASE         0x12f46000u
+#define REF_TESTCMD_BASE      0x05d74000u
+#else
 #define SHIM_ADDR             0x05662800u
 #define SHIM_CAP              2048u
 #define REQ_MAGIC             0x5132484du /* "ML2Q" */
@@ -56,6 +69,10 @@
 #define RECT_TBL2_SLOT6       0x15de8a84u
 #define RECT_TBL1_SLOT6_FW200 0x15de8a64u
 #define RECT_TBL2_SLOT6_FW200 0x15de8ae4u
+#endif
+#endif
+#ifndef REQ_MAGIC
+#define REQ_MAGIC             0x5132484du /* "ML2Q" */
 #endif
 #define MAX_RELOCS            256u
 
@@ -299,6 +316,7 @@ static int file_fnv(const char *path) {
 }
 
 int main(int argc, char **argv) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     if (argc == 3 && !strcmp(argv[1], "fnv")) return file_fnv(argv[2]);
     int op = argc == 3 ? (!strcmp(argv[1], "check") ? 0 : !strcmp(argv[1], "install") ? 1 :
                           !strcmp(argv[1], "upgrade") ? 2 : -1) : -1;
