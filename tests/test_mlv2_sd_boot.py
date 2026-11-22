@@ -409,7 +409,7 @@ class TestCardReadAndWorkerScripts(unittest.TestCase):
         exfat_contig = _build_exfat_image([("MLV2.TAR", payload, False)])
         exfat_frag = _build_exfat_image([("mlv2.tar", payload, False)], fragmented_first_file=True)
         exfat_off = _build_exfat_image([("MLV2.TAR", payload, False), ("MLV2.OFF", b"", False)])
-        exfat_oversize = _build_exfat_image([("MLV2.TAR", b"X" * (1024 * 1024 + 1), False)], spc_shift=6)
+        exfat_oversize = _build_exfat_image([("MLV2.TAR", b"X" * (4 * 1024 * 1024 + 1), False)], spc_shift=8)
 
         fixture_dir = PROJECT_ROOT / "artifacts" / "tests" / f"card-read-fix-{os.getpid()}"
         shutil.rmtree(fixture_dir, ignore_errors=True)
