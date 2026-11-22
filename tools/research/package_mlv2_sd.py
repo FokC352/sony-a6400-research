@@ -18,6 +18,20 @@ def main(argv: list[str] | None = None):
         action="store_true",
         help="Explicitly bundle Arrivederci.mod into ILCE-6400A MLV2.TAR (color matrix persists in Backup.bin if powered off while ON).",
     )
+    parser.add_argument(
+        "--mod",
+        type=Path,
+        action="append",
+        default=[],
+        help="Extra .mod file to include instead of the default MenuTouchFull+icon bundle",
+    )
+    parser.add_argument(
+        "--dir",
+        type=Path,
+        action="append",
+        default=[],
+        help="Extra directory (e.g. sabin, grain) to include at archive root",
+    )
     args = parser.parse_args(argv)
     build = args.build
 
@@ -29,7 +43,14 @@ def main(argv: list[str] | None = None):
         "mlv2.req": (build / "mlv2.req").read_bytes(),
         "core.bin": (build / "core.bin").read_bytes(),
     }
-    if args.target == "ilce_6400a":
+    if args.mod or args.dir:
+        for mod_path in args.mod:
+            members[mod_path.name] = mod_path.read_bytes()
+        for dir_path in args.dir:
+            for item in sorted(dir_path.iterdir()):
+                if item.is_file():
+                    members[f"{dir_path.name}/{item.name}"] = item.read_bytes()
+    elif args.target == "ilce_6400a":
         a6400a_dir = PROJECT_ROOT / "mods/ilce_6400a"
         # UsbStreamingTest.mod is a QEMU-only diagnostic action and refuses on hardware.
         # Arrivederci's color matrix can be persisted by Sony's shutdown Backup.bin if left ON at
@@ -69,7 +90,7 @@ def main(argv: list[str] | None = None):
             member.mode = 0o600
             card.addfile(member, io.BytesIO(data))
     payload = archive.getvalue()
-    if len(payload) > 1024 * 1024:
+    if len(payload) > 4 * 1024 * 1024:
         raise ValueError("SD archive exceeds the camera reader limit")
 
     sh_template = (
@@ -80,10 +101,13 @@ def main(argv: list[str] | None = None):
     body = (PROJECT_ROOT / sh_template).read_text(encoding="ascii")
     header, body = body.split("\n", 1)
     digest = hashlib.sha256(payload).hexdigest()
-    with (build / "card/MLV2.TAR").open("xb") as output:
+    (build / "card").mkdir(parents=True, exist_ok=True)
+    (build / "companion").mkdir(parents=True, exist_ok=True)
+    with (build / "card/MLV2.TAR").open("wb") as output:
         output.write(payload)
-    with (build / "companion/mlv2_sd_boot.sh").open("x", encoding="ascii", newline="\n") as output:
+    with (build / "companion/mlv2_sd_boot.sh").open("w", encoding="ascii", newline="\n") as output:
         output.write(f"{header}\nset -- {digest}\n{body}")
+    print(f"Packaged MLV2.TAR ({len(payload)} B, sha256={digest[:12]}...) with {len(members)} entries")
 
 
 if __name__ == "__main__":

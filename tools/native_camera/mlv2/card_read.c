@@ -66,7 +66,7 @@ static int sys_pread512(int fd, void *out, uint64_t off, unsigned size) {
 
 #define SECTOR          512u
 #define IO_CHUNK        4096u
-#define MAX_ARCHIVE     (1024u * 1024u)
+#define MAX_ARCHIVE     (4u * 1024u * 1024u)
 #define FAT32_EOC       0x0ffffff8u
 #define EXFAT_EOC       0xfffffff8u
 #ifndef STAGE

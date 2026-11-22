@@ -311,8 +311,10 @@ PRESETS: dict[str, FilmSimParams] = {
 }
 
 LIVE_PICKER_ORDER: tuple[str, ...] = (
+    "Velvia",
     "Classic Chrome",
     "Classic Neg",
+    "Nostalgic Neg",
     "Portra 400",
     "Gold 200",
     "Vision3 800T",

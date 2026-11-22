@@ -90,6 +90,7 @@ void texture_life(int on) {
             sc3(6, probe, 0, 0);
             res = 'm';
             for (int i = 0; i < 11; i++) {
+                sc3(52 /* umount2 */, (long)sabin_dst(i), 2 /* MNT_DETACH */, 0);
                 long r = sc5(21 /* mount */, (long)sabin_src(i), (long)sabin_dst(i), 0, 4096 /* MS_BIND */, 0);
                 if (r < 0) res = 'e';
             }

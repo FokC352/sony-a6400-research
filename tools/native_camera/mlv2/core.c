@@ -773,7 +773,14 @@ static uint32_t core_before_set_root(uint32_t menu, uint32_t root_addr) {
 
 static const char *state_text(const Mod *m) {
     if (m->invalid || (m->enabled && !m->present)) return "ERR";
-    if (is_action(m)) return m->enabled ? (m->stale ? "Active*" : "Active") : "";
+    if (is_action(m)) {
+        if (m->enabled && !m->off_off && m->addr && m->extra_size >= 20u) {
+            const volatile uint32_t *st = (const volatile uint32_t *)(m->addr + m->code_size);
+            if (st[0] == 0x46534c31u && ((const volatile char *)(st + 1))[0])
+                return (const char *)(m->addr + m->code_size + 4u);
+        }
+        return (m->enabled && m->off_off) ? (m->stale ? "Active*" : "Active") : "";
+    }
     if (m->enabled) return m->stale ? "ON*" : "ON";
     return "OFF";
 }
@@ -1211,9 +1218,14 @@ static int core_before_enter(uint32_t menu, uint32_t leaf) {
                 toggle(&c->mods[i]);
     }
     int was_on = m->enabled;
-    toggle(m);
-    if (is_action(m) && !was_on && m->enabled)
+    if (is_action(m) && !m->off_off && was_on) {
+        if (m->kind == KIND_V2 && m->on_off) call_entry(m->addr + m->on_off, 1);
         ml_log(post_menu_key() ? "action_close" : "action_close_unavailable", m->addr);
+    } else {
+        toggle(m);
+        if (is_action(m) && !was_on && m->enabled)
+            ml_log(post_menu_key() ? "action_close" : "action_close_unavailable", m->addr);
+    }
     refresh_rows(c, menu, 0);
     return 0;
 }

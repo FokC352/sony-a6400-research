@@ -14,6 +14,7 @@ while ! "$bb" grep -q ' /tmp_bt tmpfs rw[, ]' /proc/mounts; do
     remaining=$((remaining - 1))
     "$bb" sleep 1
 done
+"$bb" mount -o remount,size=4096k /tmp_bt 2>/dev/null || true
 umask 077
 "$bb" mkdir "$stage" || exit 0
 owns_mods=0
@@ -23,13 +24,12 @@ cleanup() {
         : > "$stage/sd-disabled"
     else
         if [ "$owns_mods" -eq 1 ]; then
-            "$bb" rm -f "$mods/MenuTouchFull.mod" "$mods/ModsTabIcon.rle"
-            "$bb" rmdir "$mods"
+            "$bb" rm -rf "$mods"
         fi
         "$bb" rm -f "$stage/core.bin" "$stage/receipt" "$stage/sd-managed"
     fi
-    "$bb" rm -f "$stage/card.tar" "$stage/guard" "$stage/mlv2.req" "$stage/check.log" \
-        "$stage/MenuTouchFull.mod" "$stage/ModsTabIcon.rle"
+    "$bb" rm -rf "$stage/card.tar" "$stage/guard" "$stage/mlv2.req" "$stage/check.log" \
+        "$stage"/*.mod "$stage"/*.rle "$stage/sabin" "$stage/grain"
     if [ "$guard_started" -eq 0 ]; then "$bb" rmdir "$stage"; fi
 }
 trap cleanup EXIT
@@ -57,9 +57,11 @@ if ! "$bb" grep -q '^STATE hooks=stock v1_build=-1 shim=zero$' check.log; then
     exit 1
 fi
 "$bb" rm -f check.log
-"$bb" mkdir "$mods"
+"$bb" mkdir -p "$mods"
 owns_mods=1
-"$bb" mv MenuTouchFull.mod ModsTabIcon.rle "$mods"
+for f in *.mod *.rle sabin grain; do
+    if [ -e "$f" ]; then "$bb" mv "$f" "$mods/"; fi
+done
 "$bb" timeout -t 8 "$reader" --present
 : > sd-managed
 guard_started=1
