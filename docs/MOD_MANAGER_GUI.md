@@ -33,11 +33,11 @@ Double-click [`scripts/launch_mod_manager.bat`](../scripts/launch_mod_manager.ba
 
 ## 1-Click Install Flow
 
-1. Connect your Sony camera via USB in **Mass Storage** mode and click **Scan Camera**.
+1. Choose your **Target** profile in the top bar (`ILCE-6400 (FW 2.00)` by default, or `ILCE-6400A (FW 1.01)`), connect your Sony camera via USB in **Mass Storage** mode, and click **Scan Camera**.
 2. Toggle desired runtime mods and/or PMCA tweaks **ON** or **OFF**.
 3. Click **1-Click Install to Camera**:
    - **First-time camera setup:** verifies `usb_extcmd.ko` and `libusbcmd.so` via Senser (`ILCE-6400` / `ILCE-7C`), installs the pinned native USB debugger to `/setting` with read-back verification, and guides you through a single camera power-cycle.
-   - **Unsupported or blocked bodies:** `ILCE-6400A` is blocked from Senser FileControl; unrecognized models are routed to a read-only onboarding `.zip` without writing to the camera.
+   - **Unsupported or blocked bodies:** `ILCE-6400A` is blocked from Senser FileControl unless a native debugger session is already active; `ZV-E10` and `ILCE-7C` allow PMCA flash tweaks via Senser while blocking cross-target Mod Loader v2 builds; unrecognized models are routed to a read-only onboarding `.zip` without writing to the camera.
    - **Mod Loader v2 & runtime sync:** runs `mlv2_guard_arm check`, atomically pushes `core.bin` and toggled-ON `.mod` files to `/tmp_bt/mods/` with read-back verification, removes toggled-OFF managed `.mod` files, applies hooks (or hot-reloads), verifies branch targets, and saves a timestamped JSON receipt.
 
 ## SD Card Sync

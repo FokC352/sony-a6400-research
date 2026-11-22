@@ -22,7 +22,7 @@
 #include "../mods_tab_look_layout.h"
 
 #define CTX_MAGIC    0x58544332u  /* "2CTX" */
-#define CTX_VERSION  3u
+#define CTX_VERSION  4u
 #define MAX_MODS     16u
 #define MAX_PAGES    3u
 #define MAX_FOLDERS  4u
@@ -62,12 +62,17 @@ typedef struct {
     uint32_t on_off, off_off;
     uint32_t data_off;     /* file offset of the code bytes */
     Hook     hooks[SMOD_MAX_HOOKS];
+    uint8_t  sub_count, sub_bss_off, sub_pad[2];
+    uint8_t  sub_vals[SMOD_SUBMENU_MAX_ITEMS];
+    uint32_t sub_cfg_off;
+    SmodSubmenuItem sub_items[SMOD_SUBMENU_MAX_ITEMS];
 } Mod;
 
 typedef struct {
     uint32_t magic, version;
     uint32_t mod_count, page_count;
     uint32_t vtable_ready;
+    int32_t  sub_mod;      /* -1 = top-level Mods tab; >= 0 = active nested submenu mod index */
     Node    *orig_root;
     Node    *orig_tab5;
     uint32_t last_menu;
@@ -96,6 +101,54 @@ typedef struct {
 
 #define CTX_BYTES ((sizeof(Ctx) + 0xfffu) & ~0xfffu)
 
+#if !defined(MLV2_TARGET_ILCE6400A) && !defined(MLV2_TARGET_A6100)
+/* ---- CTX_VERSION 2 layout (mlv2-layout-build-4 on ILCE-6400, for live upgrade) ---- */
+#define V2_MAX_MODS  12u
+#define V2_MAX_PAGES 2u
+typedef struct {
+    char     name[32];
+    char     path[64];
+    uint32_t fnv;
+    uint8_t  kind, enabled, invalid, flags;
+    uint8_t  hook_count, present, stale, off_called;
+    uint32_t code_size;
+    uint32_t extra_size;
+    uint32_t addr;
+    uint32_t map_size;
+    uint32_t state_addr;
+    uint32_t on_off, off_off;
+    uint32_t data_off;
+    Hook     hooks[SMOD_MAX_HOOKS];
+} V2Mod;
+_Static_assert(sizeof(V2Mod) == 460u, "V2Mod layout");
+
+typedef struct {
+    uint32_t magic, version;
+    uint32_t mod_count, page_count;
+    uint32_t vtable_ready;
+    Node    *orig_root;
+    Node    *orig_tab5;
+    uint32_t last_menu;
+    void    *vtable[72];
+    void    *root_children[8];
+    Node     tab_node;
+    Node     pages[V2_MAX_PAGES];
+    Node     items[V2_MAX_MODS];
+    Node     opts[2];
+    void    *page_ptrs[V2_MAX_PAGES];
+    void    *item_ptrs[V2_MAX_MODS];
+    void    *opt_ptrs[2];
+    V2Mod    mods[V2_MAX_MODS];
+    V2Mod    scan[V2_MAX_MODS];
+    V2Mod    keep[V2_MAX_MODS];
+    V2Mod    tmp;
+    uint32_t scan_count;
+    void   **original_children;
+    int32_t  original_child_count;
+} V2Ctx;
+_Static_assert(sizeof(V2Ctx) == 0x46d0u, "V2Ctx layout");
+#endif
+
 /* ---- v1 state layout (read-only, for takeover). Mirrors tools/native_camera/mod_loader.c. ---- */
 typedef struct {
     char     name[32];
@@ -123,7 +176,11 @@ __attribute__((section(".text.zdata"), used)) static volatile uint32_t core_slot
 __attribute__((section(".text.zdata"), used)) static volatile uint32_t core_libobj_bias = 0;
 __attribute__((section(".text.zdata"), used)) static volatile uint32_t core_libobj_ok = 0;
 #define VIEW(a) ((uint32_t)(a) + core_view_bias)
+#ifdef MLV2_TARGET_ILCE6400A
+#define REF_LIBOBJ_BASE 0x05fc2000u
+#else
 #define REF_LIBOBJ_BASE 0x05d18000u
+#endif
 
 static Ctx *ctx_get(void) {
     if (!core_slot) return 0;
@@ -294,8 +351,10 @@ static int reloc_apply(int fd, uint32_t code_size, uint8_t *code, SmodRelocLib *
         libs[i].name[23] = 0;
         if (libs[i].ref_hi <= libs[i].ref_lo) return -1;
     }
-    if (!maps_bases(libs, nlib, base)) return -2;
-    for (uint32_t i = 0; i < nlib; i++) bias[i] = base[i] - libs[i].ref_lo;
+    int have_bases = maps_bases(libs, nlib, base);
+    if (have_bases) {
+        for (uint32_t i = 0; i < nlib; i++) bias[i] = base[i] - libs[i].ref_lo;
+    }
     uint32_t words[64];
     for (uint32_t done = 0; done < nrel;) {
         uint32_t chunk = nrel - done > 64u ? 64u : nrel - done;
@@ -304,7 +363,7 @@ static int reloc_apply(int fd, uint32_t code_size, uint8_t *code, SmodRelocLib *
         for (uint32_t k = 0; k < chunk; k++) {
             uint32_t off = words[k] & 0xffffffu, lib = words[k] >> 24;
             if (lib >= nlib || (off & 3u) || off + 4u > code_size) return -1;
-            if (code) {
+            if (code && have_bases) {
                 uint32_t w;
                 ml_memcpy(&w, code + off, 4);
                 w += bias[lib];
@@ -315,7 +374,35 @@ static int reloc_apply(int fd, uint32_t code_size, uint8_t *code, SmodRelocLib *
     }
     uint32_t want;
     if (ml_read(fd, &want, 4) != 4 || want != h) return -1;
+    if (!have_bases) return -2;
     return (int)nrel;
+}
+
+/* Parse SMOD_V2_FLAG_SUBMENU ("SMNU") trailer at the current file position. */
+static int submenu_parse(int fd, Mod *m) {
+    SmodSubmenuHeader sh;
+    if (ml_read(fd, &sh, sizeof(sh)) != (int)sizeof(sh) || sh.magic != SMOD_SUBMENU_MAGIC) return 0;
+    if (!sh.item_count || sh.item_count > SMOD_SUBMENU_MAX_ITEMS) return 0;
+    if ((uint32_t)sh.bss_cfg_off + (uint32_t)sh.item_count > m->extra_size) return 0;
+    if (sh.cfg_call_off && (!(sh.cfg_call_off & 1u) || sh.cfg_call_off >= m->code_size)) return 0;
+    uint32_t bytes = (uint32_t)sh.item_count * (uint32_t)sizeof(SmodSubmenuItem);
+    if (ml_read(fd, m->sub_items, bytes) != (int)bytes) return 0;
+    uint32_t h = ml_fnv1a((const uint8_t *)&sh, sizeof(sh));
+    h = ml_fnv1a_more(h, (const uint8_t *)m->sub_items, bytes);
+    uint32_t want = 0;
+    if (ml_read(fd, &want, 4) != 4 || want != h) return 0;
+    for (uint32_t i = 0; i < sh.item_count; i++) {
+        SmodSubmenuItem *it = &m->sub_items[i];
+        if (it->opt_count < 2u || it->opt_count > SMOD_SUBMENU_MAX_OPTS || it->default_val >= it->opt_count)
+            return 0;
+        it->label[23] = 0;
+        for (uint32_t k = 0; k < SMOD_SUBMENU_MAX_OPTS; k++) it->opts[k][17] = 0;
+        m->sub_vals[i] = it->default_val;
+    }
+    m->sub_count = sh.item_count;
+    m->sub_bss_off = sh.bss_cfg_off;
+    m->sub_cfg_off = sh.cfg_call_off;
+    return 1;
 }
 
 /* Parse one .mod header into m; returns 1 if valid. */
@@ -394,6 +481,14 @@ static int parse_mod(const char *path, Mod *m) {
                             m->hooks[i].target += bias[li];
                             break;
                         }
+            }
+        }
+        if (ok && (m->flags & SMOD_V2_FLAG_SUBMENU)) {
+            if (m->flags & SMOD_V2_FLAG_ACTION) {
+                ok = 0;
+            } else {
+                if (!(m->flags & SMOD_V2_FLAG_RELOC)) ml_lseek(fd, m->data_off + m->code_size);
+                if (!submenu_parse(fd, m)) ok = 0;
             }
         }
     } else {
@@ -491,7 +586,11 @@ static void rescan(Ctx *c) {
         for (uint32_t i = 0; i < c->mod_count; i++) {
             Mod *old = &c->mods[i];
             if (old->enabled || ml_strcmp(old->path, nm->path)) continue;
-            if (old->fnv == nm->fnv) nm->invalid = old->invalid;   /* unchanged file keeps its ERR state */
+            if (old->fnv == nm->fnv) {
+                nm->invalid = old->invalid;   /* unchanged file keeps its ERR state */
+                if (nm->sub_count && old->sub_count == nm->sub_count)
+                    ml_memcpy(nm->sub_vals, old->sub_vals, SMOD_SUBMENU_MAX_ITEMS);
+            }
             if (old->kind == KIND_V2 && nm->kind == KIND_V2 && old->addr &&
                 old->map_size >= nm->code_size + nm->extra_size) {
                 nm->addr = old->addr;
@@ -509,6 +608,11 @@ static void rescan(Ctx *c) {
         }
     for (uint32_t i = 0; i < keep_n; i++) ml_memcpy(&c->mods[i], &keep[i], sizeof(Mod));
     c->mod_count = keep_n;
+}
+
+static int is_action(const Mod *m) { return m->kind == KIND_V2 && (m->flags & SMOD_V2_FLAG_ACTION); }
+static int has_submenu(const Mod *m) {
+    return m->kind == KIND_V2 && (m->flags & SMOD_V2_FLAG_SUBMENU) && m->sub_count > 0u;
 }
 
 /* ---------------- menu tree ---------------- */
@@ -540,7 +644,13 @@ static void rebuild_view(Ctx *c) {
 }
 
 static void build_tree(Ctx *c) {
-    uint32_t n_items = c->view_count ? c->view_count : 1u;
+    uint32_t n_items;
+    if (c->sub_mod >= 0 && (uint32_t)c->sub_mod < c->mod_count && has_submenu(&c->mods[c->sub_mod])) {
+        n_items = 2u + (uint32_t)c->mods[c->sub_mod].sub_count;
+    } else {
+        c->sub_mod = -1;
+        n_items = c->view_count ? c->view_count : 1u;
+    }
     uint32_t n_pages = n_items > 12u ? 3u : (n_items > 6u ? 2u : 1u);
     c->page_count = n_pages;
     for (uint32_t i = 0; i < n_items && i < MAX_MODS; i++) {
@@ -645,6 +755,7 @@ static uint32_t core_before_set_root(uint32_t menu, uint32_t root_addr) {
             ml_log("auto_on", m->enabled ? m->addr : 0u);
         }
     }
+    c->sub_mod = -1;
     build_tree(c);
     if (root->children != c->root_children) {
         c->orig_root = root;
@@ -660,8 +771,6 @@ static uint32_t core_before_set_root(uint32_t menu, uint32_t root_addr) {
     return root_addr;
 }
 
-static int is_action(const Mod *m) { return m->kind == KIND_V2 && (m->flags & SMOD_V2_FLAG_ACTION); }
-
 static const char *state_text(const Mod *m) {
     if (m->invalid || (m->enabled && !m->present)) return "ERR";
     if (is_action(m)) return m->enabled ? (m->stale ? "Active*" : "Active") : "";
@@ -669,10 +778,23 @@ static const char *state_text(const Mod *m) {
     return "OFF";
 }
 
+static const char *state_text_top(const Mod *m) {
+    if (has_submenu(m) && !m->invalid && (!m->enabled || m->present)) {
+        if (m->enabled) return m->stale ? "ON* >" : "ON >";
+        return "OFF >";
+    }
+    return state_text(m);
+}
+
 /* Post the MENU key to the firmware event manager, as MenuTouchFull does for KEY_MENU (E0520):
  * operator new(16), event constructor (id, type 4, 1), push. ILCE-6400 reference addresses in
  * libObj.so, moved by the live libObj.so base. Returns 1 when the event was queued. */
-#ifdef MLV2_TARGET_A6100
+#ifdef MLV2_TARGET_ILCE6400A
+#define REF_EVMGR_SLOT   0x07319874u
+#define REF_OP_NEW       0x060bd48cu
+#define REF_EV_CTOR      0x060bc938u
+#define REF_EVMGR_PUSH   0x067f8c49u
+#elif defined(MLV2_TARGET_A6100)
 #define REF_EVMGR_DIRECT (REF_LIBOBJ_BASE + 0x1425c70u)
 #define REF_OP_NEW       (REF_LIBOBJ_BASE + 0x000fd974u)
 #define REF_EV_CTOR      (REF_LIBOBJ_BASE + 0x00840f7du)
@@ -705,10 +827,36 @@ static void refresh_rows(Ctx *c, uint32_t menu, int clear_unused) {
     if (!menu || *(volatile uint32_t *)(menu + 0x1f0u) != 7u) return;
     typedef void (*set_text_t)(void *, const char *);
     set_text_t set_text = (set_text_t)VIEW(MLV2_SET_TEXT);
-    set_text((void *)(menu + 0x5470u), c->in_folder ? c->folder_names[c->in_folder - 1u] : "Mods");
     uint32_t page = *(volatile uint32_t *)(menu + 0x1f4u);
     if (!page) page = 1;
     uint32_t base = (page - 1u) * 6u;
+    if (c->sub_mod >= 0 && (uint32_t)c->sub_mod < c->mod_count && has_submenu(&c->mods[c->sub_mod])) {
+        const Mod *m = &c->mods[c->sub_mod];
+        uint32_t total = 2u + (uint32_t)m->sub_count;
+        set_text((void *)(menu + 0x5470u), m->name);
+        for (uint32_t r = 0; r < 6u; r++) {
+            uint32_t btn = menu + 0x9350u + r * 0x1118u, idx = base + r;
+            if (idx < total) {
+                if (idx == 0u) {
+                    set_text((void *)(btn + 0x7c8u), "< Back");
+                    set_text((void *)(btn + 0xb60u), "");
+                } else if (idx == 1u) {
+                    set_text((void *)(btn + 0x7c8u), "Mod Status");
+                    set_text((void *)(btn + 0xb60u), state_text(m));
+                } else {
+                    uint32_t s = idx - 2u;
+                    uint8_t v = m->sub_vals[s] < m->sub_items[s].opt_count ? m->sub_vals[s] : 0u;
+                    set_text((void *)(btn + 0x7c8u), m->sub_items[s].label);
+                    set_text((void *)(btn + 0xb60u), m->sub_items[s].opts[v]);
+                }
+            } else if (clear_unused) {
+                set_text((void *)(btn + 0x7c8u), "");
+                set_text((void *)(btn + 0xb60u), "");
+            }
+        }
+        return;
+    }
+    set_text((void *)(menu + 0x5470u), c->in_folder ? c->folder_names[c->in_folder - 1u] : "Mods");
     for (uint32_t r = 0; r < 6u; r++) {
         uint32_t btn = menu + 0x9350u + r * 0x1118u, idx = base + r;
         if (idx < c->view_count) {
@@ -725,7 +873,7 @@ static void refresh_rows(Ctx *c, uint32_t menu, int clear_unused) {
                 set_text((void *)(btn + 0xb60u), val);
             } else {
                 set_text((void *)(btn + 0x7c8u), c->mods[v].name);
-                set_text((void *)(btn + 0xb60u), state_text(&c->mods[v]));
+                set_text((void *)(btn + 0xb60u), state_text_top(&c->mods[v]));
             }
         } else if (!r && !c->view_count) {
             set_text((void *)(btn + 0x7c8u), "No mods found");
@@ -746,6 +894,13 @@ static void core_after_refresh(uint32_t menu) {
     if (c->orig_root && c->orig_root->children == c->root_children) {
         c->root_children[6] = &c->tab_node;
         c->orig_root->child_count = 7;
+    }
+    if (!menu || *(volatile uint32_t *)(menu + 0x1f0u) != 7u) {
+        if (c->sub_mod >= 0) {
+            c->sub_mod = -1;
+            build_tree(c);
+        }
+        return;
     }
     refresh_rows(c, menu, 0);
 }
@@ -821,9 +976,17 @@ static int load_code(Mod *m) {
     return 0;
 }
 
+static void sync_sub_config(const Mod *m) {
+    if (m->kind != KIND_V2 || !m->sub_count || !m->addr) return;
+    uint8_t *dst = (uint8_t *)(m->addr + m->code_size + m->sub_bss_off);
+    for (uint32_t i = 0; i < m->sub_count; i++) dst[i] = m->sub_vals[i];
+    ml_flush_all((uint32_t)dst, (uint32_t)dst + m->sub_count);
+}
+
 /* Apply the hooks of a mod whose code is loaded and verified, then run its on() entry.
  * The caller has checked that every target still holds its original bytes. */
 static void enable_loaded(Mod *m) {
+    sync_sub_config(m);
     for (uint32_t h = 0; h < m->hook_count; h++) {
         Hook *hk = &m->hooks[h];
         uint8_t bytes[SMOD_MAX_PATCH];
@@ -932,6 +1095,10 @@ static void reload_mod(Ctx *c, const char *name) {
     toggle(m);
     if (m->enabled || !targets_original(m)) { reload_result("reload_err_off", m->addr); return; }
     ml_memcpy(n->folder, m->folder, sizeof(n->folder));
+    if (n->sub_count && m->sub_count == n->sub_count) {
+        for (uint32_t k = 0; k < n->sub_count; k++)
+            if (m->sub_vals[k] < n->sub_items[k].opt_count) n->sub_vals[k] = m->sub_vals[k];
+    }
     ml_memcpy(m, n, sizeof(Mod));
     if (!targets_original(m)) { m->invalid = 1; reload_result("reload_err_target", 1); return; }
     enable_loaded(m);
@@ -958,6 +1125,25 @@ static int process_reload(Ctx *c) {
     return 1;
 }
 
+static void menu_switch_view(Ctx *c, uint32_t menu, int32_t new_sub_mod, uint32_t focus_idx) {
+    c->sub_mod = new_sub_mod;
+    build_tree(c);
+    uint32_t pg = focus_idx >= 12u ? 2u : (focus_idx >= 6u ? 1u : 0u);
+    if (pg >= c->page_count) pg = 0u;
+    uint32_t rw = focus_idx - pg * 6u;
+    if ((int32_t)rw >= c->pages[pg].child_count) rw = 0u;
+    c->tab_node.selected_idx = (int32_t)(pg + 1u);
+    for (uint32_t p = 0; p < c->page_count; p++)
+        c->pages[p].selected_idx = (p == pg) ? (int32_t)(rw + 1u) : 1;
+    *(volatile uint32_t *)(menu + 0x1f4u) = pg + 1u;
+    *(volatile uint32_t *)(menu + 0x1f8u) = rw;
+#ifdef MLV2_TARGET_A6100
+    refresh_rows(c, menu, 1);
+#else
+    ((void (*)(uint32_t, uint32_t))VIEW(MLV2_MENU_REFRESH))(menu, 0u);
+#endif
+}
+
 static int core_before_enter(uint32_t menu, uint32_t leaf) {
     Ctx *c = ctx_get();
     if (!c) return -1;
@@ -967,6 +1153,43 @@ static int core_before_enter(uint32_t menu, uint32_t leaf) {
     if (disabled) return 0;
     uint32_t idx = 0;
     while (idx < MAX_MODS && (uint32_t)&c->items[idx] != leaf) idx++;
+    typedef void (*set_text_t)(void *, const char *);
+    if (c->sub_mod >= 0 && (uint32_t)c->sub_mod < c->mod_count && has_submenu(&c->mods[c->sub_mod])) {
+        uint32_t mi = (uint32_t)c->sub_mod;
+        Mod *m = &c->mods[mi];
+        if (idx == 0u) {
+            uint32_t focus_idx = 0u;
+            for (uint32_t k = 0; k < c->view_count; k++)
+                if (c->view_map[k] == (int16_t)mi) { focus_idx = k; break; }
+            menu_switch_view(c, menu, -1, focus_idx);
+            return 0;
+        }
+        if (idx == 1u) {
+            if (!m->enabled && m->folder[0]) {
+                for (uint32_t i = 0; i < c->mod_count; i++)
+                    if (&c->mods[i] != m && c->mods[i].enabled && !ml_strcmp(c->mods[i].folder, m->folder))
+                        toggle(&c->mods[i]);
+            }
+            toggle(m);
+            ((set_text_t)VIEW(MLV2_SET_TEXT))((void *)(menu + 0x9350u + 1u * 0x1118u + 0xb60u), state_text(m));
+            return 0;
+        }
+        uint32_t s = idx - 2u;
+        if (s < m->sub_count) {
+            uint8_t nxt = (uint8_t)(m->sub_vals[s] + 1u);
+            if (nxt >= m->sub_items[s].opt_count) nxt = 0u;
+            m->sub_vals[s] = nxt;
+            if (m->enabled && m->kind == KIND_V2 && m->addr) {
+                sync_sub_config(m);
+                if (m->sub_cfg_off) call_entry(m->addr + m->sub_cfg_off, 2);
+                ml_log("mod_cfg", ((uint32_t)s << 8) | nxt);
+            }
+            uint32_t row = idx >= 12u ? idx - 12u : (idx >= 6u ? idx - 6u : idx);
+            ((set_text_t)VIEW(MLV2_SET_TEXT))(
+                (void *)(menu + 0x9350u + row * 0x1118u + 0xb60u), m->sub_items[s].opts[nxt]);
+        }
+        return 0;
+    }
     if (idx >= c->view_count) return 0;
     int16_t v = c->view_map[idx];
     if (v < 0) {
@@ -978,6 +1201,10 @@ static int core_before_enter(uint32_t menu, uint32_t leaf) {
         return 0;
     }
     Mod *m = &c->mods[v];
+    if (has_submenu(m) && !m->invalid) {
+        menu_switch_view(c, menu, (int32_t)v, 1u);
+        return 0;
+    }
     if (!m->enabled && m->folder[0]) {
         for (uint32_t i = 0; i < c->mod_count; i++)
             if (&c->mods[i] != m && c->mods[i].enabled && !ml_strcmp(c->mods[i].folder, m->folder))
@@ -1032,9 +1259,69 @@ int core_init(ShimState *s) {
     core_slot = MLV2_REF_SHIM_ADDR + (layout ? s->testcmd_bias : 0u);
     Ctx *c = (Ctx *)s->ctx;
     if (c && (c->magic != CTX_MAGIC || c->version != CTX_VERSION)) {
-        for (uint32_t i = 0; i < MAX_MODS; i++)
-            if (c->magic == CTX_MAGIC && i < c->mod_count && c->mods[i].enabled) { ml_log("core_refuse", c->version); return -1; }
+#if !defined(MLV2_TARGET_ILCE6400A) && !defined(MLV2_TARGET_A6100)
+        if (c->magic == CTX_MAGIC && c->version == 2u) {
+            V2Ctx *v2 = (V2Ctx *)c;
+            if (v2->mod_count > V2_MAX_MODS) { ml_log("core_refuse", v2->version); return -1; }
+            Ctx *nc = (Ctx *)ml_mmap_rwx(CTX_BYTES);
+            if (!nc) return -2;
+            ml_memset(nc, 0, sizeof(*nc));
+            nc->magic = CTX_MAGIC;
+            nc->version = CTX_VERSION;
+            nc->mod_count = v2->mod_count;
+            nc->page_count = v2->page_count;
+            nc->vtable_ready = v2->vtable_ready;
+            nc->sub_mod = -1;
+            nc->orig_root = v2->orig_root;
+            nc->orig_tab5 = v2->orig_tab5;
+            nc->last_menu = v2->last_menu;
+            ml_memcpy(nc->vtable, v2->vtable, sizeof(nc->vtable));
+            ml_memcpy(nc->root_children, v2->root_children, sizeof(nc->root_children));
+            for (uint32_t i = 0; i < v2->mod_count; i++) {
+                const V2Mod *s2 = &v2->mods[i];
+                Mod *d2 = &nc->mods[i];
+                ml_memcpy(d2->name, s2->name, sizeof(s2->name));
+                ml_memcpy(d2->path, s2->path, sizeof(s2->path));
+                d2->fnv = s2->fnv;
+                d2->kind = s2->kind;
+                d2->enabled = s2->enabled;
+                d2->invalid = s2->invalid;
+                d2->flags = s2->flags;
+                d2->hook_count = s2->hook_count;
+                d2->present = s2->present;
+                d2->stale = s2->stale;
+                d2->off_called = s2->off_called;
+                d2->code_size = s2->code_size;
+                d2->extra_size = s2->extra_size;
+                d2->addr = s2->addr;
+                d2->map_size = s2->map_size;
+                d2->state_addr = s2->state_addr;
+                d2->on_off = s2->on_off;
+                d2->off_off = s2->off_off;
+                d2->data_off = s2->data_off;
+                ml_memcpy(d2->hooks, s2->hooks, sizeof(s2->hooks));
+            }
+            nc->original_children = v2->original_children;
+            nc->original_child_count = v2->original_child_count;
+            rebuild_view(nc);
+            build_tree(nc);
+            nc->tab_node.parent = nc->orig_root;
+            if (nc->orig_root && nc->orig_root->children == v2->root_children) {
+                nc->root_children[6] = &nc->tab_node;
+                nc->orig_root->children = nc->root_children;
+            }
+            c = nc;
+            ml_log("ctx_v2_migrated", nc->mod_count);
+        } else if (c->magic == CTX_MAGIC) {
+            ml_log("core_refuse", c->version);
+            return -1;
+        } else {
+            c = 0;
+        }
+#else
+        if (c->magic == CTX_MAGIC && c->mod_count) { ml_log("core_refuse", c->version); return -1; }
         c = 0;
+#endif
     }
     if (!c) {
         c = (Ctx *)ml_mmap_rwx(CTX_BYTES);
@@ -1042,6 +1329,7 @@ int core_init(ShimState *s) {
         ml_memset(c, 0, sizeof(*c));
         c->magic = CTX_MAGIC;
         c->version = CTX_VERSION;
+        c->sub_mod = -1;
         import_v1(c);
         /* Fresh install (no v1): provide the anchor block the tab artwork uses for its cache. */
         volatile uint32_t *anchor = (volatile uint32_t *)VIEW(MLV2_V1_ANCHOR);

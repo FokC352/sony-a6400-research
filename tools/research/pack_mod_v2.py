@@ -34,7 +34,41 @@ NO_FIXUP = 0xFF
 FLAG_RELOC = 4
 FLAG_AUTO_ON = 8
 FLAG_ACTION = 16   # command item: press starts it and closes the menu (no ON/OFF switch)
+FLAG_SUBMENU = 32  # nested submenu item: SMNU trailer defines configurable options
 RELOC_MAGIC = 0x31434C52
+SUBMENU_MAGIC = 0x554E4D53
+SUBMENU_MAX_ITEMS = 8
+SUBMENU_MAX_OPTS = 6
+
+
+def pack_submenu_table(items: list[tuple[str, int, list[str]]], bss_off: int, bss_size: int,
+                       cfg_off: int = 0) -> bytes:
+    """Pack an SMNU nested submenu trailer (header + items + FNV-1a)."""
+    if not 1 <= len(items) <= SUBMENU_MAX_ITEMS:
+        raise ValueError(f"submenu must have 1..{SUBMENU_MAX_ITEMS} items")
+    if bss_off < 0 or bss_off > 255 or bss_off + len(items) > bss_size:
+        raise ValueError(
+            f"submenu bss_off ({bss_off}) + {len(items)} items must fit inside --bss ({bss_size})"
+        )
+    body = bytearray(struct.pack("<IBBHI", SUBMENU_MAGIC, len(items), bss_off, 0, cfg_off))
+    for label, default_idx, opts in items:
+        if not 2 <= len(opts) <= SUBMENU_MAX_OPTS:
+            raise ValueError(f"submenu item {label!r} must have 2..{SUBMENU_MAX_OPTS} options")
+        if not 0 <= default_idx < len(opts):
+            raise ValueError(f"submenu item {label!r} default {default_idx} out of range")
+        lbl_b = label.encode("ascii")
+        if len(lbl_b) > 23:
+            raise ValueError(f"submenu label {label!r} exceeds 23 ASCII bytes")
+        opt_blob = bytearray(SUBMENU_MAX_OPTS * 18)
+        for idx, opt in enumerate(opts):
+            ob = opt.encode("ascii")
+            if len(ob) > 17:
+                raise ValueError(f"submenu option {opt!r} exceeds 17 ASCII bytes")
+            opt_blob[idx * 18 : idx * 18 + len(ob)] = ob
+        body += struct.pack("<BB2x24s", len(opts), default_idx, lbl_b.ljust(24, b"\x00"))
+        body += opt_blob
+    body += struct.pack("<I", fnv1a_32(bytes(body)))
+    return bytes(body)
 
 
 def read_layout(path: Path) -> dict[str, tuple[int, int]]:
@@ -178,9 +212,16 @@ def main():
     ap.add_argument("--auto-on", action="store_true", help="the core switches the mod ON when it first lists it")
     ap.add_argument("--action", action="store_true",
                     help="command item: pressing it starts the mod and closes the menu; no ON/OFF value")
+    ap.add_argument("--submenu-item", action="append", default=[],
+                    help="LABEL:DEFAULT_IDX:OPT0|OPT1[|...] nested submenu item")
+    ap.add_argument("--submenu-bss-off", type=int, default=0,
+                    help="offset in --bss where uint8_t[item_count] option values are written")
+    ap.add_argument("--submenu-cfg", help="Thumb symbol called with reason=2 when an option changes while ON")
     ap.add_argument("--data-symbol", action="append", default=[],
                     help="symbol of an embedded data blob whose bytes are never relocated")
     a = ap.parse_args()
+    if a.action and a.submenu_item:
+        raise SystemExit("--action and --submenu-item cannot be combined")
     elf = a.elf.read_bytes()
     _, code, syms = extract_elf_text(elf, expected_code_addr=0)
 
@@ -202,12 +243,25 @@ def main():
             raise SystemExit(f"unknown --data-symbol {missing}")
         table, report, libs = reloc_table(code, elf, read_layout(a.reloc_layout), [h[0] for h in hooks],
                                           {int(v, 0) for v in a.no_reloc}, a.data_symbol)
-    blob = pack_smod_v2(a.name, code, sym(a.on) if a.on else 0, sym(a.off) if a.off else 0, a.bss, hooks,
-                        flags=(FLAG_RELOC if table else 0) | (FLAG_AUTO_ON if a.auto_on else 0) |
-                        (FLAG_ACTION if a.action else 0)) + table
+    submenu_blob = b""
+    if a.submenu_item:
+        parsed_items = []
+        for raw_item in a.submenu_item:
+            parts = raw_item.split(":", 2)
+            if len(parts) != 3:
+                raise SystemExit(f"invalid --submenu-item {raw_item!r}; expected LABEL:DEFAULT_IDX:OPT0|OPT1")
+            lbl, def_s, opt_s = parts
+            parsed_items.append((lbl, int(def_s, 0), opt_s.split("|")))
+        cfg_off = sym(a.submenu_cfg) if a.submenu_cfg else 0
+        submenu_blob = pack_submenu_table(parsed_items, a.submenu_bss_off, a.bss, cfg_off)
+    blob = (pack_smod_v2(a.name, code, sym(a.on) if a.on else 0, sym(a.off) if a.off else 0, a.bss, hooks,
+                         flags=(FLAG_RELOC if table else 0) | (FLAG_AUTO_ON if a.auto_on else 0) |
+                         (FLAG_ACTION if a.action else 0) | (FLAG_SUBMENU if submenu_blob else 0))
+            + table + submenu_blob)
     a.out.write_bytes(blob)
     info = {"name": a.name, "file": str(a.out), "code_bytes": len(code), "hooks": len(hooks),
-            "size": len(blob), "sha256": hashlib.sha256(blob).hexdigest()}
+            "submenu_items": len(a.submenu_item), "size": len(blob),
+            "sha256": hashlib.sha256(blob).hexdigest()}
     if table:
         info.update(reloc_libs=libs, reloc_words=report)
     print(json.dumps(info, indent=2))

@@ -15,6 +15,19 @@
  */
 #include <stdint.h>
 
+#ifdef TARGET_ILCE6400A
+#define M16_BASE_PA    0x03E27DE0u
+#define M17_BASE_PA    0x03E27E2Cu
+#define T16_NTSC_PA    0x03E2833Cu
+#define T16_PAL_PA     0x03E28504u
+#define DMM_4K_0_PA    0x03DF45E4u
+#define DMM_4K_1_PA    0x03DF468Cu
+#define DMM_4K_2_PA    0x03DF4734u
+#define VPI_4K_0_PA    0x03DF4B3Cu
+#define VPI_4K_1_PA    0x04548678u
+#define VPI_4K_2_PA    0x045747A8u
+#define LIBMPR_BASE    0x075CE000u
+#else
 #define M16_BASE_PA    0x03E25430u
 #define M17_BASE_PA    0x03E2547Cu
 #define T16_NTSC_PA    0x03E2598Cu
@@ -26,6 +39,7 @@
 #define VPI_4K_1_PA    0x0454388Cu
 #define VPI_4K_2_PA    0x04570198u
 #define LIBMPR_BASE    0x07144000u
+#endif
 #define AIF0_W1_PA     0xF3002400u
 #define AIF0_W2_PA     0xF3002480u
 
@@ -73,6 +87,51 @@ static char swap_u32(long fd, uint32_t pa, uint32_t expected, uint32_t target, u
     *out_val = cur;
     sc3(91 /* munmap */, base, 4096, 0);
     return code;
+}
+
+static uint32_t find_libmpr_base(void) {
+    long fd = sc3(5 /* open */, (long)"/proc/self/maps", 0 /* O_RDONLY */, 0);
+    if (fd < 0) return 0u;
+    char buf[256], line[192];
+    int lpos = 0, got;
+    uint32_t base = 0u;
+    while (!base && (got = (int)sc3(3 /* read */, fd, (long)buf, sizeof(buf))) > 0) {
+        for (int k = 0; k < got; k++) {
+            char ch = buf[k];
+            if (ch != '\n') {
+                if (lpos + 1 < (int)sizeof(line)) line[lpos++] = ch;
+                continue;
+            }
+            line[lpos] = 0;
+            uint32_t lo = 0u, off = 0u;
+            int i = 0;
+            while (line[i] && line[i] != '-') {
+                char c = line[i++];
+                uint32_t d = (c >= '0' && c <= '9') ? (uint32_t)(c - '0') : (uint32_t)((c | 0x20) - 'a' + 10);
+                lo = (lo << 4) | d;
+            }
+            while (line[i] && line[i] != ' ') i++;
+            while (line[i] == ' ') i++;
+            while (line[i] && line[i] != ' ') i++;
+            while (line[i] == ' ') i++;
+            while (line[i] && line[i] != ' ') {
+                char c = line[i++];
+                uint32_t d = (c >= '0' && c <= '9') ? (uint32_t)(c - '0') : (uint32_t)((c | 0x20) - 'a' + 10);
+                off = (off << 4) | d;
+            }
+            if (off == 0u && lpos >= 10) {
+                const char *suf = "/libmpr.so";
+                int match = 1;
+                for (int s = 0; s < 10; s++) {
+                    if (line[lpos - 10 + s] != suf[s]) { match = 0; break; }
+                }
+                if (match) base = lo;
+            }
+            lpos = 0;
+        }
+    }
+    sc3(6 /* close */, fd, 0, 0);
+    return base;
 }
 
 static char swap_proc_u32(uint32_t va, uint32_t expected, uint32_t target, uint32_t *out_val) {
@@ -153,24 +212,29 @@ static void run_mod(int enable) {
         { VPI_4K_1_PA + 0x08u, 3840u, 3240u },
         { VPI_4K_2_PA + 0x00u, 3840u, 3240u },
     };
+#ifdef TARGET_ILCE6400A
+    static const uint32_t venc_u16_pas[14] = {
+        0x03E3959Cu, 0x03E395FCu, 0x03E3977Cu, 0x03E397E0u, 0x03E39844u, 0x03E398A8u, 0x03E3990Cu, 0x03E39970u,
+        0x03E3A5F0u, 0x03E3A654u, 0x03E3A6B8u, 0x03E3A71Cu, 0x03E3A780u, 0x03E3A7E4u,
+    };
+    static const uint32_t libmpr_u32_offs[6] = {
+        0x00A2F3D4u, 0x00A2F3E4u, 0x00A2F3F4u, 0x00A2F404u, 0x00A2F414u, 0x00A5A130u,
+    };
+    static const uint32_t libmpr_u16_offs[4] = {
+        0x007C81E0u, 0x007C9A78u, 0x008EBE20u, 0x00A5A37Cu,
+    };
+#else
     static const uint32_t venc_u16_pas[14] = {
         0x03E369F4u, 0x03E36A54u, 0x03E36BD4u, 0x03E36C38u, 0x03E36C9Cu, 0x03E36D00u, 0x03E36D64u, 0x03E36DC8u,
         0x03E37A48u, 0x03E37AACu, 0x03E37B10u, 0x03E37B74u, 0x03E37BD8u, 0x03E37C3Cu,
     };
-    static const uint32_t libmpr_u32_vas[6] = {
-        LIBMPR_BASE + 0x00A2F114u,
-        LIBMPR_BASE + 0x00A2F124u,
-        LIBMPR_BASE + 0x00A2F134u,
-        LIBMPR_BASE + 0x00A2F144u,
-        LIBMPR_BASE + 0x00A2F154u,
-        LIBMPR_BASE + 0x00A59E78u,
+    static const uint32_t libmpr_u32_offs[6] = {
+        0x00A2F114u, 0x00A2F124u, 0x00A2F134u, 0x00A2F144u, 0x00A2F154u, 0x00A59E78u,
     };
-    static const uint32_t libmpr_u16_vas[4] = {
-        LIBMPR_BASE + 0x007C7FD0u,
-        LIBMPR_BASE + 0x007C9868u,
-        LIBMPR_BASE + 0x008EBC28u,
-        LIBMPR_BASE + 0x00A5A0C4u,
+    static const uint32_t libmpr_u16_offs[4] = {
+        0x007C7FD0u, 0x007C9868u, 0x008EBC28u, 0x00A5A0C4u,
     };
+#endif
 
     lbuf_t l;
     l.n = 0;
@@ -183,7 +247,12 @@ static void run_mod(int enable) {
         ps(&l, "c=");
         int ok = 0;
         uint32_t last_w = 0, last_h = 0, mpr_w = 0;
-        for (int i = 0; i < 27; i++) {
+#ifdef OG_SENSOR_ONLY
+        const int patch_cnt = 16;
+#else
+        const int patch_cnt = 27;
+#endif
+        for (int i = 0; i < patch_cnt; i++) {
             uint32_t exp_v = enable ? patches[i].stock : patches[i].patched;
             uint32_t tgt_v = enable ? patches[i].patched : patches[i].stock;
             uint32_t out_v = 0;
@@ -193,6 +262,10 @@ static void run_mod(int enable) {
             if (i == 1) last_w = out_v;
             if (i == 3) last_h = out_v;
         }
+#ifdef OG_SENSOR_ONLY
+        ps(&l, " v=skip");
+        (void)venc_u16_pas;
+#else
         ps(&l, " v=");
         for (int i = 0; i < 14; i++) {
             uint32_t out_v = 0;
@@ -203,12 +276,39 @@ static void run_mod(int enable) {
             pc(&l, c);
             if (c == 'w' || c == 'a') ok++;
         }
+#endif
         sc3(6 /* close */, fd, 0, 0);
 
+#ifdef OG_ENABLE_LIBMPR
+        ps(&l, " m=");
+        uint32_t mpr_base = find_libmpr_base();
+        if (!mpr_base) {
+            ps(&l, "nomap");
+        } else {
+            for (int i = 0; i < 6; i++) {
+                uint32_t out_v = 0;
+                char c = swap_proc_u32(mpr_base + libmpr_u32_offs[i], enable ? 3840u : 3240u, enable ? 3240u : 3840u, &out_v);
+                pc(&l, c);
+                if (c == 'w' || c == 'a') ok++;
+                if (i == 5) mpr_w = out_v;
+            }
+            for (int i = 0; i < 4; i++) {
+                uint32_t out_v = 0;
+                char c = swap_proc_u32(mpr_base + libmpr_u16_offs[i],
+                                       enable ? U16_3840_2160 : U16_3240_2160,
+                                       enable ? U16_3240_2160 : U16_3840_2160,
+                                       &out_v);
+                pc(&l, c);
+                if (c == 'w' || c == 'a') ok++;
+            }
+        }
+#else
         ps(&l, " m=skip");
-        (void)libmpr_u32_vas;
-        (void)libmpr_u16_vas;
+        (void)libmpr_u32_offs;
+        (void)libmpr_u16_offs;
+        (void)find_libmpr_base;
         (void)swap_proc_u32;
+#endif
 
         uint32_t w1 = 0, w2_sz = 0;
         read_u32_ro(AIF0_W1_PA + 0x24u, &w1);

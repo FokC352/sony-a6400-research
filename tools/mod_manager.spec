@@ -19,9 +19,18 @@ datas = [
     (str(ROOT / "tools" / "mod_manager_ui"), "tools/mod_manager_ui"),
     (str(ROOT / "mods" / "menu_touch_full" / "MenuTouchFull.mod"), "bundled_mods"),
     (str(ARRIVEDERCI_PATH), "bundled_mods"),
-    (str(ROOT / "mods" / "open_gate" / "OpenGateSensor.mod"), "bundled_mods"),
-    (str(ROOT / "mods" / "open_gate" / "OpenGate32.mod"), "bundled_mods"),
 ]
+for optional_mod in (
+    ROOT / "mods" / "open_gate" / "OpenGateSensor.mod",
+    ROOT / "mods" / "open_gate" / "OpenGate32.mod",
+):
+    if optional_mod.is_file():
+        datas.append((str(optional_mod), "bundled_mods"))
+
+a6400a_mods_dir = ROOT / "mods" / "ilce_6400a"
+if a6400a_mods_dir.is_dir():
+    for mod_file in sorted(a6400a_mods_dir.glob("*.mod")):
+        datas.append((str(mod_file), "bundled_mods/ilce_6400a"))
 binaries = []
 hiddenimports = [
     "src.a6400.mod_manager",

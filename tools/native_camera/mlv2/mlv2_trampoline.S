@@ -4,6 +4,14 @@
 /* Mod Loader v2: the v1 view-hook trampolines (verbatim), default enter_selected variant.
  * Generated from tools/native_camera/mod_loader_trampoline.S. Return addresses are written as
  * viewUnified2.so offsets so package.py can record them for relocation. */
+#ifdef MLV2_TARGET_ILCE6400A
+#ifndef MLV2_VIEW_BASE
+#define MLV2_VIEW_BASE 0x12f46000
+#endif
+#define HOOK_SET_ROOT_OFF  0x5af8a4
+#define HOOK_REFRESH_OFF   0x5afcd0
+#define HOOK_OPEN_ITEM_OFF 0x5b0294
+#else
 #ifndef MLV2_VIEW_BASE
 #define MLV2_VIEW_BASE 0x155e6000
 #endif
@@ -15,6 +23,7 @@
 #define HOOK_SET_ROOT_OFF  0x5ab654
 #define HOOK_REFRESH_OFF   0x5aba80
 #define HOOK_OPEN_ITEM_OFF 0x5ac044
+#endif
 #endif
 
 .global ml_hook_set_root

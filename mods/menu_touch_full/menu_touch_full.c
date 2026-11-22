@@ -34,6 +34,65 @@
 #define MT_MAX_PAGES 15u
 #define MT_MAX_ROWS 6u
 
+/* Reference-layout addresses (relocated at load time via RLC1 /proc/self/maps). */
+#ifdef TARGET_ILCE6400A
+#define MT_SYS_GET_INST      0x06599e7du
+#define MT_GET_POS           0x0659a165u
+#define MT_WGT_LOOKUP        0x06574e1bu
+#define MT_WGT_IS_HIT        0x065961cdu
+#define MT_WGT_INH_MODE      0x06596a69u
+#define MT_VIEW_MGR_SLOT     0x073c7a98u
+#define MT_EVMGR_SLOT        0x07319874u
+#define MT_OP_NEW            0x060bd48cu
+#define MT_EV_CTOR           0x060bc938u
+#define MT_EVMGR_PUSH        0x067f8c49u
+#define MT_VT_MENU_TAB       0x138805b8u
+#define MT_VT_VIEW_SETTING   0x13829860u
+#define MT_MENU_BINDING      0x134f5681u
+#define MT_MENU_REFRESH      0x134f6361u
+#define MT_MENU_MAIN_STATE   0x134f4785u
+#define MT_MENU_ENTER_SEL    0x134f6295u
+#define MT_POPUP_OPEN        0x134f9db1u
+#define MT_POPUP_CANCEL      0x134f5a9du
+#define MT_POPUP_UP          0x134f559du
+#define MT_POPUP_DOWN        0x134f55c7u
+#define MT_POPUP_SET_ROW     0x134fb161u
+#define MT_POPUP_CONFIRM     0x134fa5dbu
+#define MT_POPUP_APPLY       0x1315b6adu
+#define MT_VT_SETTING_NODE   0x14579428u
+#define MT_NODE_SEL_INDEX    0x14286c03u
+#define MT_NODE_IDX_CHILD    0x14286ba7u
+#define MT_NODE_SET_SEL_IDX  0x142870c7u
+#else
+#define MT_SYS_GET_INST      0x06308d31u
+#define MT_GET_POS           0x06309019u
+#define MT_WGT_LOOKUP        0x062e27dfu
+#define MT_WGT_IS_HIT        0x06305081u
+#define MT_WGT_INH_MODE      0x0631e815u
+#define MT_VIEW_MGR_SLOT     0x0713D7ECu
+#define MT_EVMGR_SLOT        0x07089984u
+#define MT_OP_NEW            0x05E15974u
+#define MT_EV_CTOR           0x05E14E20u
+#define MT_EVMGR_PUSH        0x05E18D5Du
+#define MT_VT_MENU_TAB       0x15f1f1d0u
+#define MT_VT_VIEW_SETTING   0x15EC8270u
+#define MT_MENU_BINDING      0x15b91431u
+#define MT_MENU_REFRESH      0x15b92111u
+#define MT_MENU_MAIN_STATE   0x15b90535u
+#define MT_MENU_ENTER_SEL    0x15b92045u
+#define MT_POPUP_OPEN        0x15b95b61u
+#define MT_POPUP_CANCEL      0x15b9184du
+#define MT_POPUP_UP          0x15b9134du
+#define MT_POPUP_DOWN        0x15b91377u
+#define MT_POPUP_SET_ROW     0x15b96f11u
+#define MT_POPUP_CONFIRM     0x15b9638bu
+#define MT_POPUP_APPLY       0x157f8ca5u
+#define MT_VT_SETTING_NODE   0x16c183e8u
+#define MT_NODE_SEL_INDEX    0x16925c17u
+#define MT_NODE_IDX_CHILD    0x16925bc7u
+#define MT_NODE_SET_SEL_IDX  0x169260dbu
+#endif
+
 struct mt_point {
     float x;
     float y;
@@ -91,7 +150,7 @@ static unsigned rd8(uint32_t addr, unsigned off) {
 static inline uint32_t primary_widget_system(void) {
 #ifdef MT_SMOD_V2
     /* This libObj accessor returns the live singleton, whose heap address is not relocatable. */
-    uint32_t (*get_instance)(void) = (void *)0x06308d31u;
+    uint32_t (*get_instance)(void) = (void *)MT_SYS_GET_INST;
     return get_instance();
 #else
     return MT_SYSTEM_ADDR;
@@ -132,15 +191,15 @@ static void record_event(volatile struct mt_full_state *s, uint32_t action, uint
 }
 
 static void sync_refresh(uint32_t menu) {
-    void (*binding)(uint32_t) = (void *)0x15b91431u;
-    void (*refresh)(uint32_t, uint32_t) = (void *)0x15b92111u;
+    void (*binding)(uint32_t) = (void *)MT_MENU_BINDING;
+    void (*refresh)(uint32_t, uint32_t) = (void *)MT_MENU_REFRESH;
     binding(menu);
     refresh(menu, 0u);
 }
 
 static uint32_t find_setting_menu_view(uint32_t menu) {
     uint32_t vid = rd32(menu, 0x14cu);
-    uint32_t vm = rd32(0x0713D7ECu, 0u);
+    uint32_t vm = rd32(MT_VIEW_MGR_SLOT, 0u);
     if (!vm) {
         return 0u;
     }
@@ -155,11 +214,11 @@ static uint32_t find_setting_menu_view(uint32_t menu) {
         if (!vwrap || rd32(ent, 8u) != vid) {
             continue;
         }
-        if (rd32(vwrap, 0u) == 0x15EC8270u) {
+        if (rd32(vwrap, 0u) == MT_VT_VIEW_SETTING) {
             return vwrap;
         }
         uint32_t inner = rd32(vwrap, 0x18u);
-        if (inner && rd32(inner, 0u) == 0x15EC8270u) {
+        if (inner && rd32(inner, 0u) == MT_VT_VIEW_SETTING) {
             return inner;
         }
     }
@@ -167,13 +226,13 @@ static uint32_t find_setting_menu_view(uint32_t menu) {
 }
 
 static void push_async_event(uint32_t event_id, uint8_t ev_type) {
-    uint32_t mgr = rd32(rd32(0x07089984u, 0u), 0u);
+    uint32_t mgr = rd32(rd32(MT_EVMGR_SLOT, 0u), 0u);
     if (!mgr || !event_id) {
         return;
     }
-    void *(*op_new)(uint32_t) = (void *)0x05E15974u;
-    void (*ev_ctor)(void *, uint32_t, uint8_t, uint8_t) = (void *)0x05E14E20u;
-    void (*evmgr_push)(uint32_t, void *, uint32_t) = (void *)0x05E18D5Du;
+    void *(*op_new)(uint32_t) = (void *)MT_OP_NEW;
+    void (*ev_ctor)(void *, uint32_t, uint8_t, uint8_t) = (void *)MT_EV_CTOR;
+    void (*evmgr_push)(uint32_t, void *, uint32_t) = (void *)MT_EVMGR_PUSH;
     void *ev = op_new(16u);
     if (!ev) {
         return;
@@ -186,17 +245,17 @@ static void handle_popup_touch(volatile struct mt_full_state *s, uint32_t menu,
                                int16_t x, int16_t y, int dx, int dy, int has_press) {
     uint32_t popup = menu + 0xfb20u;
     uint32_t pnode = rd32(popup, 0x6490u);
-    if (!pnode || rd32(pnode, 0u) != 0x16c183e8u) {
+    if (!pnode || rd32(pnode, 0u) != MT_VT_SETTING_NODE) {
         return;
     }
 
-    int (*is_hit)(uint32_t, const struct mt_point *) = (void *)0x6305081u;
-    void (*cancel_popup)(uint32_t) = (void *)0x15b9184du;
-    void (*popup_up)(uint32_t) = (void *)0x15b9134du;
-    void (*popup_down)(uint32_t) = (void *)0x15b91377u;
-    void (*set_popup_row)(uint32_t, uint32_t) = (void *)0x15b96f11u;
-    void (*confirm_popup)(uint32_t) = (void *)0x15b9638bu;
-    void (*apply_popup)(uint32_t) = (void *)0x157f8ca5u;
+    int (*is_hit)(uint32_t, const struct mt_point *) = (void *)MT_WGT_IS_HIT;
+    void (*cancel_popup)(uint32_t) = (void *)MT_POPUP_CANCEL;
+    void (*popup_up)(uint32_t) = (void *)MT_POPUP_UP;
+    void (*popup_down)(uint32_t) = (void *)MT_POPUP_DOWN;
+    void (*set_popup_row)(uint32_t, uint32_t) = (void *)MT_POPUP_SET_ROW;
+    void (*confirm_popup)(uint32_t) = (void *)MT_POPUP_CONFIRM;
+    void (*apply_popup)(uint32_t) = (void *)MT_POPUP_APPLY;
     uint32_t view = find_setting_menu_view(menu);
 
     unsigned total = rd32(pnode, 8u);
@@ -252,7 +311,7 @@ static void handle_popup_touch(volatile struct mt_full_state *s, uint32_t menu,
 
 static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t system, uint32_t mouse) {
     int16_t x = 0, y = 0;
-    void (*get_pos)(uint32_t, unsigned, int16_t *, int16_t *) = (void *)0x6309019u;
+    void (*get_pos)(uint32_t, unsigned, int16_t *, int16_t *) = (void *)MT_GET_POS;
     get_pos(system, mouse, &x, &y);
 
     int has_press = (s->press_valid != 0u);
@@ -265,15 +324,15 @@ static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t system,
     }
 
     uint32_t err = ~0u;
-    uint32_t (*lookup)(uint32_t, uint32_t, uint32_t, uint32_t *) = (void *)0x62e27dfu;
+    uint32_t (*lookup)(uint32_t, uint32_t, uint32_t, uint32_t *) = (void *)MT_WGT_LOOKUP;
     uint32_t menu = lookup(0xaadca2c7u, 0xdfdc8dddu, 0xa056f604u, &err);
-    if (err || !menu || rd32(menu, 0u) != 0x15f1f1d0u || rd32(menu, 0x1cu) != menu) {
+    if (err || !menu || rd32(menu, 0u) != MT_VT_MENU_TAB || rd32(menu, 0x1cu) != menu) {
         return;
     }
 
-    int (*main_state)(uint32_t) = (void *)0x15b90535u;
-    int (*inherited_mode)(uint32_t) = (void *)0x631e815u;
-    int (*popup_open)(uint32_t) = (void *)0x15b95b61u;
+    int (*main_state)(uint32_t) = (void *)MT_MENU_MAIN_STATE;
+    int (*inherited_mode)(uint32_t) = (void *)MT_WGT_INH_MODE;
+    int (*popup_open)(uint32_t) = (void *)MT_POPUP_OPEN;
     if (rd8(menu, 0x21u) != 2u || inherited_mode(menu) > 2) {
         return;
     }
@@ -295,15 +354,15 @@ static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t system,
     }
 
     uint32_t root = rd32(menu, 0x186acu);
-    if (!root || rd32(root, 0u) != 0x16c183e8u) {
+    if (!root || rd32(root, 0u) != MT_VT_SETTING_NODE) {
         return;
     }
 
-    int (*selected_index)(uint32_t, unsigned *) = (void *)0x16925c17u;
-    int (*indexed_child)(uint32_t, unsigned, uint32_t *) = (void *)0x16925bc7u;
-    int (*set_selected_index)(uint32_t, unsigned) = (void *)0x169260dbu;
-    int (*is_hit)(uint32_t, const struct mt_point *) = (void *)0x6305081u;
-    int (*enter_selected)(uint32_t, uint32_t) = (void *)0x15b92045u;
+    int (*selected_index)(uint32_t, unsigned *) = (void *)MT_NODE_SEL_INDEX;
+    int (*indexed_child)(uint32_t, unsigned, uint32_t *) = (void *)MT_NODE_IDX_CHILD;
+    int (*set_selected_index)(uint32_t, unsigned) = (void *)MT_NODE_SET_SEL_IDX;
+    int (*is_hit)(uint32_t, const struct mt_point *) = (void *)MT_WGT_IS_HIT;
+    int (*enter_selected)(uint32_t, uint32_t) = (void *)MT_MENU_ENTER_SEL;
 
     unsigned tabs = rd32(root, 8u), tab_sel = 0;
     if (tabs < 1u || tabs > MT_MAX_TABS ||
@@ -338,7 +397,7 @@ static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t system,
 
     uint32_t tab_node = 0;
     if (indexed_child(root, tab_sel, &tab_node) != 1 || !tab_node ||
-        rd32(tab_node, 0u) != 0x16c183e8u) {
+        rd32(tab_node, 0u) != MT_VT_SETTING_NODE) {
         return;
     }
 
@@ -347,7 +406,7 @@ static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t system,
     if (pages < 1u || pages > MT_MAX_PAGES ||
         selected_index(tab_node, &page_sel) != 1 || page_sel < 1u || page_sel > pages ||
         indexed_child(tab_node, page_sel, &page_node) != 1 || !page_node ||
-        rd32(page_node, 0u) != 0x16c183e8u) {
+        rd32(page_node, 0u) != MT_VT_SETTING_NODE) {
         return;
     }
 
@@ -431,7 +490,7 @@ uint32_t mt_full_press(void *system, void *message) {
         unsigned mouse = ((const uint8_t *)message)[0x14];
         if (mouse < 4u) {
             int16_t px = 0, py = 0;
-            void (*get_pos)(uint32_t, unsigned, int16_t *, int16_t *) = (void *)0x6309019u;
+            void (*get_pos)(uint32_t, unsigned, int16_t *, int16_t *) = (void *)MT_GET_POS;
             get_pos((uint32_t)system, mouse, &px, &py);
             if (px != 32767 && py != 32767) {
                 s->press_x = px;

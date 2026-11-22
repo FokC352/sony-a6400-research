@@ -18,6 +18,7 @@ from src.a6400.mod_manager.camera_service import (
     MLV2_HOOKS,
     REF_TESTCMD_BASE,
     REF_VIEW_BASE,
+    TARGET_MLV2_LAYOUTS,
     CameraService,
 )
 from src.a6400.mod_manager.catalog import (
@@ -109,6 +110,7 @@ class _FakeDebugger:
         im_pid: int = 149,
         view_base: int = REF_VIEW_BASE,
         testcmd_base: int = REF_TESTCMD_BASE,
+        target_id: str = "ilce_6400",
         extra_procs: list[tuple[int, str]] | None = None,
         mlv2_entries=(0x05662A19, 0x05662A69, 0x05662A79),
         supports_ping: bool = True,
@@ -118,6 +120,7 @@ class _FakeDebugger:
         self.im_pid = im_pid
         self.view_base = view_base
         self.testcmd_base = testcmd_base
+        self.target_id = target_id
         self.procs: list[tuple[int, str]] = list(extra_procs or []) + [(im_pid, comm)]
         self.hook_state = hook_state
         self.mlv2_entries = mlv2_entries
@@ -187,9 +190,10 @@ class _FakeDebugger:
 
     def memory(self, pid: int, address: int, size: int) -> bytes:
         del pid
-        view_bias = self.view_base - REF_VIEW_BASE
-        testcmd_bias = self.testcmd_base - REF_TESTCMD_BASE
-        for idx, (_name, (hook_addr, hook_size)) in enumerate(MLV2_HOOKS.items()):
+        spec = TARGET_MLV2_LAYOUTS[self.target_id]
+        view_bias = self.view_base - int(spec["ref_view_base"])
+        testcmd_bias = self.testcmd_base - int(spec["ref_testcmd_base"])
+        for idx, (_name, (hook_addr, hook_size)) in enumerate(spec["hooks"].items()):
             reloc_hook = (hook_addr + view_bias) & 0xFFFFFFFF
             if address == reloc_hook:
                 if self.hook_state == "v2":
@@ -298,12 +302,30 @@ class TestSmodParser(unittest.TestCase):
         shipped = [
             PROJECT_ROOT / "mods/menu_touch_full/MenuTouchFull.mod",
             PROJECT_ROOT / "mods/arri_isp/arrivederci/Arrivederci.mod",
+            PROJECT_ROOT / "mods/ilce_6400a/PhotonBin6MP.mod",
         ]
         for path in shipped:
             info = parse_smod(path.read_bytes(), filename=path.name)
             self.assertIn(info.version, (1, 2))
             self.assertGreater(info.code_size, 0)
             self.assertEqual(len(info.sha256), 64)
+
+    def test_validates_submenu_trailer_and_rejects_corrupt_smnu(self):
+        pb = (PROJECT_ROOT / "mods/ilce_6400a/PhotonBin6MP.mod").read_bytes()
+        info = parse_smod(pb, filename="PhotonBin6MP.mod")
+        self.assertEqual(info.name, "PhotonBin 6MP")
+        self.assertTrue(info.flags & 0x20)
+
+        corrupt_tail = bytearray(pb)
+        corrupt_tail[-1] ^= 0xFF
+        with self.assertRaises(SmodError):
+            parse_smod(bytes(corrupt_tail), filename="PhotonBin6MP.mod")
+
+        action_collision = bytearray(pb)
+        flags = struct.unpack_from("<I", action_collision, 8)[0] | 0x10
+        struct.pack_into("<I", action_collision, 8, flags)
+        with self.assertRaises(SmodError):
+            parse_smod(bytes(action_collision), filename="PhotonBin6MP.mod")
 
     def test_rejects_corrupt_and_unsafe_inputs(self):
         good = _make_smod_v2("Good Mod")
@@ -333,6 +355,10 @@ class TestCatalog(unittest.TestCase):
             self.assertEqual(mods_by_id["open_gate_sensor"]["exclusive_group"], "open_gate")
             self.assertEqual(mods_by_id["open_gate_32"]["exclusive_group"], "open_gate")
             self.assertEqual(len(cat["pmca_tweaks"]), 4)
+
+            cat_6400a = build_catalog(root=PROJECT_ROOT, data_dir=data_dir, target_id="ilce_6400a")
+            mods_6400a = {m["id"]: m for m in cat_6400a["runtime_mods"]}
+            self.assertTrue(mods_6400a["photon_bin_6mp"]["available"])
 
             custom_bytes = _make_smod_v2("Custom Overlay")
             added = import_custom_mod_bytes("CustomOverlay.mod", custom_bytes, data_dir)
@@ -984,6 +1010,264 @@ class TestGuiBridgeAndWebServer(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
+
+
+def _create_fake_mlv2_a6400a_dir(path: Path) -> dict[str, object]:
+    path.mkdir(parents=True, exist_ok=True)
+    core = b"MLCR/tmp_bt/mlv2/reload\x00A6400A"
+    entries = (0x05D76B15, 0x05D76B65, 0x05D76B75)
+    req = struct.pack("<4I3I2I", 0x5132484D, 2, 0x05D76800, 1028, *entries, 0x707BBA7F, 0)
+    (path / "core.bin").write_bytes(core)
+    (path / "mlv2.req").write_bytes(req)
+    (path / "mlv2_guard_arm").write_bytes(b"GUARDARM_A6400A")
+    core_sha = hashlib.sha256(core).hexdigest()
+    req_sha = hashlib.sha256(req).hexdigest()
+    (path / "build.json").write_text(
+        json.dumps({"target": "ilce_6400a", "core": {"sha256": core_sha}, "request": {"sha256": req_sha}}),
+        encoding="utf-8",
+    )
+    return {"entries": entries, "core_sha": core_sha, "req_sha": req_sha}
+
+
+class TestIlce6400aSupport(unittest.TestCase):
+    def test_parses_all_nine_ilce_6400a_shipped_mods_and_catalog(self):
+        a6400a_dir = PROJECT_ROOT / "mods" / "ilce_6400a"
+        mod_files = sorted(a6400a_dir.glob("*.mod"), key=lambda p: p.name)
+        self.assertEqual(
+            [p.name for p in mod_files],
+            [
+                "Arrivederci.mod",
+                "MenuTouchFull.mod",
+                "ModsTabLook.mod",
+                "OpenGate32.mod",
+                "OpenGateSensor.mod",
+                "OpenGate_5400_Test.mod",
+                "PhotonBin6MP.mod",
+                "RCRAW_Enable_Test.mod",
+                "RCRAW_W2_Probe.mod",
+                "UsbStreamingTest.mod",
+            ],
+        )
+        parsed = {p.name: parse_smod(p.read_bytes(), filename=p.name) for p in mod_files}
+        for info in parsed.values():
+            self.assertEqual(info.version, 2)
+            self.assertGreater(info.code_size, 0)
+        self.assertEqual(parsed["MenuTouchFull.mod"].hook_count, 2)
+        self.assertEqual(parsed["ModsTabLook.mod"].hook_count, 1)
+        self.assertTrue(parsed["ModsTabLook.mod"].auto_on)
+        self.assertEqual(parsed["PhotonBin6MP.mod"].hook_count, 1)
+        self.assertTrue(parsed["PhotonBin6MP.mod"].flags & 0x20)
+        self.assertTrue(parsed["UsbStreamingTest.mod"].flags & 0x10)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cat = build_catalog(root=PROJECT_ROOT, data_dir=Path(tmp) / "data", target_id="ilce_6400a")
+            self.assertEqual(cat["target_id"], "ilce_6400a")
+            self.assertEqual(cat["target_model"], "ILCE-6400A")
+            self.assertEqual(cat["firmware_version"], "1.01")
+            mods_by_id = {m["id"]: m for m in cat["runtime_mods"]}
+            for mod_id in (
+                "mods_tab_look",
+                "menu_touch_full",
+                "arrivederci",
+                "open_gate_sensor",
+                "open_gate_32",
+                "open_gate_5400_test",
+                "photon_bin_6mp",
+                "rcraw_enable_test",
+                "rcraw_w2_probe",
+                "usb_streaming_test",
+            ):
+                self.assertTrue(mods_by_id[mod_id]["available"], mod_id)
+                self.assertTrue(str(mods_by_id[mod_id]["path"]).endswith(mods_by_id[mod_id]["filename"]))
+
+    def test_mlv2_target_isolation_between_ilce_6400_and_ilce_6400a(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dir_6400 = tmp_path / "artifacts" / "tests" / "mlv2-6400"
+            dir_6400a = tmp_path / "artifacts" / "tests" / "mlv2-6400a"
+            _create_fake_mlv2_dir(dir_6400)
+            # Rewrite dir_6400 to safe 0x05662800 cave
+            req_6400 = struct.pack(
+                "<4I3I2I", 0x5132484D, 2, 0x05662800, 1028, 0x05662B15, 0x05662B65, 0x05662B75, 0x12345678, 0
+            )
+            (dir_6400 / "mlv2.req").write_bytes(req_6400)
+            bj = json.loads((dir_6400 / "build.json").read_text(encoding="utf-8"))
+            bj["request"]["sha256"] = hashlib.sha256(req_6400).hexdigest()
+            (dir_6400 / "build.json").write_text(json.dumps(bj), encoding="utf-8")
+
+            # Create 6400a build AFTER 6400 build so it has >= mtime
+            _create_fake_mlv2_a6400a_dir(dir_6400a)
+
+            res_6400 = resolve_mlv2_build(root=tmp_path, data_dir=tmp_path / "data", target_id="ilce_6400")
+            self.assertTrue(res_6400["available"])
+            self.assertEqual(res_6400["target_id"], "ilce_6400")
+            self.assertEqual(res_6400["shim_addr"], 0x05662800)
+
+            res_6400a = resolve_mlv2_build(root=tmp_path, data_dir=tmp_path / "data", target_id="ilce_6400a")
+            self.assertTrue(res_6400a["available"])
+            self.assertEqual(res_6400a["target_id"], "ilce_6400a")
+            self.assertEqual(res_6400a["shim_addr"], 0x05D76800)
+
+    def test_a6400a_debugger_install_cross_target_guard_and_api_switch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dir_6400 = tmp_path / "mlv2_6400"
+            dir_6400a = tmp_path / "mlv2_6400a"
+            _create_fake_mlv2_dir(dir_6400)
+            meta_a = _create_fake_mlv2_a6400a_dir(dir_6400a)
+            mlv2_6400 = validate_mlv2_build(dir_6400)
+            mlv2_6400a = validate_mlv2_build(dir_6400a)
+
+            dbg_a = _FakeDebugger(
+                hook_state="stock",
+                im_pid=151,
+                view_base=0x1355B000,
+                testcmd_base=0x081C3000,
+                target_id="ilce_6400a",
+                mlv2_entries=meta_a["entries"],
+            )
+            svc = CameraService(
+                root=PROJECT_ROOT,
+                data_dir=tmp_path / "data",
+                transport=_FakeTransport(
+                    debugger=dbg_a,
+                    msc_identity={"model_name": "ILCE-6400A", "model_code": "2", "firmware_version": "1.01"},
+                ),
+            )
+            cat_a = build_catalog(root=PROJECT_ROOT, data_dir=tmp_path / "data", target_id="ilce_6400a")
+            cam_a = svc.detect_camera(mlv2_status=mlv2_6400a)
+            self.assertEqual(cam_a["state"], "debugger_ready")
+            self.assertEqual(cam_a["model_name"], "ILCE-6400A")
+
+            # Cross-target MLv2 build must be rejected fail-closed.
+            bad_plan = svc.plan_install(
+                {"runtime_mods": {"menu_touch_full": True}, "pmca_tweaks": {}},
+                cat_a,
+                cam_a,
+                mlv2_6400,
+            )
+            self.assertTrue(any("does not match catalog target" in e for e in bad_plan["blocking_errors"]))
+
+            good_plan = svc.plan_install(
+                {"runtime_mods": {"mods_tab_look": True, "open_gate_32": True}, "pmca_tweaks": {}},
+                cat_a,
+                cam_a,
+                mlv2_6400a,
+            )
+            self.assertFalse(good_plan["blocking_errors"])
+            receipt = svc.execute_install(good_plan, cat_a, mlv2_6400a, confirmed_permanent=True)
+            self.assertEqual(receipt["status"], "success")
+            self.assertEqual(receipt["mlv2_sync"]["target_id"], "ilce_6400a")
+            self.assertTrue(receipt["mlv2_sync"]["hooks_point_to_v2"])
+            self.assertIn("/tmp_bt/mods/ModsTabLook.mod", dbg_a.files)
+            self.assertIn("/tmp_bt/mods/OpenGate32.mod", dbg_a.files)
+
+            cam_after = svc.detect_camera(mlv2_status=mlv2_6400a)
+            self.assertEqual(cam_after["mlv2_hook_state"], "v2")
+
+            api = ModManagerApi(
+                root=PROJECT_ROOT,
+                data_dir=tmp_path / "data",
+                service=svc,
+                drive_provider=lambda: [],
+            )
+            switched = api.set_target_profile("ilce_6400a")
+            self.assertEqual(switched["target_id"], "ilce_6400a")
+            self.assertEqual(switched["catalog"]["target_model"], "ILCE-6400A")
+
+    def test_other_devices_preserve_pmca_tweaks_and_block_unqualified_runtime_mods(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dir_6400 = tmp_path / "mlv2_6400"
+            dir_6400a = tmp_path / "mlv2_6400a"
+            _create_fake_mlv2_dir(dir_6400)
+            _create_fake_mlv2_a6400a_dir(dir_6400a)
+            mlv2_6400 = validate_mlv2_build(dir_6400)
+            mlv2_6400a = validate_mlv2_build(dir_6400a)
+            cat_6400 = build_catalog(root=PROJECT_ROOT, data_dir=tmp_path / "data", target_id="ilce_6400")
+            cat_6400a = build_catalog(root=PROJECT_ROOT, data_dir=tmp_path / "data", target_id="ilce_6400a")
+
+            # ZV-E10 with active debugger: must not read ILCE-6400/ILCE-6400A hook addresses,
+            # must allow PMCA tweaks alone, and must block runtime mods cleanly.
+            dbg_zve10 = _FakeDebugger(hook_state="stock")
+            dbg_zve10.memory = mock.Mock(side_effect=AssertionError("must not read MLv2 hooks on ZV-E10"))  # type: ignore[method-assign]
+            svc_zve10 = CameraService(
+                root=PROJECT_ROOT,
+                data_dir=tmp_path / "data",
+                transport=_FakeTransport(
+                    debugger=dbg_zve10,
+                    msc_identity={"model_name": "ZV-E10", "model_code": "4", "firmware_version": "2.02"},
+                ),
+            )
+            cam_zve10 = svc_zve10.detect_camera(mlv2_status=mlv2_6400)
+            self.assertEqual(cam_zve10["state"], "debugger_ready")
+            self.assertEqual(cam_zve10["mlv2_hook_state"], "unknown")
+
+            tweak_plan = svc_zve10.plan_install(
+                {"runtime_mods": {}, "pmca_tweaks": {"recLimit": True}},
+                cat_6400,
+                cam_zve10,
+                mlv2_6400,
+                known_tweaks={"recLimit": False},
+            )
+            self.assertFalse(tweak_plan["blocking_errors"])
+            self.assertEqual(len(tweak_plan["tweak_changes"]), 1)
+
+            mod_plan_zve10 = svc_zve10.plan_install(
+                {"runtime_mods": {"menu_touch_full": True}, "pmca_tweaks": {}},
+                cat_6400,
+                cam_zve10,
+                mlv2_6400,
+            )
+            self.assertTrue(any("not qualified for ZV-E10" in e for e in mod_plan_zve10["blocking_errors"]))
+
+            # ILCE-7C in MSC mode: PMCA tweaks succeed, runtime mods block cleanly.
+            svc_7c = CameraService(
+                root=PROJECT_ROOT,
+                data_dir=tmp_path / "data",
+                transport=_FakeTransport(
+                    debugger=None,
+                    msc_identity={"model_name": "ILCE-7C", "model_code": "3", "firmware_version": "2.00"},
+                ),
+            )
+            cam_7c = svc_7c.detect_camera(mlv2_status=mlv2_6400)
+            self.assertEqual(cam_7c["state"], "msc_verified")
+            plan_7c_tweaks = svc_7c.plan_install(
+                {"runtime_mods": {}, "pmca_tweaks": {"language": True}},
+                cat_6400,
+                cam_7c,
+                mlv2_6400,
+            )
+            self.assertFalse(plan_7c_tweaks["blocking_errors"])
+
+            # ILCE-6400 scanned while UI profile is ilce_6400a: reads ILCE-6400 hooks (not 6400A),
+            # allows PMCA tweaks alone, and blocks cross-target runtime mods.
+            dbg_6400 = _FakeDebugger(hook_state="v2", target_id="ilce_6400")
+            svc_6400 = CameraService(
+                root=PROJECT_ROOT,
+                data_dir=tmp_path / "data",
+                transport=_FakeTransport(
+                    debugger=dbg_6400,
+                    msc_identity={"model_name": "ILCE-6400", "model_code": "1", "firmware_version": "2.00"},
+                ),
+            )
+            cam_6400_under_a = svc_6400.detect_camera(mlv2_status=mlv2_6400a)
+            self.assertEqual(cam_6400_under_a["model_name"], "ILCE-6400")
+            self.assertEqual(cam_6400_under_a["mlv2_hook_state"], "unknown")
+            tweak_only_cross = svc_6400.plan_install(
+                {"runtime_mods": {}, "pmca_tweaks": {"recLimit": True}},
+                cat_6400a,
+                cam_6400_under_a,
+                mlv2_6400a,
+            )
+            self.assertFalse(tweak_only_cross["blocking_errors"])
+            cross_mod_plan = svc_6400.plan_install(
+                {"runtime_mods": {"menu_touch_full": True}, "pmca_tweaks": {}},
+                cat_6400a,
+                cam_6400_under_a,
+                mlv2_6400a,
+            )
+            self.assertTrue(any("Switch target profile first" in e for e in cross_mod_plan["blocking_errors"]))
 
 
 if __name__ == "__main__":

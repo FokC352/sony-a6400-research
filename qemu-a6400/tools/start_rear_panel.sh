@@ -20,9 +20,15 @@ mkdir -p "$logs"
 extra=()
 if [[ "${A6400_MODDEV:-1}" != 0 ]]; then
     inputs="${A6400_MODDEV_INPUTS:-artifacts/qemu-a6400/inputs-moddev-1}"
+    is_a6400a=0
+    if [[ -f "$inputs/boot-manifest.json" ]] && grep -q '"ilce_6400a"' "$inputs/boot-manifest.json"; then
+        is_a6400a=1
+    fi
     loader="${A6400_MODDEV_LOADER:-}"
     if [[ -z "$loader" ]]; then
-        for d in $(ls -td artifacts/tests/mlv2-layout-build-* 2>/dev/null); do
+        glob_pat="artifacts/tests/mlv2-layout-build-*"
+        [[ "$is_a6400a" == 1 ]] && glob_pat="artifacts/tests/mlv2-ilce6400a-*"
+        for d in $(ls -td $glob_pat 2>/dev/null); do
             if [[ -f "$d/core.bin" && -f "$d/mlv2_guard_arm" && -f "$d/mlv2.req" ]] &&
                [[ "$(od -An -tu4 -j4 -N4 "$d/mlv2.req" | tr -d ' ')" == 2 ]]; then
                 loader="$d"
@@ -34,7 +40,12 @@ if [[ "${A6400_MODDEV:-1}" != 0 ]]; then
         echo "Mod development: inputs $inputs, loader $loader"
         extra=(--inputs "$inputs" --loader "$loader")
         # The Mods tab artwork (auto-on SMOD v2); A6400_MODDEV_TABLOOK= skips it.
-        tablook="${A6400_MODDEV_TABLOOK-$(ls -td artifacts/tests/mtl-v2-build-*/ModsTabLook.mod 2>/dev/null | head -1)}"
+        if [[ "$is_a6400a" == 1 ]]; then
+            default_tablook="mods/ilce_6400a/ModsTabLook.mod"
+        else
+            default_tablook="$(ls -td artifacts/tests/mtl-v2-build-*/ModsTabLook.mod 2>/dev/null | head -1)"
+        fi
+        tablook="${A6400_MODDEV_TABLOOK-$default_tablook}"
         if [[ -n "$tablook" && -f "$tablook" ]]; then
             echo "Mods tab artwork: $tablook"
             extra+=(--mod "$tablook")

@@ -34,8 +34,13 @@ ref_embedded = "REFADR_EMBEDDED" in hdr
 r_stock = b"\x00" * 1215
 r_arri = bytes(arr("REFADR_ARRI")) if ref_embedded else r_stock
 cc_stock, cc_arri = b"\xff\xff", b"\x00\x00"
+IS_A6400A = b"\xc4\x60\xe5\x03" in code
 GPAGE, CPAGE, CCPAGE, REFPAGE, STOP, BASE = 0x30000000, 0x30100000, 0x30200000, 0x30300000, 0x31000000, 0x40ab3000
-GOFF, COFF, CCOFF, REFOFF = 0x63C, 0x1D4, 0x8B8, 0x025
+if IS_A6400A:
+    GAMMA_PA, COLOR_PA, CC_TUNING_PA, REFADR0_PA = 0x03E560C4, 0x0444FDC8, 0x0444ED96, 0x044B191B
+else:
+    GAMMA_PA, COLOR_PA, CC_TUNING_PA, REFADR0_PA = 0x03E5363C, 0x0444B1D4, 0x0442D8B8, 0x04490025
+GOFF, COFF, CCOFF, REFOFF = GAMMA_PA & 0xFFF, COLOR_PA & 0xFFF, CC_TUNING_PA & 0xFFF, REFADR0_PA & 0xFFF
 
 
 def run(on, grec, centry, sabin_present=False, refentry=None, ccentry=None):
@@ -77,8 +82,8 @@ def run(on, grec, centry, sabin_present=False, refentry=None, ccentry=None):
                 ret = {"/dev/mem": 3, "/tmp_bt/mods/arrivederci.log": 4}[path]
         elif nr == 192:
             assert a[1:5] == [4096, 3, 1, 3]
-            ret = {0x03E5363C >> 12: GPAGE, 0x0444B1D4 >> 12: CPAGE,
-                   0x0442D8B8 >> 12: CCPAGE, 0x04490025 >> 12: REFPAGE}[a[5]]
+            ret = {GAMMA_PA >> 12: GPAGE, COLOR_PA >> 12: CPAGE,
+                   CC_TUNING_PA >> 12: CCPAGE, REFADR0_PA >> 12: REFPAGE}[a[5]]
         elif nr == 4:
             data = bytes(mu.mem_read(a[1], a[2]))
             if a[0] == 4:

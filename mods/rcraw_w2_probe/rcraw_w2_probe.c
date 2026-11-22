@@ -13,7 +13,11 @@
 
 #define AIF0_PAGE_PA   0xF3002000u
 #define AIF1_PAGE_PA   0xF3102000u
+#ifdef TARGET_ILCE6400A
+#define RAW_EXT_PA     0x044295BCu /* 0x04429110 + 0x4AC */
+#else
 #define RAW_EXT_PA     0x044080ECu /* 0x04407C40 + 0x4AC */
+#endif
 
 static long sc3(long n, long a, long b, long c) {
     register long r0 __asm__("r0") = a, r1 __asm__("r1") = b, r2 __asm__("r2") = c;

@@ -17,6 +17,13 @@ magic, ver, flags, name, code_size, fnv, bss, on_off, off_off, hooks = struct.un
 assert magic == 0x444F4D53 and ver == 2 and name.rstrip(b"\0") == b"RCRAW_Enable_Test" and hooks == 0
 code = mod[68 : 68 + code_size]
 
+IS_A6400A = "--target=ilce_6400a" in sys.argv or (
+    "--target" in sys.argv and sys.argv[sys.argv.index("--target") + 1] == "ilce_6400a"
+) or b"\xc0\x2e\x3f\x04" in code
+RCRAW_PGOFF = 0x043F2 if IS_A6400A else 0x043D1
+EN_OFF = 0xB04 if IS_A6400A else 0x810
+RD_OFF = 0xEC0 if IS_A6400A else 0xBCC
+D5_OFF = 0x828 if IS_A6400A else 0x534
 RCRAW_PAGE = 0x30000000
 AIF0_PAGE = 0x30100000
 Q7C8_PAGE = 0x30200000
@@ -34,12 +41,12 @@ def make_machine() -> tuple[uc.Uc, list[str]]:
         m.mem_map(page, 0x1000)
     m.mem_map(0x20000000, 0x10000)
 
-    # Guard neighboring words around RCRAW_EN (+0x810) and RDRAW_EN (+0xBCC)
-    m.mem_write(RCRAW_PAGE + 0x80C, struct.pack("<I", 0xCAFEBABE))
-    m.mem_write(RCRAW_PAGE + 0x810, struct.pack("<I", 0x00000000))
-    m.mem_write(RCRAW_PAGE + 0x814, struct.pack("<I", 0x11223344))
-    m.mem_write(RCRAW_PAGE + 0x534, struct.pack("<I", 0x00000100))
-    m.mem_write(RCRAW_PAGE + 0xBCC, struct.pack("<I", 0x00000000))
+    # Guard neighboring words around RCRAW_EN and RDRAW_EN
+    m.mem_write(RCRAW_PAGE + EN_OFF - 4, struct.pack("<I", 0xCAFEBABE))
+    m.mem_write(RCRAW_PAGE + EN_OFF, struct.pack("<I", 0x00000000))
+    m.mem_write(RCRAW_PAGE + EN_OFF + 4, struct.pack("<I", 0x11223344))
+    m.mem_write(RCRAW_PAGE + D5_OFF, struct.pack("<I", 0x00000100))
+    m.mem_write(RCRAW_PAGE + RD_OFF, struct.pack("<I", 0x00000000))
 
     m.mem_write(AIF0_PAGE + 0x400, struct.pack("<II", 1, 0x80000000))
     m.mem_write(AIF0_PAGE + 0x410, struct.pack("<I", 0x12345000))
@@ -75,7 +82,7 @@ def make_machine() -> tuple[uc.Uc, list[str]]:
                 raise AssertionError(f"unexpected open {path}")
         elif nr == 192:  # mmap2
             pgoff = a[5]
-            if pgoff == 0x043D1:
+            if pgoff == RCRAW_PGOFF:
                 ret = RCRAW_PAGE
             elif pgoff == 0xF3002:
                 assert (a[2] & 2) == 0, "AIF0 page must be mapped read-only"
@@ -110,9 +117,9 @@ m, logs = make_machine()
 
 # 1. ON on stock -> writes 1
 invoke(m, on_off)
-assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + 0x810, 4))[0] == 1
-assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + 0x80C, 4))[0] == 0xCAFEBABE
-assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + 0x814, 4))[0] == 0x11223344
+assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + EN_OFF, 4))[0] == 1
+assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + EN_OFF - 4, 4))[0] == 0xCAFEBABE
+assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + EN_OFF + 4, 4))[0] == 0x11223344
 assert "rcraw_en on=1 sw=w val=00000001 rdraw=00000000 d534=00000100 w1=1,1,12345000 w2=0,0,18000000,01800000,0007 q7c8=00000400" in logs[-1], logs[-1]
 
 # 2. ON again -> already (a)
@@ -121,7 +128,7 @@ assert "rcraw_en on=1 sw=a val=00000001" in logs[-1], logs[-1]
 
 # 3. OFF -> restores 0
 invoke(m, off_off)
-assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + 0x810, 4))[0] == 0
+assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + EN_OFF, 4))[0] == 0
 assert "rcraw_en on=0 sw=w val=00000000" in logs[-1], logs[-1]
 
 # 4. OFF again -> already (a)
@@ -129,13 +136,13 @@ invoke(m, off_off)
 assert "rcraw_en on=0 sw=a val=00000000" in logs[-1], logs[-1]
 
 # 5. Foreign value -> untouched on ON and OFF (sw=x)
-m.mem_write(RCRAW_PAGE + 0x810, struct.pack("<I", 0xDEADBEEF))
+m.mem_write(RCRAW_PAGE + EN_OFF, struct.pack("<I", 0xDEADBEEF))
 invoke(m, on_off)
-assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + 0x810, 4))[0] == 0xDEADBEEF
+assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + EN_OFF, 4))[0] == 0xDEADBEEF
 assert "rcraw_en on=1 sw=x val=deadbeef" in logs[-1], logs[-1]
 
 invoke(m, off_off)
-assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + 0x810, 4))[0] == 0xDEADBEEF
+assert struct.unpack("<I", m.mem_read(RCRAW_PAGE + EN_OFF, 4))[0] == 0xDEADBEEF
 assert "rcraw_en on=0 sw=x val=deadbeef" in logs[-1], logs[-1]
 
 print(f"UNICORN RCRAW_ENABLE_TEST PASS ({len(logs)} runs): {logs[0].strip()}")

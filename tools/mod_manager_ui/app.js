@@ -3,6 +3,7 @@
 
   const ARG_ORDER = {
     get_initial_state: [],
+    set_target_profile: ["target_id"],
     scan_camera: [],
     read_live_tweaks: [],
     import_custom_mod_bytes: ["filename", "base64_data"],
@@ -149,6 +150,13 @@
     }
   }
 
+  function renderTargetSelect() {
+    const sel = document.getElementById("target-profile-select");
+    if (sel && state.catalog?.target_id) {
+      sel.value = state.catalog.target_id;
+    }
+  }
+
   function renderMlv2Banner() {
     const banner = document.getElementById("mlv2-banner");
     const mlv2 = state.toolchain?.mlv2;
@@ -156,13 +164,17 @@
       banner.classList.add("hidden");
       return;
     }
+    const is6400a = state.catalog?.target_id === "ilce_6400a";
+    const defaultHint = is6400a
+      ? "Build Mod Loader v2 with --target ilce_6400a or select your local ILCE-6400A build folder."
+      : "Download the official mlv2-layout-build-4 release or select a local build folder.";
     banner.innerHTML = `
       <div>
         <strong>Mod Loader v2 build not found:</strong>
-        <span>${esc(mlv2.error || "Download the official mlv2-layout-build-4 release or select a local build folder.")}</span>
+        <span>${esc(mlv2.error || defaultHint)}</span>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
-        <button id="btn-banner-download-release" class="btn btn-primary" type="button">Download Official Release</button>
+        ${is6400a ? "" : `<button id="btn-banner-download-release" class="btn btn-primary" type="button">Download Official Release</button>`}
         <button id="btn-banner-pick-mlv2" class="btn btn-secondary" type="button">Select MLv2 Folder...</button>
       </div>
     `;
@@ -437,6 +449,7 @@
   }
 
   function renderAll() {
+    renderTargetSelect();
     renderCameraPill();
     renderMlv2Banner();
     renderRuntimeMods();
@@ -753,6 +766,25 @@
         document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
         if (tab === "sd") refreshSdDrives();
       });
+    });
+
+    document.getElementById("target-profile-select")?.addEventListener("change", async (ev) => {
+      const nextTarget = ev.target.value;
+      try {
+        const res = await apiCall("set_target_profile", { target_id: nextTarget });
+        state.runtimeSelection = {};
+        state.catalog = res.catalog;
+        state.toolchain = res.toolchain;
+        initializeSelections(state.catalog);
+        renderAll();
+        if (state.selectedDrive) {
+          await refreshSdDiff();
+        }
+        toast(`Switched target profile to ${res.catalog.target_model} (FW ${res.catalog.firmware_version}).`, "ok");
+      } catch (err) {
+        renderTargetSelect();
+        toast(err.message, "err");
+      }
     });
 
     document.getElementById("btn-scan-camera").addEventListener("click", handleScanCamera);
