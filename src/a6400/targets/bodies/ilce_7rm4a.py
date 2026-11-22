@@ -1,7 +1,7 @@
 """Sony ILCE-7RM4A (a7R IVA) offline-sourced target profile with a read-only USB identity."""
 from __future__ import annotations
 
-from src.a6400.targets.bodies._common import E0480, E0570, E0646, ref
+from src.a6400.targets.bodies._common import E0480, E0570, E0646, E0678, ref
 from src.a6400.targets.profile import (
     EvidenceRef,
     PID_TIER_OBSERVED,
@@ -72,6 +72,8 @@ ILCE_7RM4A = TargetProfile(
             EvidenceRef(E0570, "normalUsbDescriptors in this body's config.yaml b511141a6266ceb0...; 18 pairs, vid 0x54C"),
             EvidenceRef(E0646, "read-only Windows PnP on 1.13: Mass Storage 054C:0D9D, REV_0200, USBSTOR"),
             EvidenceRef(E0646, "read-only Windows PnP on 1.12 and 1.13: PC Remote 054C:0D9F, host driver libusbK"),
+            EvidenceRef(E0678, "libInfraUsbCmn.so 96638679... ptbl_did DID 0x00 -> BK4 unit 0x00E7002E = 0x0D9D, "
+                               "DID 0x3B -> unit 0x00E70035 = 0x0D9F in the packaged 1.13 presets"),
         ),
     },
     boundaries=(
@@ -81,9 +83,11 @@ ILCE_7RM4A = TargetProfile(
         "E0646 adds only host-observed USB facts and one GetModelInfo reply from the owner's body on 1.13. "
         "No live kernel, module, memory, /proc or partition read was performed; the displayed 1.13 version "
         "and USB identity do not establish the live kernel or module bytes.",
-        "PC Remote 0x0D9F is host-observed but is not among the 18 packaged normalUsbDescriptors pairs; the "
-        "source of that descriptor is not identified. Stock descriptor membership does not identify a mode; "
-        "MTP and UVC were not observed.",
+        "PC Remote 0x0D9F is host-observed and absent from the 18 packaged normalUsbDescriptors pairs; "
+        "E0678 finds it as BK4 preset unit 0x00E70035, named by DID 0x3B of the stock USB service's ptbl_did, "
+        "which the original DescriptorMaintainer::execOverwrite stores into that DID's descriptor buffer. Only "
+        "the DID-to-mode mapping is a value match with host observations. Stock descriptor membership does not "
+        "identify a mode; MTP and UVC were not observed.",
         "The observed wire product_code 0032853030 and updater fdat.model 0x91030003 are distinct namespaces.",
         "A resolved kallsyms symbol is presence evidence, not loadability or callability proof.",
         "uipc_queues is empty: the a6400's queue handles come from a live /proc/osal/uipc read and are "
