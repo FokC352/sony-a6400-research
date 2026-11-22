@@ -19,10 +19,16 @@ SMOD_V1_FLAG_STATE_INIT = 1
 SMOD_V1_FLAG_LIFECYCLE = 2
 SMOD_V2_FLAG_RELOC = 4
 SMOD_V2_FLAG_AUTO_ON = 8
+SMOD_V2_FLAG_ACTION = 16
+SMOD_V2_FLAG_SUBMENU = 32
 
 SMOD_RELOC_MAGIC = 0x31434C52  # "RLC1"
 SMOD_RELOC_MAX_LIBS = 8
 SMOD_RELOC_MAX_RELOCS = 1024
+
+SMOD_SUBMENU_MAGIC = 0x554E4D53  # "SMNU"
+SMOD_SUBMENU_MAX_ITEMS = 8
+SMOD_SUBMENU_MAX_OPTS = 6
 
 _V1_HDR = struct.Struct("<III32s6I")
 _V1_HOOK = struct.Struct("<II16s16s")
@@ -30,6 +36,8 @@ _V2_HDR = struct.Struct("<III32s6I")
 _V2_HOOK = struct.Struct("<IBB2x16s16s")
 _RELOC_HDR = struct.Struct("<IHH")
 _RELOC_LIB = struct.Struct("<II24s")
+_SUBMENU_HDR = struct.Struct("<IBBHI")
+_SUBMENU_ITEM = struct.Struct("<BB2x24s108s")
 
 _SAFE_MOD_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.mod$")
 
@@ -161,7 +169,7 @@ def _parse_v1(data: bytes) -> SmodInfo:
     )
 
 
-def _validate_reloc_table(data: bytes, offset: int) -> None:
+def _validate_reloc_table(data: bytes, offset: int) -> int:
     if len(data) < offset + _RELOC_HDR.size:
         raise SmodError("SMOD v2 relocation table header truncated")
     magic, nlib, nrel = _RELOC_HDR.unpack_from(data, offset)
@@ -176,6 +184,35 @@ def _validate_reloc_table(data: bytes, offset: int) -> None:
     (expected_fnv,) = struct.unpack_from("<I", data, offset + table_len)
     if fnv1a_32(table_bytes) != expected_fnv:
         raise SmodError("SMOD v2 relocation table fails FNV-1a checksum")
+    return offset + table_len + 4
+
+
+def _validate_submenu_table(data: bytes, offset: int, code_size: int, bss_size: int) -> int:
+    if len(data) < offset + _SUBMENU_HDR.size:
+        raise SmodError("SMOD v2 submenu table header truncated")
+    magic, item_count, bss_cfg_off, _, cfg_call_off = _SUBMENU_HDR.unpack_from(data, offset)
+    if magic != SMOD_SUBMENU_MAGIC:
+        raise SmodError("Invalid SMOD v2 submenu table magic")
+    if not 1 <= item_count <= SMOD_SUBMENU_MAX_ITEMS:
+        raise SmodError("SMOD v2 submenu item count outside loader limits")
+    if bss_cfg_off + item_count > bss_size:
+        raise SmodError("SMOD v2 submenu config slice exceeds bss_size")
+    if cfg_call_off and ((cfg_call_off & 1) == 0 or cfg_call_off >= code_size):
+        raise SmodError("SMOD v2 submenu callback offset outside valid Thumb code range")
+    table_len = _SUBMENU_HDR.size + item_count * _SUBMENU_ITEM.size
+    if len(data) < offset + table_len + 4:
+        raise SmodError("SMOD v2 submenu table truncated")
+    for idx in range(item_count):
+        opt_count, default_val, _, _ = _SUBMENU_ITEM.unpack_from(
+            data, offset + _SUBMENU_HDR.size + idx * _SUBMENU_ITEM.size
+        )
+        if not 2 <= opt_count <= SMOD_SUBMENU_MAX_OPTS or default_val >= opt_count:
+            raise SmodError(f"SMOD v2 submenu item {idx} options out of bounds")
+    table_bytes = data[offset : offset + table_len]
+    (expected_fnv,) = struct.unpack_from("<I", data, offset + table_len)
+    if fnv1a_32(table_bytes) != expected_fnv:
+        raise SmodError("SMOD v2 submenu table fails FNV-1a checksum")
+    return offset + table_len + 4
 
 
 def _parse_v2(data: bytes) -> SmodInfo:
@@ -219,8 +256,13 @@ def _parse_v2(data: bytes) -> SmodInfo:
         raise SmodError("SMOD v2 code bytes fail FNV-1a checksum")
 
     has_reloc = bool(flags & SMOD_V2_FLAG_RELOC)
+    trail_off = code_end
     if has_reloc:
-        _validate_reloc_table(data, code_end)
+        trail_off = _validate_reloc_table(data, trail_off)
+    if flags & SMOD_V2_FLAG_SUBMENU:
+        if flags & SMOD_V2_FLAG_ACTION:
+            raise SmodError("SMOD v2 submenu and action flags are mutually exclusive")
+        trail_off = _validate_submenu_table(data, trail_off, code_size, bss_size)
 
     return SmodInfo(
         version=2,

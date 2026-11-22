@@ -15,9 +15,15 @@
  */
 #include <stdint.h>
 
+#ifdef TARGET_ILCE6400A
+#define RCRAW_EN_PA   0x043F2B04u
+#define RDRAW_EN_PA   0x043F2EC0u
+#define D1534_PA      0x043F2828u
+#else
 #define RCRAW_EN_PA   0x043D1810u
 #define RDRAW_EN_PA   0x043D1BCCu
 #define D1534_PA      0x043D1534u
+#endif
 #define AIF0_W1_PA    0xF3002400u
 #define AIF0_W2_PA    0xF3002480u
 #define RCRAW_7C8_PA  0xF30317C8u

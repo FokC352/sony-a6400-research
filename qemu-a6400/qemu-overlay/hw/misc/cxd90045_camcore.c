@@ -40,6 +40,9 @@
  *   0xF3020000 (1 KiB window) L0090: 0xF3020800..0xF3020BFF after the
  *                        0x800-byte AIF model; 89 write-only offsets (Z0)
  *                        and one RMW word +0xB80 (RF).  See the table.
+ *   0xF3020000 (rest)     L0093: 0xF3020C00..0xF3020FFF, the same page
+ *                        above the L0090 window; 37 write-only offsets (Z0).
+ *                        See camcore_rules_f302_rest.
  *
  * The per-block rule tables come from the L0026 spec
  * (loop/scratch/L0026/spec.md, 70/70 reading PCs verified by its red team)
@@ -397,6 +400,66 @@ static const CamCoreRule camcore_rules_f302[] = {
     { 0xBA4, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
 };
 
+/*
+ * 0xF3020000 page, remainder above the L0090 window: block-relative
+ * 0xC00..0xFFF (PA 0xF3020C00..0xF3020FFF).  The L0090 0x800..0xBFF window
+ * is unchanged and the four lowest pages (0x000..0x7FF) stay owned by the
+ * AIF model.
+ *
+ * Evidence: a fresh 120 s boot of the certified baseline
+ * loop/builds/L0090 with the certified env (L0093 base-120):
+ *   qemu-system-arm sha256 2c542fc9a662e2ef0e77116d44e522ebe66d391e78ca034705d4f7fe6cedba5c
+ *   qemu-d.log       sha256 08e4d4d8d06b77627069bd801a0663261524938ce0f5ccd8c76064c6340eac9b
+ *   loop/scratch/L0093/page-pairs.txt
+ * It logs 37 distinct (kind, offset) pairs here, all writes and no reads.
+ * The busiest words are +0xC04/+0xC08 and +0xD10..+0xD70 (91 writes each);
+ * +0xD00, +0xE00 and +0xF00 are written once, +0xF10..+0xF70 four times.
+ * Every offset is write-only, so it takes Z0: no read exists and the
+ * baseline catch-all zero is what the firmware already sees.  No value is
+ * invented.  The window is mapped whole, but an offset without a rule still
+ * logs as unmodelled, so the gaps (+0xD04, +0xD0C, +0xD14, ...) are not
+ * silently claimed.
+ */
+static const CamCoreRule camcore_rules_f302_rest[] = {
+    { 0xC04, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xC08, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD00, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 1 write, 0 reads" },
+    { 0xD10, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD20, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD28, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD2C, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD40, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD44, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD48, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD50, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD54, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD58, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD5C, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD60, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD64, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD68, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD6C, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xD70, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 91 writes, 0 reads" },
+    { 0xE00, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 1 write, 0 reads" },
+    { 0xF00, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 1 write, 0 reads" },
+    { 0xF10, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF20, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF28, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF2C, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF40, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF44, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF48, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF50, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF54, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF58, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF5C, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF60, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF64, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF68, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF6C, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+    { 0xF70, CAM_ZERO, 0xffffffff, "write-only in L0093 boot: 4 writes, 0 reads" },
+};
+
 struct CamCoreState {
     SysBusDevice parent_obj;
     MemoryRegion mr;
@@ -518,8 +581,15 @@ static void camcore_realize(DeviceState *dev, Error **errp)
         s->nrules = ARRAY_SIZE(camcore_rules_f291);
         break;
     case 0xF3020000ULL:
-        s->rules = camcore_rules_f302;
-        s->nrules = ARRAY_SIZE(camcore_rules_f302);
+        /* Two disjoint sub-windows share this block: L0090's 0x800..0xBFF
+         * and the rest of the page above it (L0093). */
+        if (s->window >= 0xF3020C00ULL) {
+            s->rules = camcore_rules_f302_rest;
+            s->nrules = ARRAY_SIZE(camcore_rules_f302_rest);
+        } else {
+            s->rules = camcore_rules_f302;
+            s->nrules = ARRAY_SIZE(camcore_rules_f302);
+        }
         break;
     default:
         /* 0xF3010000 (the original L0027 instance) and any other base. */

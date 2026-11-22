@@ -132,11 +132,26 @@ class ModManagerApi:
                 "job_kind": self._job_kind,
             }
 
+    def _target_id(self) -> str:
+        tid = str(load_settings(self.data_dir).get("target_id") or "ilce_6400")
+        return tid if tid in ("ilce_6400", "ilce_6400a") else "ilce_6400"
+
     def _toolchain(self) -> dict[str, Any]:
-        return get_toolchain_status(root=self.root, data_dir=self.data_dir)
+        return get_toolchain_status(root=self.root, data_dir=self.data_dir, target_id=self._target_id())
 
     def _catalog(self) -> dict[str, Any]:
-        return build_catalog(root=self.root, data_dir=self.data_dir)
+        return build_catalog(root=self.root, data_dir=self.data_dir, target_id=self._target_id())
+
+    def set_target_profile(self, target_id: str) -> dict[str, Any]:
+        if target_id not in ("ilce_6400", "ilce_6400a"):
+            raise ValueError(f"Unsupported target profile: {target_id!r}")
+        settings = save_settings(self.data_dir, {"target_id": target_id})
+        return {
+            "target_id": target_id,
+            "settings": settings,
+            "catalog": self._catalog(),
+            "toolchain": self._toolchain(),
+        }
 
     def get_initial_state(self) -> dict[str, Any]:
         return {
@@ -323,6 +338,7 @@ class ModManagerApi:
                 progress_cb=lambda msg: self._emit_event(
                     "progress", {"step": "tools", "status": "running", "message": msg}
                 ),
+                target_id=self._target_id(),
             )
             self._emit_event(
                 "job_done",
@@ -332,8 +348,9 @@ class ModManagerApi:
         return self._start_worker("prepare_tools", _run)
 
     def set_mlv2_folder(self, folder_path: str) -> dict[str, Any]:
-        validate_mlv2_build(Path(folder_path))
-        save_settings(self.data_dir, {"mlv2_dir": str(Path(folder_path).resolve())})
+        verified = validate_mlv2_build(Path(folder_path))
+        key = "mlv2_dir_ilce_6400a" if verified.get("target_id") == "ilce_6400a" else "mlv2_dir"
+        save_settings(self.data_dir, {key: str(Path(folder_path).resolve())})
         return {"toolchain": self._toolchain()}
 
     def pick_mlv2_folder(self) -> dict[str, Any]:
@@ -407,6 +424,7 @@ class ModManagerApi:
 
 API_DISPATCH_METHODS = (
     "get_initial_state",
+    "set_target_profile",
     "scan_camera",
     "read_live_tweaks",
     "import_custom_mod_bytes",

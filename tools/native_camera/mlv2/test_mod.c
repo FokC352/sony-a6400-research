@@ -8,6 +8,10 @@ __attribute__((section(".text.arri_life"), used)) void t_life(int on) {
     t_counter += on ? 1u : 0x100u;
 }
 
+__attribute__((used)) void t_cfg(int reason) {
+    if (reason == 2) t_counter += 0x1000u;
+}
+
 __attribute__((used)) int t_hook(void) {
     return 42 + (int)t_counter;
 }

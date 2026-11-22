@@ -6,34 +6,49 @@
 #define MLV2_H
 #include <stdint.h>
 
-/* ---- Firmware addresses (ILCE-6400 reference layout, identity-checked by the guard) ----
+/* ---- Firmware addresses (reference layout, identity-checked by the guard) ----
  * Another process layout (QEMU) runs the same libraries at other bases. The guard relocates the
  * shim (see package.py: the shim is linked twice and every word that moves with the view base or
  * with the shim address is recorded), and the shim publishes the differences in ShimState. */
+#ifdef MLV2_TARGET_ILCE6400A
+#define MLV2_REF_VIEW_BASE    0x12f46000u
+#define MLV2_REF_TESTCMD_BASE 0x05d74000u
+#define MLV2_SET_TEXT_OFF     0x14f8dcu
+#define MLV2_SET_MODE_OFF     0x155c9cu
+#define MLV2_MENU_REFRESH_OFF 0x5b0360u
+#define MLV2_V1_ANCHOR        0x13abfc40u
+#define MLV2_REF_SHIM_ADDR    0x05d76800u
+#elif defined(MLV2_TARGET_A6100)
 #define MLV2_REF_VIEW_BASE    0x155e6000u
 #define MLV2_REF_TESTCMD_BASE 0x05660000u
-#ifndef MLV2_VIEW_BASE
-#define MLV2_VIEW_BASE        MLV2_REF_VIEW_BASE
-#endif
-#ifdef MLV2_TARGET_A6100
 #define MLV2_SET_TEXT_OFF     0x150030u
 #define MLV2_SET_MODE_OFF     0x1563c8u
 #define MLV2_V1_ANCHOR        (MLV2_REF_VIEW_BASE + 0xb7a658u)
+#define MLV2_REF_SHIM_ADDR    0x05662800u
 #else
+#define MLV2_REF_VIEW_BASE    0x155e6000u
+#define MLV2_REF_TESTCMD_BASE 0x05660000u
 #define MLV2_SET_TEXT_OFF     0x14f6d0u
 #define MLV2_SET_MODE_OFF     0x155a68u
+#define MLV2_MENU_REFRESH_OFF 0x5ac110u
 #define MLV2_V1_ANCHOR        0x1615ec40u   /* v1 anchor {magic, state}; also used by the tab icon */
+#define MLV2_REF_SHIM_ADDR    0x05662800u
+#endif
+#ifndef MLV2_VIEW_BASE
+#define MLV2_VIEW_BASE        MLV2_REF_VIEW_BASE
 #endif
 #define MLV2_SET_TEXT         (MLV2_VIEW_BASE + MLV2_SET_TEXT_OFF + 1u)
 #define MLV2_SET_MODE         (MLV2_VIEW_BASE + MLV2_SET_MODE_OFF + 1u)
+#ifndef MLV2_TARGET_A6100
+#define MLV2_MENU_REFRESH     (MLV2_VIEW_BASE + MLV2_MENU_REFRESH_OFF + 1u)
+#endif
 #define MLV2_V1_MAGIC         0x444f4d53u   /* "SMOD" */
 #define MLV2_V1_STATE_BYTES   8192u         /* tab icon cache lives at state + 8180 */
 
 /* ---- Shim ---- */
 #ifndef MLV2_SHIM_ADDR
-#define MLV2_SHIM_ADDR        0x05662800u   /* /usr/lib/libtestcmd.so RX zero tail (>0x2790 EOF), 2048 bytes */
+#define MLV2_SHIM_ADDR        MLV2_REF_SHIM_ADDR   /* /usr/lib/libtestcmd.so RX zero tail (>0x2790 EOF), 2048 bytes */
 #endif
-#define MLV2_REF_SHIM_ADDR    0x05662800u
 #define MLV2_SHIM_CAP         2048u
 #define MLV2_SHIM_SLOT        MLV2_SHIM_ADDR  /* first word of the shim: ShimState pointer */
 #define MLV2_CORE_PATH        "/tmp_bt/mlv2/core.bin"
@@ -116,9 +131,32 @@ typedef struct __attribute__((packed)) {
  * succeeded, posts the MENU key so the menu closes to the shooting screen. Pressing a running item
  * switches it OFF and keeps the menu open. Auto-on is ignored for command items. */
 #define SMOD_V2_FLAG_ACTION   16u
+/* flags bit 5: a nested submenu table follows the code (and RLC1 if SMOD_V2_FLAG_RELOC is set):
+ *   SmodSubmenuHeader (12 bytes): u32 "SMNU", u8 item_count, u8 bss_cfg_off, u16 reserved,
+ *                                 u32 cfg_call_off (Thumb offset called with reason=2 on live edit, or 0)
+ *   item_count x SmodSubmenuItem (136 bytes)
+ *   u32 fnv1a_32 of (header + items).
+ * Pressing the mod in Mods opens its submenu (< Back, Mod Status, and item_count option rows).
+ * Selected indices (uint8_t[item_count]) are written at (__smod_bss + bss_cfg_off) before hooks
+ * and on() run, and updated in place (calling cfg_call_off(2) when non-zero) if edited while ON. */
+#define SMOD_V2_FLAG_SUBMENU      32u
+#define SMOD_SUBMENU_MAGIC        0x554e4d53u   /* "SMNU" */
+#define SMOD_SUBMENU_MAX_ITEMS    8u
+#define SMOD_SUBMENU_MAX_OPTS     6u
 #define SMOD_RELOC_MAGIC      0x31434c52u   /* "RLC1" */
 #define SMOD_RELOC_MAX_LIBS   8u
 #define SMOD_RELOC_MAX        1024u
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint8_t  item_count, bss_cfg_off;
+    uint16_t reserved;
+    uint32_t cfg_call_off;
+} SmodSubmenuHeader;
+typedef struct __attribute__((packed)) {
+    uint8_t  opt_count, default_val, reserved[2];
+    char     label[24];
+    char     opts[SMOD_SUBMENU_MAX_OPTS][18];
+} SmodSubmenuItem;
 typedef struct __attribute__((packed)) {
     uint32_t ref_lo, ref_hi;
     char     name[24];
@@ -137,5 +175,6 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(SmodV1Header) == 68 && sizeof(SmodV2Header) == 68, "SMOD header size");
 _Static_assert(sizeof(SmodV1Hook) == 40 && sizeof(SmodV2Hook) == 40, "SMOD hook size");
+_Static_assert(sizeof(SmodSubmenuHeader) == 12 && sizeof(SmodSubmenuItem) == 136, "SMNU layout");
 
 #endif
