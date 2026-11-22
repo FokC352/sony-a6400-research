@@ -103,9 +103,9 @@ jobs:
           import struct
           from pathlib import Path
           for mod_dir in ("/tmp/ci-live-a6400", "/tmp/ci-live-a6100"):
-              raw = (Path(mod_dir) / "FilmSimLive.mod").read_bytes()
+              raw = (Path(mod_dir) / "FilmSimulations.mod").read_bytes()
               magic, ver, flags, name, code_size, fnv, bss, on_off, off_off, hooks = struct.unpack_from("<III32s6I", raw)
-              assert (magic, ver, flags, hooks) == (0x444F4D53, 2, 20, 1), (mod_dir, magic, ver, flags, hooks)
+              assert (magic, ver, flags, hooks, off_off) == (0x444F4D53, 2, 20, 1, 0), (mod_dir, magic, ver, flags, hooks, off_off)
               target, size, fixup = struct.unpack_from("<IBB", raw, 68)
               assert (target, size) == (0x0655A528, 12), (mod_dir, hex(target), size)
           for p, label in (("/tmp/ci-film-tex/film_texture/FilmTexture.mod", b"Film Texture"),

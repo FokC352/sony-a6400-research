@@ -100,7 +100,7 @@ class TestFilmSimStudioCore(unittest.TestCase):
             l64 = live64.read_text(encoding="utf-8")
             self.assertIn("#define LIVE_N_PRESETS 10u", l64)
             self.assertIn("#define EC_GAMMA_PA 0x03e55330u", l64)
-            expected_luts = 9 if np is not None else 6
+            expected_luts = 9 if np is not None else 5
             self.assertIn(f"const uint8_t LIVE_REFADR[{expected_luts}][1215]", l64)
 
             live61 = sc.emit_live_picker_header(Path(tmp) / "live_a6100.h", stock=self.stock, target="a6100")
