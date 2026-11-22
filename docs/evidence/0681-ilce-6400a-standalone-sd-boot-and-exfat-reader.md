@@ -30,4 +30,5 @@ Observation:
   - Host test suite (tests/test_mlv2_sd_boot.py): 3/3 PASS covering FAT32, contiguous/fragmented exFAT, MLV2.OFF/disable_hook/>1 MiB rejections, prep-card DCIM preservation, closed-by-default camera entry, and install/uninstall /etc/ld.so.preload round-trips.
 Confidence and limitations:
   - High confidence on FAT32/exFAT reader correctness, dynamic PID/relocation safety, and QEMU guest behavior; physical ILCE-6400A one-time Jiritsu installation and physical SD slot boot await supervised owner execution.
+  - Post-review update (PR #76): `tools/research/package_mlv2_sd.py` and `tools/research/a6400a_sd_boot_install.py` now exclude `Arrivederci.mod` (alongside `UsbStreamingTest.mod`) from default `MLV2.TAR` builds unless `--include-arrivederci` / `--allow-arrivederci` is explicitly passed, preserving the `Backup.bin` color-matrix persistence guard (~55 KiB default `MLV2.TAR`; the initial `mlv2-ilce6400a-sd-1` QEMU receipt above included `Arrivederci.mod` at 184,320 B).
 ```

@@ -105,15 +105,15 @@ From a live `ILCE-6400A` 1.01 QEMU boot (`artifacts/qemu-a6400a/mlv2-maps-202611
 | `MTF_FN_MOVE_FOCUS` / `OPEN_POPUP` / `APPLY_POPUP` | `+0x5AE1ED` / `+0x5AB159` / `+0x2156AD` | `0x1315B6AD` verified calling `+0x5AE5BE` (`menu + 0x1FC`) |
 | `MTF_GOT_TOUCH_PRESSED` / `RELEASED` (`libsyscommon`) | `+0x000282FC` (`0x04A672FC`) / `+0x00028490` (`0x04A67490`) | `.rel.plt` `_ZN3uxd20getTouchPressedPoint...` / `Released` |
 
-### 2.3 `Arrivederci` v5 (`av-cam.bin` 1.01 LIRO RAM + `libbackup.so`)
+### 2.3 `Arrivederci` v5 (`av-cam.bin` 1.01 LIRO RAM + `/usr/sabin/*` Tap Tables)
 
 Cross-checked against both `av-cam.bin` (`0x63600000` load base) Thumb-2 instructions (`0x63AE3C6C`, `0x63AE3424`, `0x63ADF720`) and live QEMU `ILCE-6400A` 1.01 `pmemsave` RAM:
 
 - **`GAMMA_PA`**: `0x03E560C4` (`1,024 x u16` S-Log3 EC record 31, identical 2,048-byte stock table).
-- **`COLOR_PA`**: `0x0444FDC8` (`0x0444EC38 + 0x1190`, unique match for all `9 x s16` `COLOR_STOCK` entries across 2.5 MiB of live LIRO RAM).
+- **`COLOR_PA`**: `0x0444FDC8` (`0x0444EC38 + 0x1190`, unique match for all `9 x s16` `COLOR_STOCK` entries across 2.5 MiB of live LIRO RAM; backed by Sony's shutdown `Backup.bin`, so `Arrivederci.mod` must be turned OFF before power-off and stays excluded from automatic `MLV2.TAR` SD packaging by default).
 - **`CC_TUNING_PA`**: `0x0444ED96` (`0x0444EC38 + 0x15E`, live `0xFFFF` for S-Gamut3.Cine, cleared to `0x0000` while ON).
 - **`REFADR0_PA`**: `0x044B191B` (`RefAdr1 = +0x634 = 0x044B1F4F`, `RefAdr2 = +0xCD4 = 0x044B25EF`, `LUT2D = +0x143C = 0x044B2D57`).
-- **`SABIN_VADDR`**: `libbackup.so + 0x00001680` (`0x05DF1680`, `Backup_write` ID `0x0007015E` mask).
+- **`SABIN` (`/usr/sabin/*`)**: `MS_BIND`-mounts the embedded SPICA/DCV 4K tap tables from `/tmp_bt/mods/sabin/*` onto `/usr/sabin/*.bin` on enable (`sabin=m`) and detaches them on disable (`sabin=u`); `libbackup.so` is not hooked (`hook_count = 0`).
 
 ### 2.4 `OpenGate32`, `OpenGateSensor`, `OpenGate_5400_Test`, and `RCRAW_*`
 

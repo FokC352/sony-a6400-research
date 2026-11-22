@@ -9,11 +9,16 @@ from pathlib import Path
 from project_paths import PROJECT_ROOT
 
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", type=Path, required=True)
     parser.add_argument("--target", choices=("ilce_6400", "ilce_6400a"), default="ilce_6400")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--include-arrivederci",
+        action="store_true",
+        help="Explicitly bundle Arrivederci.mod into ILCE-6400A MLV2.TAR (color matrix persists in Backup.bin if powered off while ON).",
+    )
+    args = parser.parse_args(argv)
     build = args.build
 
     guard_path = build / "companion/mlv2_guard_compact.elf"
@@ -26,9 +31,14 @@ def main():
     }
     if args.target == "ilce_6400a":
         a6400a_dir = PROJECT_ROOT / "mods/ilce_6400a"
+        # UsbStreamingTest.mod is a QEMU-only diagnostic action and refuses on hardware.
+        # Arrivederci's color matrix can be persisted by Sony's shutdown Backup.bin if left ON at
+        # power-off, so it stays outside the automatic SD package unless --include-arrivederci is set.
+        excluded = {"UsbStreamingTest.mod"}
+        if not args.include_arrivederci:
+            excluded.add("Arrivederci.mod")
         for mod_path in sorted(a6400a_dir.glob("*.mod"), key=lambda p: p.name):
-            # UsbStreamingTest.mod is a QEMU-only diagnostic action and refuses on hardware.
-            if mod_path.name == "UsbStreamingTest.mod":
+            if mod_path.name in excluded:
                 continue
             members[mod_path.name] = mod_path.read_bytes()
     else:

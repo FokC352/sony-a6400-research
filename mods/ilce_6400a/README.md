@@ -12,7 +12,7 @@ See **[E0679](../../docs/evidence/0679-ilce-6400a-mod-loader-v2-and-mods-port.md
 
 | File | Menu Name | Size (B) | SHA-256 | Summary & Verification |
 | :--- | :--- | ---: | :--- | :--- |
-| `Arrivederci.mod` | `Arrivederci` | `129,444` | `31beab47dd10e4ec43c0419e558ec64734430dd5e40d71bc31bd6e29585f5694` | ARRI LogC3 Classic tone curve (`PA 0x03E560C4`), fitted Q10 color matrix (`PA 0x0444FDC8`), `CC_TUNING` (`PA 0x0444ED96`), 3D LUT (`PA 0x044B191B`..`+0x143C`), and `sabin` `Backup_write` mask (`libbackup.so + 0x1680`). **Turn OFF before powering off camera.** |
+| `Arrivederci.mod` | `Arrivederci` | `129,444` | `31beab47dd10e4ec43c0419e558ec64734430dd5e40d71bc31bd6e29585f5694` | ARRI LogC3 Classic tone curve (`PA 0x03E560C4`), fitted Q10 color matrix (`PA 0x0444FDC8`), `CC_TUNING` (`PA 0x0444ED96`), 3D LUT (`PA 0x044B191B`..`+0x143C`), and SPICA/DCV `/usr/sabin/*` 4K tap-table bind-mounts (`sabin=m`/`u`). Excluded from default `MLV2.TAR` SD auto-boot packaging; **turn OFF before powering off camera** (`COLOR_PA` persists in `Backup.bin`). |
 | `MenuTouchFull.mod` | `Menu Touch Full` | `3,032` | `b4e30572bf3282f860b9c21564b054e31302a98a3f4c811d54b96cd3beb9f35c` | Full-menu touch (`MTF2`): tab bar taps, page-dot taps, horizontal swipe paging, row select/open, popup scroll/apply/outside-tap close across `viewUnified2.so`, `libsyscommon.so`, and `libevsel.so`. |
 | `ModsTabLook.mod` | `Mods Tab Look` | `2,000` | `e8d526bcb54e2561cfe5d489365808f69a4fbdb0078186859e04ff432afaf9eb` | Auto-ON (`SMOD_FLAG_AUTO_ON`) custom `MODS` tab icon + teal tab gradient (`viewUnified2 + 0x5ADBB4`). |
 | `OpenGate32.mod` | `Open Gate 3:2` | `2,028` | `992ecdff4b3e212d9d74d68eae92fb7f111bc21ce868dae7e15465601ba07d91` | Experimental full `5400x3600` 3:2 sensor readout + `3240x2160` DMM/VPI/VENC (`41` LIRO swaps) + runtime-located `libmpr.so` (`10` swaps = `51/51` verified in live QEMU `im.elf`). Mutually exclusive with `OpenGateSensor` and `OpenGate_5400_Test`. |
@@ -41,7 +41,7 @@ bash mods/rcraw_enable_test/build_v2_wsl.sh artifacts/mods/ilce_6400a/rcraw_enab
 bash mods/rcraw_w2_probe/build_v2_wsl.sh artifacts/mods/ilce_6400a/rcraw_w2_probe --target ilce_6400a
 bash mods/usb_streaming_test/build_wsl.sh artifacts/mods/ilce_6400a/usb_streaming_test --target ilce_6400a
 
-# 3. Package SD card bundle (MLV2.TAR + mlv2_sd_boot.sh)
+# 3. Package SD card bundle (MLV2.TAR + mlv2_sd_boot.sh; excludes UsbStreamingTest.mod and Arrivederci.mod by default)
 mkdir -p artifacts/tests/mlv2-ilce6400a-build-2/card artifacts/tests/mlv2-ilce6400a-build-2/companion
 rm -f artifacts/tests/mlv2-ilce6400a-build-2/card/MLV2.TAR artifacts/tests/mlv2-ilce6400a-build-2/companion/mlv2_sd_boot.sh
 python3 -m tools.research.package_mlv2_sd --build artifacts/tests/mlv2-ilce6400a-build-2 --target ilce_6400a

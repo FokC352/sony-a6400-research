@@ -25,9 +25,16 @@ from tools.research.a6400a_sd_boot_install import (
     sha256_bytes,
     validate_sd_build,
 )
+from tools.research import package_mlv2_sd
 
 
-def _make_valid_sd_build(build_dir: Path, *, shim_addr: int = 0x05D76800, include_usb_mod: bool = False) -> dict[str, object]:
+def _make_valid_sd_build(
+    build_dir: Path,
+    *,
+    shim_addr: int = 0x05D76800,
+    include_usb_mod: bool = False,
+    include_arrivederci: bool = False,
+) -> dict[str, object]:
     (build_dir / "companion").mkdir(parents=True, exist_ok=True)
     (build_dir / "card").mkdir(parents=True, exist_ok=True)
     (build_dir / "build.json").write_text(
@@ -45,6 +52,8 @@ def _make_valid_sd_build(build_dir: Path, *, shim_addr: int = 0x05D76800, includ
     }
     if include_usb_mod:
         members["UsbStreamingTest.mod"] = b"SMODUSB"
+    if include_arrivederci:
+        members["Arrivederci.mod"] = b"SMODARRI"
     with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as tf:
         for name, data in members.items():
             ti = tarfile.TarInfo(name)
@@ -282,6 +291,14 @@ class TestOptionBSdInstallerOffline(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_sd_build(usb_build)
 
+            # Reject Arrivederci.mod bundled in default physical MLV2.TAR (unless allow_arrivederci=True)
+            arri_build = tmp_path / "sd-with-arrivederci"
+            _make_valid_sd_build(arri_build, include_arrivederci=True)
+            with self.assertRaises(ValueError):
+                validate_sd_build(arri_build)
+            arri_info = validate_sd_build(arri_build, allow_arrivederci=True)
+            self.assertIn("Arrivederci.mod", arri_info["tar_members"])
+
             # Reject tampered MLV2.TAR digest mismatch
             tampered = tmp_path / "sd-tampered"
             _make_valid_sd_build(tampered)
@@ -328,6 +345,36 @@ class TestOptionBSdInstallerOffline(unittest.TestCase):
                 self.assertFalse(manifest["usb_contacted"])
             finally:
                 shutil.rmtree(dry_out, ignore_errors=True)
+
+    def test_package_mlv2_sd_excludes_arrivederci_and_usb_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for name, extra_args in (("default", []), ("opt-in", ["--include-arrivederci"])):
+                bdir = tmp_path / name
+                (bdir / "companion").mkdir(parents=True)
+                (bdir / "card").mkdir(parents=True)
+                (bdir / "build.json").write_text(
+                    json.dumps({"shim": {"addr": "0x5d76800"}, "core": {"sha256": "0" * 64}}),
+                    encoding="utf-8",
+                )
+                (bdir / "mlv2.req").write_bytes(b"ML2QREQ")
+                (bdir / "core.bin").write_bytes(b"MLCRCORE")
+                (bdir / "companion" / "mlv2_guard_compact.elf").write_bytes(b"\x7fELF" + b"\x00" * 60)
+                (bdir / "companion" / HOOK_NAME).write_bytes(b"\x7fELF" + b"\x01" * 60)
+                (bdir / "companion" / READER_NAME).write_bytes(b"\x7fELF" + b"\x02" * 60)
+                package_mlv2_sd.main(["--build", str(bdir), "--target", "ilce_6400a", *extra_args])
+
+            default_info = validate_sd_build(tmp_path / "default")
+            self.assertIn("MenuTouchFull.mod", default_info["tar_members"])
+            self.assertIn("ModsTabLook.mod", default_info["tar_members"])
+            self.assertNotIn("UsbStreamingTest.mod", default_info["tar_members"])
+            self.assertNotIn("Arrivederci.mod", default_info["tar_members"])
+
+            with self.assertRaises(ValueError):
+                validate_sd_build(tmp_path / "opt-in")
+            opt_in_info = validate_sd_build(tmp_path / "opt-in", allow_arrivederci=True)
+            self.assertIn("Arrivederci.mod", opt_in_info["tar_members"])
+            self.assertNotIn("UsbStreamingTest.mod", opt_in_info["tar_members"])
 
 
 class TestCardReadAndWorkerScripts(unittest.TestCase):

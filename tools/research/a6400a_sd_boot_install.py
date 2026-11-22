@@ -55,7 +55,7 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def validate_sd_build(build_dir: Path) -> dict[str, object]:
+def validate_sd_build(build_dir: Path, *, allow_arrivederci: bool = False) -> dict[str, object]:
     """Validate an ILCE-6400A Option B build directory and its pinned archive digest."""
     build_dir = build_dir.resolve()
     info = json.loads((build_dir / "build.json").read_text(encoding="utf-8"))
@@ -101,6 +101,11 @@ def validate_sd_build(build_dir: Path) -> dict[str, object]:
             raise ValueError(f"MLV2.TAR is missing required member {req_member!r}")
     if "UsbStreamingTest.mod" in names:
         raise ValueError("QEMU-only UsbStreamingTest.mod must not be bundled in physical MLV2.TAR")
+    if not allow_arrivederci and "Arrivederci.mod" in names:
+        raise ValueError(
+            "Arrivederci.mod must not be bundled in default physical MLV2.TAR "
+            "(color matrix persists in Backup.bin if powered off while ON; pass --allow-arrivederci to override)"
+        )
 
     return {
         "build_dir": str(build_dir),
@@ -581,7 +586,7 @@ def run_full_orchestration(args: argparse.Namespace) -> int:
         )
         return 2
 
-    build_info = validate_sd_build(args.build) if sub_mode == "install" else None
+    build_info = validate_sd_build(args.build, allow_arrivederci=args.allow_arrivederci) if sub_mode == "install" else None
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     session_dir = (
         args.output_dir.resolve()
@@ -732,12 +737,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--owner-authorized-sd-boot", action="store_true")
     parser.add_argument("--confirm-firmware-101", action="store_true")
     parser.add_argument("--permit-control-pipe", action="store_true")
+    parser.add_argument(
+        "--allow-arrivederci",
+        action="store_true",
+        help="Allow MLV2.TAR builds that explicitly opted in to bundling Arrivederci.mod.",
+    )
     args = parser.parse_args(argv)
 
     if args.mode == "prep-card":
         if args.sd_root is None:
             parser.error("--mode prep-card requires --sd-root")
-        build_info = validate_sd_build(args.build)
+        build_info = validate_sd_build(args.build, allow_arrivederci=args.allow_arrivederci)
         res = prep_sd_card(args.sd_root, build_info, clear_disable_markers=args.clear_disable_markers)
         print(json.dumps(res, indent=2))
         return 0
@@ -749,7 +759,7 @@ def main(argv: list[str] | None = None) -> int:
         if not out.is_relative_to(PROJECT_ROOT / "artifacts"):
             raise ValueError("--output-dir must stay under artifacts/")
         out.mkdir(parents=True, exist_ok=False)
-        build_info = validate_sd_build(args.build)
+        build_info = validate_sd_build(args.build, allow_arrivederci=args.allow_arrivederci)
         nonce = "0" * 32
         inst_sh = build_worker_script(mode="install", nonce=nonce, companions=build_info["companions"])
         uninst_sh = build_worker_script(mode="uninstall", nonce=nonce)
@@ -771,7 +781,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.mode in ("full-install", "full-uninstall"):
         return run_full_orchestration(args)
 
-    build_info = validate_sd_build(args.build) if args.mode == "install" else None
+    build_info = (
+        validate_sd_build(args.build, allow_arrivederci=args.allow_arrivederci)
+        if args.mode == "install"
+        else None
+    )
     return run_jiritsu_session(args, build_info)
 
 
