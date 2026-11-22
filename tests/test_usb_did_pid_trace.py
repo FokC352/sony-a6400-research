@@ -3,12 +3,15 @@
 No Sony bytes are embedded: the BK4 preset and the DID table are built here, so
 the tests exercise the lookup contract, not any body's real values.
 """
+import hashlib
 import struct
 import unittest
 
+from project_paths import PROJECT_ROOT
 from src.a6400.execution.backup_service import BK4PresetState
 from tools.research.usb_did_pid_trace import (
-    NO_UNIT, DidRecord, decode_did_records, resolve_unit, trace,
+    NO_UNIT, DidRecord, decode_did_records, elf_did_records, is_bcd, overwrite_decision,
+    resolve_unit, trace,
 )
 
 
@@ -98,6 +101,79 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(rows[0]["did"], "0x3b")
         self.assertEqual(rows[0]["pid"]["value"], "0x1234")
         self.assertEqual(rows[0]["aux"]["value"], "0x0100")
+        self.assertTrue(rows[0]["would_overwrite"])
+
+
+class OriginalGateTests(unittest.TestCase):
+    """Replays of DescriptorMaintainer isDefaultAddress/readPresetData/chkPresetData/isBCD."""
+
+    @staticmethod
+    def row(value):
+        return {"status": "resolved", "value": f"{value:#06x}"}
+
+    def test_is_bcd_checks_only_the_low_three_nibbles_like_the_original(self):
+        for value in (0x0100, 0x0200, 0x0999, 0xF999):
+            self.assertTrue(is_bcd(value), hex(value))
+        for value in (0x0D9F, 0x000A, 0x00A0, 0x0A00):
+            self.assertFalse(is_bcd(value), hex(value))
+
+    def test_overwrite_needs_both_units_a_nonzero_pid_and_a_bcd_second_value(self):
+        self.assertEqual(overwrite_decision(self.row(0x0D9F), self.row(0x0200))[0], True)
+        cases = {
+            "isDefaultAddress": ({"status": "no_override", "unit": None}, self.row(0x0100)),
+            "readPresetData": (self.row(0x0D9F), {"status": "not_a_16_bit_unit"}),
+            "first value is zero": (self.row(0), self.row(0x0100)),
+            "not BCD": (self.row(0x0D9F), self.row(0x0D9F)),
+        }
+        for reason, (pid, aux) in cases.items():
+            applied, why = overwrite_decision(pid, aux)
+            with self.subTest(reason=reason):
+                self.assertFalse(applied)
+                self.assertIn(reason, why)
+
+
+EXTRACT = PROJECT_ROOT / "firmware" / "extracted_ilce7rm4a_v113" / "firmware.tar_unpacked"
+LOCAL_INPUTS = {
+    "lib": (EXTRACT / "0700_part_image/dev/nflasha15_unpacked/lib/libInfraUsbCmn.so",
+            "96638679c31ca8809fae2005fb992653629f040acad72280de10b2b1dcf8c246"),
+    "cx88900": (EXTRACT / "0110_backup/SYSASTRA-DSLR/MGA/CX88900_UC2.bin",
+                "7109822609da4ccddb139b67251373d364bb5b2399b0020f70b694f7971ae736"),
+    "cx88901": (EXTRACT / "0110_backup/SYSASTRA-DSLR/MGA/CX88901_AP2.bin",
+                "311b99686f728209ad55701cb12ab553accadc848c24cca95d820597de166e03"),
+}
+
+
+class LocalIlce7rm4aV113Tests(unittest.TestCase):
+    """E0678 values on the owner's local 1.13 extraction; skipped without identical inputs."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.raw = {}
+        for name, (path, sha) in LOCAL_INPUTS.items():
+            if not path.is_file():
+                raise unittest.SkipTest(f"Local ILCE-7RM4A 1.13 extraction not present: {path}")
+            data = path.read_bytes()
+            if hashlib.sha256(data).hexdigest() != sha:
+                raise unittest.SkipTest(f"Local input differs from the E0678 identity: {path}")
+            cls.raw[name] = data
+
+    def table(self, preset):
+        rows = trace(elf_did_records(self.raw["lib"]), BK4PresetState(self.raw[preset]))
+        return {r["did"]: r for r in rows}
+
+    def test_pc_remote_and_mass_storage_pids_resolve_and_pass_the_original_gates(self):
+        for preset, bcd in (("cx88900", "0x0100"), ("cx88901", "0x0200")):
+            rows = self.table(preset)
+            with self.subTest(preset=preset):
+                self.assertEqual(sorted(rows), ["0x00", "0x0b", "0x0c", "0x0d", "0x37",
+                                                "0x38", "0x39", "0x3a", "0x3b"])
+                self.assertEqual(rows["0x00"]["pid"]["value"], "0x0d9d")
+                self.assertEqual(rows["0x3b"]["pid"]["value"], "0x0d9f")
+                self.assertEqual(rows["0x3b"]["pid"]["unit"], "0x00e70035")
+                self.assertEqual(rows["0x3b"]["aux"]["value"], bcd)
+                self.assertTrue(rows["0x3b"]["would_overwrite"])
+                for did in ("0x0d", "0x38", "0x39", "0x3a"):
+                    self.assertFalse(rows[did]["would_overwrite"])
 
 
 if __name__ == "__main__":

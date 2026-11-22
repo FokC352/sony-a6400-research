@@ -84,9 +84,10 @@ ILCE_7RM4A = TargetProfile(
         "No live kernel, module, memory, /proc or partition read was performed; the displayed 1.13 version "
         "and USB identity do not establish the live kernel or module bytes.",
         "PC Remote 0x0D9F is host-observed and absent from the 18 packaged normalUsbDescriptors pairs; "
-        "E0678 finds it as BK4 preset unit 0x00E70035, named by DID 0x3B of the stock USB service's ptbl_did. "
-        "The DID-to-mode mapping is a value match with host observations, not code evidence. Stock descriptor "
-        "membership does not identify a mode; MTP and UVC were not observed.",
+        "E0678 finds it as BK4 preset unit 0x00E70035, named by DID 0x3B of the stock USB service's ptbl_did, "
+        "which the original DescriptorMaintainer::execOverwrite stores into that DID's descriptor buffer. Only "
+        "the DID-to-mode mapping is a value match with host observations. Stock descriptor membership does not "
+        "identify a mode; MTP and UVC were not observed.",
         "The observed wire product_code 0032853030 and updater fdat.model 0x91030003 are distinct namespaces.",
         "A resolved kallsyms symbol is presence evidence, not loadability or callability proof.",
         "uipc_queues is empty: the a6400's queue handles come from a live /proc/osal/uipc read and are "

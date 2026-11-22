@@ -2,15 +2,20 @@
 
 Sony's ``libInfraUsbCmn.so`` exports ``ptbl_did``: one pointer per USB device id
 (DID). Each non-null record starts with its own DID number and carries, at word 6
-and word 7, two backup unit ids. ``DescriptorMaintainer`` reads those units through
-``Backup_read`` and overwrites the compiled device descriptor with them, so the
-product id a body presents is preset data, not a compiled descriptor constant.
+and word 7, two backup unit ids. The original ``DescriptorMaintainer::Overwrite``
+copies exactly those words (``+0x18``/``+0x1C``), skips when either is
+``0xFFFFFFFF`` (``isDefaultAddress``), reads each with ``Backup_get_datasize == 2``
+and ``Backup_read`` (``readPresetData``), requires a non-zero first value and a
+non-zero BCD second value (``chkPresetData``/``isBCD``), and stores them as
+halfwords at ``+0x32``/``+0x34`` of the DID's descriptor buffer (``execOverwrite``).
+So the product id a body presents is preset data, not a compiled constant.
 
 This tool performs that lookup offline: it decodes the records from the original
 library and resolves each unit with :class:`BK4PresetState`, which reproduces the
 original ``Data_SearchId`` algorithm. It reads files only; it never touches a camera
-or USB. Mapping a DID to a USB *mode* is not decided here: compare the resolved
-values with host-observed identities and say which is which in the evidence.
+or USB. ``would_overwrite`` mirrors the original gate decisions above. Mapping a DID
+to a USB *mode* is not decided here: compare the resolved values with host-observed
+identities and say which is which in the evidence.
 """
 from __future__ import annotations
 
@@ -82,10 +87,37 @@ def resolve_unit(state: BK4PresetState, unit: int) -> dict:
     return row
 
 
+def is_bcd(value: int) -> bool:
+    """Original ``DescriptorMaintainer::isBCD``: the low three nibbles are 0-9.
+
+    The top nibble is not examined by the original code, so it is not examined here.
+    """
+    return all(((value >> shift) & 0xF) <= 9 for shift in (0, 4, 8))
+
+
+def overwrite_decision(pid: dict, aux: dict) -> tuple[bool, str]:
+    """Replay the original Overwrite gates on resolved units."""
+    if pid["status"] == "no_override" or aux["status"] == "no_override":
+        return False, "isDefaultAddress: a unit is 0xFFFFFFFF"
+    for name, row in (("first", pid), ("second", aux)):
+        if row["status"] != "resolved":
+            return False, f"readPresetData: {name} unit is {row['status']}"
+    first, second = int(pid["value"], 16), int(aux["value"], 16)
+    if not first:
+        return False, "chkPresetData: first value is zero"
+    if not second or not is_bcd(second):
+        return False, "chkPresetData: second value is zero or not BCD"
+    return True, "execOverwrite: first -> +0x32, second -> +0x34"
+
+
 def trace(records: list[DidRecord], state: BK4PresetState) -> list[dict]:
-    return [{"did": f"{r.index:#04x}", "record_va": f"{r.record_va:#x}",
-             "pid": resolve_unit(state, r.pid_unit), "aux": resolve_unit(state, r.aux_unit)}
-            for r in records]
+    rows = []
+    for r in records:
+        pid, aux = resolve_unit(state, r.pid_unit), resolve_unit(state, r.aux_unit)
+        applied, reason = overwrite_decision(pid, aux)
+        rows.append({"did": f"{r.index:#04x}", "record_va": f"{r.record_va:#x}", "pid": pid,
+                     "aux": aux, "would_overwrite": applied, "gate": reason})
+    return rows
 
 
 def elf_did_records(library: bytes) -> list[DidRecord]:
