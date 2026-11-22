@@ -36,8 +36,8 @@ for o in "$OUT/live.o" "$OUT/live_tramp.o"; do
   fi
 done
 arm-linux-gnueabi-ld --build-id=none -T tools/native_camera/mlv2/mod_v2.ld "$OUT/live.o" "$OUT/live_tramp.o" -o "$OUT/live.elf"
-python3 -m tools.research.pack_mod_v2 --elf "$OUT/live.elf" --name "FilmSim Live" \
-  --on live_life --off live_life --bss 32 --action \
+python3 -m tools.research.pack_mod_v2 --elf "$OUT/live.elf" --name "Film Simulations" \
+  --on live_life --bss 48 --action \
   --hook "${HOOK_ADDR}:2de9f04184b0044602af0846:live_event_push" \
   --reloc-layout tools/native_camera/mlv2/reference_layout_ilce6400.txt \
   --data-symbol LIVE_NAMES --data-symbol LIVE_LUT_IDX \
@@ -45,4 +45,4 @@ python3 -m tools.research.pack_mod_v2 --elf "$OUT/live.elf" --name "FilmSim Live
   --data-symbol COLOR_A0_STOCK --data-symbol COLOR_A1_STOCK --data-symbol COLOR_B2_STOCK \
   --data-symbol LIVE_EC --data-symbol LIVE_FC \
   --data-symbol LIVE_A0 --data-symbol LIVE_A1 --data-symbol LIVE_B2 --data-symbol LIVE_REFADR \
-  --out "$OUT/FilmSimLive.mod" | tee "$OUT/pack.json"
+  --out "$OUT/FilmSimulations.mod" | tee "$OUT/pack.json"

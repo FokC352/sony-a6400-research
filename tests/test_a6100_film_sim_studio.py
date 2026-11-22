@@ -98,9 +98,9 @@ class TestFilmSimStudioCore(unittest.TestCase):
 
             live64 = sc.emit_live_picker_header(Path(tmp) / "live_a6400.h", stock=self.stock, target="a6400")
             l64 = live64.read_text(encoding="utf-8")
-            self.assertIn("#define LIVE_N_PRESETS 8u", l64)
+            self.assertIn("#define LIVE_N_PRESETS 10u", l64)
             self.assertIn("#define EC_GAMMA_PA 0x03e55330u", l64)
-            expected_luts = 7 if np is not None else 4
+            expected_luts = 9 if np is not None else 6
             self.assertIn(f"const uint8_t LIVE_REFADR[{expected_luts}][1215]", l64)
 
             live61 = sc.emit_live_picker_header(Path(tmp) / "live_a6100.h", stock=self.stock, target="a6100")
@@ -117,8 +117,8 @@ class TestFilmSimStudioCore(unittest.TestCase):
             "TARGET_A6400_V1",
             "0x03e3e6ccu",
             "0x03e553b0u",
-            "#define LIVE_N_PRESETS 8u",
-            "const uint8_t LIVE_REFADR[7][1215]",
+            "#define LIVE_N_PRESETS 10u",
+            "const uint8_t LIVE_REFADR[9][1215]",
         ):
             self.assertIn(needle, live_hdr)
         tramp = (ROOT / "mods/film_sims/live_picker/film_sim_live_trampoline.S").read_text(encoding="utf-8")

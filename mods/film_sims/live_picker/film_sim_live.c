@@ -34,6 +34,7 @@
 
 struct live_state {
     uint32_t magic;
+    char status[16];
     uint32_t armed;
     uint32_t skip_first_menu;
     uint32_t swallow_enter_rel;
@@ -187,8 +188,16 @@ static void write_refadr(int fd, int on, const uint8_t *lut) {
     }
 }
 
+static void update_status(volatile struct live_state *s, uint32_t idx) {
+    const char *src = (idx == 0u) ? "Off" : LIVE_NAMES[idx];
+    int i = 0;
+    for (; src[i] && i < 15; i++) s->status[i] = src[i];
+    s->status[i] = '\0';
+}
+
 static void apply_preset(uint32_t idx) {
     if (idx >= LIVE_N_PRESETS) return;
+    update_status(LIVE_STATE, idx);
     int fd = (int)sc3(5, (long)"/dev/mem", 0x101002, 0);
     if (fd < 0) return;
     if (idx == 0u) {
@@ -389,27 +398,20 @@ uint32_t live_event_push(void *mgr, void *ev, uint32_t notify) {
 }
 
 void live_life(int on) {
+    (void)on;
     volatile struct live_state *s = LIVE_STATE;
-    if (on) {
-        s->magic = 0u;
-        __sync_synchronize();
-        s->armed = 1u;
-        s->skip_first_menu = 1u;
-        s->swallow_enter_rel = 0u;
-        s->idx = 1u; /* Start on first film sim (Classic Chrome) */
-        find_osd_maps(s);
-        apply_preset(s->idx);
-        draw_banner(s);
-        __sync_synchronize();
-        s->magic = LIVE_MAGIC;
-        log_line("live_on", (s->idx << 16) | (uint32_t)(LIVE_LUT_IDX[s->idx] >= 0 ? 1u : 0u));
-    } else {
-        s->armed = 0u;
-        __sync_synchronize();
-        s->magic = 0u;
-        clear_banner(s);
-        apply_preset(0u); /* Restore stock on OFF */
-        log_line("live_off", 0u);
-    }
+    uint32_t init_idx = (s->magic == LIVE_MAGIC && s->idx < LIVE_N_PRESETS) ? s->idx : 1u;
+    s->magic = 0u;
+    __sync_synchronize();
+    s->armed = 1u;
+    s->skip_first_menu = 1u;
+    s->swallow_enter_rel = 0u;
+    s->idx = init_idx; /* Default to Velvia on first launch; keep last preset on re-arm */
+    find_osd_maps(s);
+    apply_preset(s->idx);
+    draw_banner(s);
+    __sync_synchronize();
+    s->magic = LIVE_MAGIC;
+    log_line("live_on", (s->idx << 16) | (uint32_t)(LIVE_LUT_IDX[s->idx] >= 0 ? 1u : 0u));
     __sync_synchronize();
 }
