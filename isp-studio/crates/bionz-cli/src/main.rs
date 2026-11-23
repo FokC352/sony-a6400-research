@@ -29,6 +29,28 @@ enum Command {
         allow_synthetic_stock: bool,
         presets: Vec<PathBuf>,
     },
+    /// Write an SMOD v2 `.mod` for ILCE-6400 / ILCE-6100 straight from a .bzlook preset, with no
+    /// compiler involved: the ARM template is embedded in `bionz-preset`.
+    Smod {
+        /// .bzlook preset container.
+        preset: PathBuf,
+        /// Camera body whose physical addresses the payload gets.
+        #[arg(long, default_value = "a6400")]
+        target: String,
+        /// Output `.mod` path (default: `<LookName>.mod` next to the preset).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Write a Live Picker `FilmSimulations.mod` from a folder of `.bzlook` presets: every exportable
+    /// look goes into one mod that switches them live in Live View.
+    LiveMod {
+        /// Folder holding the `.bzlook` presets (sorted by file name).
+        presets: PathBuf,
+        #[arg(long, default_value = "a6400")]
+        target: String,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
     /// Time the integer pipeline. `--raw` is recorded and not required for the synthetic ramp.
     Bench {
         #[arg(long)]
@@ -261,6 +283,88 @@ fn main() -> anyhow::Result<()> {
             }
             std::fs::write(&output, text)?;
             println!("wrote {}", output.display());
+        }
+        Command::Smod { preset, target, output } => {
+            let look = load_bzlook(&preset)?;
+            let table = look
+                .compiled
+                .iter()
+                .find(|(k, _)| k == &target)
+                .map(|(_, t)| t)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "no {target} table in {} (it has: {})",
+                        preset.display(),
+                        look.compiled.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>().join(", ")
+                    )
+                })?;
+            let blob = bionz_preset::emit_smod_v2(&look.meta.name, &target, table)?;
+            let out = output.unwrap_or_else(|| preset.with_file_name(bionz_preset::mod_filename(&look.meta.name)));
+            if let Some(parent) = out.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+            std::fs::write(&out, &blob)?;
+            let info = serde_json::json!({
+                "preset": preset.display().to_string(),
+                "name": look.meta.name,
+                "target": target,
+                "output": out.display().to_string(),
+                "bytes": blob.len(),
+                "sha256": bionz_compare::file_sha256(&out).unwrap_or_default(),
+            });
+            println!("{}", serde_json::to_string_pretty(&info)?);
+        }
+        Command::LiveMod { presets, target, output } => {
+            anyhow::ensure!(presets.is_dir(), "{} is not a folder", presets.display());
+            let mut paths: Vec<PathBuf> = std::fs::read_dir(&presets)?
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("bzlook")))
+                .collect();
+            paths.sort();
+            anyhow::ensure!(!paths.is_empty(), "no .bzlook presets in {}", presets.display());
+            let mut looks = Vec::new();
+            let mut skipped = Vec::new();
+            for path in &paths {
+                let look = load_bzlook(path)?;
+                let Some((_, table)) = look.compiled.iter().find(|(k, _)| k == &target) else {
+                    skipped.push(format!("{} (no {target} table)", look.meta.name));
+                    continue;
+                };
+                if !look.spatial.is_empty() {
+                    skipped.push(format!("{} (spatial tables)", look.meta.name));
+                    continue;
+                }
+                if let Some(reason) = bionz_preset::smod_v2::live_picker_skip_reason(&look.meta.name, table) {
+                    skipped.push(format!("{} ({reason})", look.meta.name));
+                    continue;
+                }
+                if looks.len() >= bionz_preset::smod_v2::LIVE_MAX_LOOKS {
+                    skipped.push(format!("{} (the picker carries at most {} looks)", look.meta.name, bionz_preset::smod_v2::LIVE_MAX_LOOKS));
+                    continue;
+                }
+                looks.push((look.meta.name.clone(), table.clone()));
+            }
+            anyhow::ensure!(!looks.is_empty(), "no look in {} can go into the {target} Live Picker: {}", presets.display(), skipped.join(", "));
+            let blob = bionz_preset::emit_live_smod_v2(&target, &looks)?;
+            if let Some(parent) = output.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+            std::fs::write(&output, &blob)?;
+            let info = serde_json::json!({
+                "kind": "live",
+                "target": target,
+                "output": output.display().to_string(),
+                "bytes": blob.len(),
+                "looks": looks.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>(),
+                "skipped": skipped,
+                "sha256": bionz_compare::file_sha256(&output).unwrap_or_default(),
+            });
+            println!("{}", serde_json::to_string_pretty(&info)?);
         }
         Command::Bench { raw, width } => {
             if let Some(path) = &raw {

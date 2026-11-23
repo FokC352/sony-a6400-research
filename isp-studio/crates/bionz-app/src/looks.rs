@@ -1,14 +1,17 @@
-//! Preset library: discovery, import (.bzlook, .cube, .a6lt), recipe compile, save and Film Sims packing.
-//! Nothing here talks to a camera.
+//! Preset library: discovery, import (.bzlook, .cube, .a6lt), recipe compile, save, Film Sims
+//! packing, and portable camera `.mod` export. Nothing here talks to a camera.
 
 use std::path::{Path, PathBuf};
 
 use bionz_core::{IntegerParams, OraclePreset, Profile};
 use bionz_fit::{decompose, recipe_cube, Recipe};
 use bionz_preset::{
-    apply_fitted_gamma, apply_movie_gamma, compose_stock_matrix, emit_film_sim_data, emit_live_header, integer_params_from_compiled,
-    load_bzlook, pack_refadr, parse_cube, stock_params_from_compiled, store_bzlook, unpack_a6lt, Bzlook, CompiledTables, LookMeta,
+    apply_fitted_gamma, apply_movie_gamma, compose_stock_matrix, emit_film_sim_data, emit_live_header, emit_live_smod_v2,
+    emit_smod_v2, integer_params_from_compiled, load_bzlook, load_bzlook_bytes, pack_refadr, parse_cube,
+    stock_params_from_compiled, store_bzlook, unpack_a6lt, Bzlook, CompiledTables, LookMeta,
 };
+
+use crate::bundled_presets;
 
 /// Cube size used when a recipe is fitted. 17 points keep slider edits under a second.
 pub const RECIPE_CUBE_SIZE: usize = 17;
@@ -115,6 +118,180 @@ pub fn load_library(dir: &Path) -> (Vec<Entry>, Vec<String>) {
         }
     }
     (entries, errors)
+}
+
+/// The presets compiled into the executable (see [`crate::bundled_presets`]).
+pub fn load_bundled_library() -> (Vec<Entry>, Vec<String>) {
+    let mut entries = Vec::new();
+    let mut errors = Vec::new();
+    for (file, bytes) in bundled_presets::BUNDLED {
+        match load_bzlook_bytes(bytes) {
+            Ok(look) => entries.push(Entry::from_look(look, None)),
+            Err(err) => errors.push(format!("bundled {file}: {err}")),
+        }
+    }
+    (entries, errors)
+}
+
+/// Disk presets first, then every bundled preset whose name is not already in the library. The
+/// portable executable therefore starts with all twelve looks when nothing is on disk beside it, and
+/// a user's updated copy of a preset still wins.
+pub fn load_library_with_bundled(dir: Option<&Path>) -> (Vec<Entry>, Vec<String>) {
+    let (mut entries, mut errors) = dir.map(load_library).unwrap_or_default();
+    let (bundled, bundled_errors) = load_bundled_library();
+    errors.extend(bundled_errors);
+    for entry in bundled {
+        if !entries.iter().any(|e| e.name == entry.name) {
+            entries.push(entry);
+        }
+    }
+    (entries, errors)
+}
+
+/// Which bodies an export writes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ModTargetSelection {
+    /// `a6400` and `a6100` side by side (`<dir>/a6400/mods/…` and `<dir>/a6100/mods/…`).
+    Both,
+    A6400,
+    A6100,
+}
+
+impl ModTargetSelection {
+    pub fn label(self) -> &'static str {
+        match self {
+            ModTargetSelection::Both => "a6400 + a6100",
+            ModTargetSelection::A6400 => "a6400 only",
+            ModTargetSelection::A6100 => "a6100 only",
+        }
+    }
+
+    pub fn targets(self) -> &'static [&'static str] {
+        match self {
+            ModTargetSelection::Both => &["a6400", "a6100"],
+            ModTargetSelection::A6400 => &["a6400"],
+            ModTargetSelection::A6100 => &["a6100"],
+        }
+    }
+}
+
+/// Write `SMOD v2` `.mod` files for the selected look without any external tool.
+///
+/// Mod Loader v2 loads every `*.mod` under `<SD>:\mods\`. With both bodies selected the files go to
+/// `<dir>/a6400/mods/<Look>.mod` and `<dir>/a6100/mods/<Look>.mod`, so the two SD cards can be
+/// prepared from one folder. With one body the file goes straight to a folder that is already named
+/// `mods`, or otherwise into `<dir>/mods/`, so pointing at a card root (`E:\`) or at `E:\mods\`
+/// both produce `E:\mods\<Look>.mod`.
+pub fn export_mods(dir: &Path, selected: &Entry, targets: ModTargetSelection) -> Result<Vec<PathBuf>, String> {
+    if !selected.look.spatial.is_empty() {
+        return Err(format!(
+            "{} writes /usr/sabin spatial tables; a Film Sims .mod only swaps EC/FC, the A0/A1/B2 matrices and \
+             RefAdr[0]. Build it with mods/arri_isp/arrivederci instead.",
+            selected.name
+        ));
+    }
+    let file = bionz_preset::mod_filename(&selected.name);
+    let both = targets == ModTargetSelection::Both;
+    let mut written = Vec::new();
+    for target in targets.targets() {
+        let table = selected.table(target).ok_or_else(|| format!("{} has no {target} table (it has: {})", selected.name, selected.targets().join(", ")))?;
+        let blob = emit_smod_v2(&selected.name, target, table).map_err(|e| format!("{target}: {e}"))?;
+        let folder = mod_folder(dir, target, both);
+        std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        let path = folder.join(&file);
+        std::fs::write(&path, &blob).map_err(|e| format!("{}: {e}", path.display()))?;
+        written.push(path);
+    }
+    Ok(written)
+}
+
+/// [`export_mods`] plus the two messages the UI shows: a dialog detail block listing every file, and
+/// a one-line summary for the status bar. Both the Export dialog and the headless entry point use
+/// this, so they cannot drift apart.
+pub fn export_mods_report(dir: &Path, selected: &Entry, targets: ModTargetSelection) -> Result<(String, String), String> {
+    let files = export_mods(dir, selected, targets)?;
+    let summary = format!(
+        "Wrote {} .mod file(s) for {}. Copy them to <SD>:\\mods\\ if they are not there yet, then enable the look in \
+         MENU -> Mods. Nothing was sent to a camera.",
+        files.len(),
+        targets.label()
+    );
+    let detail = files.iter().map(|f| f.display().to_string()).collect::<Vec<_>>().join("\n");
+    Ok((summary, detail))
+}
+
+/// Where a `.mod` goes for one body: `<dir>/<body>/mods` when both bodies are exported, otherwise
+/// `<dir>` if it is already named `mods`, else `<dir>/mods`.
+fn mod_folder(dir: &Path, target: &str, both: bool) -> PathBuf {
+    if both {
+        dir.join(target).join("mods")
+    } else if dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("mods")) {
+        dir.to_path_buf()
+    } else {
+        dir.join("mods")
+    }
+}
+
+/// Every library look the Live Picker can carry for `target`, in library order, plus the names it had
+/// to skip and why.
+pub fn live_candidates<'a>(all: &'a [Entry], target: &str) -> (Vec<(&'a str, &'a CompiledTables)>, Vec<String>) {
+    let mut looks = Vec::new();
+    let mut skipped = Vec::new();
+    for entry in all {
+        let Some(table) = entry.table(target) else { continue };
+        if !entry.look.spatial.is_empty() {
+            skipped.push(format!("{} (spatial tables)", entry.name));
+        } else if let Some(reason) = bionz_preset::smod_v2::live_picker_skip_reason(&entry.name, table) {
+            skipped.push(format!("{} ({reason})", entry.name));
+        } else if looks.len() >= bionz_preset::smod_v2::LIVE_MAX_LOOKS {
+            skipped.push(format!("{} (the picker carries at most {} looks)", entry.name, bionz_preset::smod_v2::LIVE_MAX_LOOKS));
+        } else {
+            looks.push((entry.name.as_str(), table));
+        }
+    }
+    (looks, skipped)
+}
+
+/// Write the Live Picker `FilmSimulations.mod` (up to 15 looks, switched live in Live View) for the
+/// selected bodies. Same destination rules as [`export_mods`].
+pub fn export_live_mods(dir: &Path, all: &[Entry], targets: ModTargetSelection) -> Result<Vec<PathBuf>, String> {
+    let both = targets == ModTargetSelection::Both;
+    let mut written = Vec::new();
+    for target in targets.targets() {
+        let (looks, skipped) = live_candidates(all, target);
+        if looks.is_empty() {
+            return Err(format!(
+                "no look in the library can go into the {target} Live Picker{}",
+                if skipped.is_empty() { String::new() } else { format!(": {}", skipped.join(", ")) }
+            ));
+        }
+        let owned: Vec<(String, CompiledTables)> = looks.iter().map(|(name, table)| ((*name).to_string(), (*table).clone())).collect();
+        let blob = emit_live_smod_v2(target, &owned).map_err(|e| format!("{target}: {e}"))?;
+        let folder = mod_folder(dir, target, both);
+        std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        let path = folder.join(bionz_preset::smod_v2::LIVE_MOD_FILENAME);
+        std::fs::write(&path, &blob).map_err(|e| format!("{}: {e}", path.display()))?;
+        written.push(path);
+    }
+    Ok(written)
+}
+
+/// [`export_live_mods`] plus the dialog detail and the status-bar summary.
+pub fn export_live_mods_report(dir: &Path, all: &[Entry], targets: ModTargetSelection) -> Result<(String, String), String> {
+    let files = export_live_mods(dir, all, targets)?;
+    let (looks, skipped) = live_candidates(all, targets.targets()[0]);
+    let mut summary = format!(
+        "Wrote {} Live Picker .mod file(s) with {} look(s) for {}. Press MENU -> Mods -> Film Simulations, then Left/Right \
+         switches looks and ENTER locks one. Nothing was sent to a camera.",
+        files.len(),
+        looks.len(),
+        targets.label()
+    );
+    if !skipped.is_empty() {
+        summary.push_str(&format!(" Skipped: {}.", skipped.join(", ")));
+    }
+    let detail = files.iter().map(|f| f.display().to_string()).collect::<Vec<_>>().join("\n");
+    Ok((summary, detail))
 }
 
 /// Import a preset file. `.cube` and `.a6lt` are fitted or composed onto the stock tables of `base`.
@@ -405,6 +582,164 @@ mod tests {
     #[test]
     fn slug_is_file_safe() {
         assert_eq!(slug("ACROS B&W"), "acros-b-w");
+    }
+
+    #[test]
+    fn bundled_presets_load_with_no_files_on_disk() {
+        let (entries, errors) = load_bundled_library();
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(entries.len(), 12);
+        assert_eq!(entries.len(), bundled_presets::COUNT);
+        assert!(entries.iter().all(|e| e.path.is_none() && e.recipe.is_some()));
+        for entry in &entries {
+            for target in ["a6400", "a6100"] {
+                let table = entry.table(target).unwrap_or_else(|| panic!("{} has no {target} table", entry.name));
+                assert!(!table.has_synthetic_stock(), "{} {target} stock is synthetic", entry.name);
+                assert!(entry.has_movie_table(target), "{} has no {target} Movie variant", entry.name);
+            }
+        }
+        // A missing folder is not an error: the portable executable still gets all twelve looks.
+        let (merged, errors) = load_library_with_bundled(Some(Path::new("no-such-preset-folder")));
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(merged.len(), 12);
+    }
+
+    #[test]
+    fn disk_presets_win_over_bundled_duplicates() {
+        let (mut disk, _) = load_library(&presets());
+        disk.truncate(3);
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/look-lab-merge-disk");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for entry in &disk {
+            let path = dir.join(entry.path.as_ref().unwrap().file_name().unwrap());
+            std::fs::copy(entry.path.as_ref().unwrap(), &path).unwrap();
+        }
+        let (merged, errors) = load_library_with_bundled(Some(&dir));
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(merged.len(), 12, "three disk presets plus the nine other bundled ones");
+        assert_eq!(merged.iter().filter(|e| e.name == "Classic Chrome").count(), 1);
+        assert!(merged.iter().filter(|e| e.name == "Classic Chrome").all(|e| e.path.is_some()), "the disk copy wins");
+    }
+
+    #[test]
+    fn export_writes_a_mod_for_both_targets() {
+        let (entries, _) = load_library(&presets());
+        let chrome = entries.iter().find(|e| e.name == "Classic Chrome").unwrap();
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/look-lab-mod-export");
+        let _ = std::fs::remove_dir_all(&dir);
+        let files = export_mods(&dir, chrome, ModTargetSelection::Both).unwrap();
+        assert_eq!(files.len(), 2);
+        let a6400 = dir.join("a6400").join("mods").join("ClassicChrome.mod");
+        let a6100 = dir.join("a6100").join("mods").join("ClassicChrome.mod");
+        assert_eq!(files, vec![a6400.clone(), a6100.clone()]);
+        let read = |path: &Path| {
+            let blob = std::fs::read(path).unwrap();
+            assert_eq!(&blob[0..4], b"SMOD");
+            assert_eq!(u32::from_le_bytes(blob[4..8].try_into().unwrap()), 2);
+            assert_eq!(u32::from_le_bytes(blob[8..12].try_into().unwrap()), 16, "FLAG_ACTION");
+            assert_eq!(&blob[12..26], b"Classic Chrome");
+            let code_len = u32::from_le_bytes(blob[44..48].try_into().unwrap()) as usize;
+            assert_eq!(blob.len(), 68 + code_len);
+            let checksum = u32::from_le_bytes(blob[48..52].try_into().unwrap());
+            assert_eq!(bionz_preset::smod_v2::fnv1a_32(&blob[68..]), checksum);
+            blob
+        };
+        let blob6400 = read(&a6400);
+        let blob6100 = read(&a6100);
+        let payload = bionz_preset::template_layout().unwrap();
+        let ec_at = |blob: &Vec<u8>| {
+            let at = 68 + payload.code_field("ec_gamma_pa").unwrap();
+            u32::from_le_bytes(blob[at..at + 4].try_into().unwrap())
+        };
+        assert_eq!(ec_at(&blob6400), bionz_preset::known_target("a6400").unwrap().ec_gamma_pa);
+        assert_eq!(ec_at(&blob6100), bionz_preset::known_target("a6100").unwrap().ec_gamma_pa);
+        assert_ne!(blob6400, blob6100, "the two bodies differ in their physical addresses");
+    }
+
+    #[test]
+    fn single_target_export_respects_a_mods_folder() {
+        let (entries, _) = load_library(&presets());
+        let chrome = entries.iter().find(|e| e.name == "Classic Chrome").unwrap();
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/look-lab-mod-single");
+        let _ = std::fs::remove_dir_all(&root);
+        // Card root: the file lands in <root>/mods/.
+        let files = export_mods(&root, chrome, ModTargetSelection::A6100).unwrap();
+        assert_eq!(files, vec![root.join("mods").join("ClassicChrome.mod")]);
+        // A folder already named mods (as an SD card opened at <SD>:\mods) gets the file directly.
+        let mods = root.join("mods");
+        let files = export_mods(&mods, chrome, ModTargetSelection::A6400).unwrap();
+        assert_eq!(files, vec![mods.join("ClassicChrome.mod")]);
+        assert!(mods.join("ClassicChrome.mod").is_file());
+        assert!(!mods.join("mods").exists(), "no nested mods folder inside a mods folder");
+    }
+
+    #[test]
+    fn live_picker_export_writes_filmsimulations_for_both_bodies() {
+        let (entries, _) = load_library(&presets());
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/look-lab-live-export");
+        let _ = std::fs::remove_dir_all(&dir);
+        let files = export_live_mods(&dir, &entries, ModTargetSelection::Both).unwrap();
+        let a6400 = dir.join("a6400").join("mods").join("FilmSimulations.mod");
+        let a6100 = dir.join("a6100").join("mods").join("FilmSimulations.mod");
+        assert_eq!(files, vec![a6400.clone(), a6100.clone()]);
+        for path in [&a6400, &a6100] {
+            let blob = std::fs::read(path).unwrap();
+            assert_eq!(&blob[..4], b"SMOD");
+            assert_eq!(u32::from_le_bytes(blob[4..8].try_into().unwrap()), 2);
+            let flags = u32::from_le_bytes(blob[8..12].try_into().unwrap());
+            assert_eq!(flags, 20, "FLAG_ACTION | FLAG_RELOC");
+            assert_eq!(&blob[12..28], b"Film Simulations");
+            assert_eq!(u32::from_le_bytes(blob[52..56].try_into().unwrap()), 48, "bss");
+            assert_eq!(u32::from_le_bytes(blob[64..68].try_into().unwrap()), 1, "one hook");
+        }
+        assert_ne!(std::fs::read(&a6400).unwrap(), std::fs::read(&a6100).unwrap(), "each body has its own addresses");
+        // The single-look export of one preset is a different file with a different name.
+        let chrome = entries.iter().find(|e| e.name == "Classic Chrome").unwrap();
+        let single = export_mods(&dir, chrome, ModTargetSelection::A6400).unwrap();
+        assert_eq!(single, vec![dir.join("mods").join("ClassicChrome.mod")]);
+        assert!(a6400.is_file() && single[0].is_file());
+    }
+
+    #[test]
+    fn live_picker_skips_looks_it_cannot_carry_and_says_so() {
+        let (mut entries, _) = load_library(&presets());
+        entries[0].look.spatial.push(("dcv_psf_table_movie_bayer.bin".into(), vec![0u8; 16]));
+        let (looks, skipped) = live_candidates(&entries, "a6400");
+        assert_eq!(looks.len(), 11);
+        assert_eq!(looks[0].0, entries[1].name);
+        assert!(skipped.iter().any(|s| s.contains(&entries[0].name) && s.contains("spatial")), "{skipped:?}");
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/look-lab-live-skip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let (summary, detail) = export_live_mods_report(&dir, &entries, ModTargetSelection::A6100).unwrap();
+        assert!(summary.contains("11 look(s)"), "{summary}");
+        assert!(summary.contains("Skipped:"), "{summary}");
+        assert!(detail.ends_with("FilmSimulations.mod"), "{detail}");
+        // No look at all for a body that is not in the library is an error, not an empty mod.
+        let mut only_6400: Vec<Entry> = Vec::new();
+        for entry in &entries {
+            if entry.table("a6400").is_some() && entry.table("a6100").is_none() {
+                only_6400.push(Entry::from_look(entry.look.clone(), None));
+            }
+        }
+        if !only_6400.is_empty() {
+            assert!(export_live_mods(&dir, &only_6400, ModTargetSelection::A6100).unwrap_err().contains("no look"));
+        }
+    }
+
+    #[test]
+    fn export_refuses_spatial_presets_and_missing_targets() {        let (entries, _) = load_library(&presets());
+        let mut look = entries[0].look.clone();
+        look.spatial.push(("dcv_psf_table_movie_bayer.bin".into(), vec![0u8; 16]));
+        let spatial = Entry::from_look(look, None);
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/look-lab-mod-refusal");
+        let err = export_mods(&dir, &spatial, ModTargetSelection::Both).unwrap_err();
+        assert!(err.contains("arrivederci"), "{err}");
+        let mut one = entries[0].look.clone();
+        one.compiled.retain(|(k, _)| k == "a6400");
+        one.compiled_movie.clear();
+        let only_6400 = Entry::from_look(one, None);
+        assert!(export_mods(&dir, &only_6400, ModTargetSelection::Both).unwrap_err().contains("a6100"));
     }
 }
 
