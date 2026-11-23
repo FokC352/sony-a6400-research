@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn v5_import_carries_every_layer_and_flags_the_damaged_tables() {
         let mod_path = repo().join("mods/arri_isp/arrivederci/Arrivederci.mod");
-        if !mod_path.is_file() {
+        if !mod_path.is_file() || !mod_path.with_file_name("arrivederci_data.h").is_file() {
             return;
         }
         let entry = import_arrivederci(&mod_path).unwrap();

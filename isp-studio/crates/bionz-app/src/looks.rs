@@ -335,7 +335,7 @@ mod tests {
         assert_eq!(movie_new.stock_fc, movie_old.stock_fc);
         assert_ne!(movie_new.refadr, movie_old.refadr);
         assert_ne!(movie_new.ec, new.ec, "Movie EC is fitted in the record-31 domain, not the Photo EC");
-        assert_ne!(movie_new.refadr, new.refadr, "Movie RefAdr is a separate fit");
+        assert_ne!(movie_new.fc, new.fc, "Movie FC keeps stock_fc rather than the Photo FC curve");
         assert_eq!(movie_new.ec_exponents, Some(bionz_core::EC_RECORD31_EXPONENTS));
         let reread = Entry::from_look(look, None);
         assert!((reread.recipe.unwrap().saturation - 0.2).abs() < 1e-9);
