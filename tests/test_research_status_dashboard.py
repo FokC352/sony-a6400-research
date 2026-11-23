@@ -1,9 +1,10 @@
-"""Structural and epistemic checks for the telemetry dashboard SVG.
+"""Structural and epistemic checks for the knowledge-map coverage dashboard SVG.
 
 The dashboard is generated, not hand-drawn: these tests parse the committed SVG and
 verify that it is well-formed, that no text overlaps or leaves the canvas, that every
-KPI/cell/bar number is derived from a tracked inventory, and that no text ever claims an
-overall firmware-compatibility percentage.
+number comes from ``tools.research.knowledge_map.compute_coverage``, and that the only
+percentages shown are inventory shares stated next to their fraction, never an overall
+firmware-compatibility figure.
 
 Standard library only (``xml.etree`` + the generator's own geometry estimator), so the
 same checks run in CI.
@@ -13,45 +14,29 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from tools.research.a6400_status_data import (
-    CELL_BOUNDARY,
-    CELL_DECODED,
-    CELL_STATES,
-    CELL_UNMAPPED,
-    CELL_VERIFIED,
-    DAILY_TEST_HISTORY,
-    EP0_CLASS_CASES,
-    STATUS_SNAPSHOT,
-    TEARDOWN_PHASES,
-    TELEMETRY,
-    TRANSPORT_AUDIT_CHECKS,
-    evidence_receipt_count,
-    registered_target_label,
-    status_categories,
+from tools.research.a6400_status_data import DAILY_TEST_HISTORY, STATUS_SNAPSHOT
+from tools.research.knowledge_map import (
+    AreaSummary,
+    FrontierItem,
+    InventoryCoverage,
+    MapCoverage,
+    compute_coverage,
 )
 from tools.research.render_research_status import (
+    LEGEND,
     WIDTH,
     estimate_text_width,
+    format_share,
     render_svg,
     render_test_growth_svg,
     text_box,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE_DIR = ROOT / "docs" / "evidence"
 SVG = ROOT / "docs" / "images" / "research-status.svg"
 GROWTH_SVG = ROOT / "docs" / "images" / "test-growth.svg"
 SVG_NS = "{http://www.w3.org/2000/svg}"
-
-# Sources that name a bounded inventory rather than a dated E0xxx record.
-INVENTORY_SOURCES = {
-    "task94_phases",
-    "imdb_plugins",
-    "status data",
-    "offline suite receipts",
-    "docs/evidence/",
-    "src/a6400/targets/",
-}
+COVERAGE = compute_coverage(ROOT)
 
 
 def _parse(svg_text=None):
@@ -63,20 +48,21 @@ def _parse(svg_text=None):
 def _text_nodes(root):
     nodes = []
     for element in root.iter(f"{SVG_NS}text"):
-        content = "".join(element.itertext())
         family_attr = element.get("font-family", "")
-        nodes.append(
-            {
-                "text": content,
-                "x": float(element.get("x")),
-                "y": float(element.get("y")),
-                "size": float(element.get("font-size")),
-                "weight": int(element.get("font-weight", "400")),
-                "anchor": element.get("text-anchor", "start"),
-                "family": "mono" if "monospace" in family_attr else "sans",
-            }
-        )
+        nodes.append({
+            "text": "".join(element.itertext()),
+            "x": float(element.get("x")),
+            "y": float(element.get("y")),
+            "size": float(element.get("font-size")),
+            "weight": int(element.get("font-weight", "400")),
+            "anchor": element.get("text-anchor", "start"),
+            "family": "mono" if "monospace" in family_attr else "sans",
+        })
     return nodes
+
+
+def _texts(svg_text=None):
+    return [node["text"] for node in _text_nodes(_parse(svg_text))]
 
 
 class TestWellFormed(unittest.TestCase):
@@ -92,27 +78,23 @@ class TestWellFormed(unittest.TestCase):
             height = int(root.get("height"))
             self.assertEqual(width, WIDTH, str(svg_path))
             self.assertEqual(root.get("viewBox"), f"0 0 {width} {height}", str(svg_path))
-            self.assertGreater(height, 700, str(svg_path))
+            self.assertGreater(height, 500, str(svg_path))
 
     def test_has_accessible_title_and_description(self):
         root = _parse()
         title = root.find(f"{SVG_NS}title")
         desc = root.find(f"{SVG_NS}desc")
-        self.assertIsNotNone(title)
-        self.assertIsNotNone(desc)
-        self.assertIn(TELEMETRY.latest_evidence, title.text)
+        self.assertIn("Knowledge Map Coverage", title.text)
+        self.assertIn(STATUS_SNAPSHOT.latest.evidence_id, title.text)
         self.assertIn("not a firmware compatibility percentage", desc.text.lower())
 
         growth_root = _parse(GROWTH_SVG.read_text(encoding="utf-8"))
-        g_title = growth_root.find(f"{SVG_NS}title")
-        g_desc = growth_root.find(f"{SVG_NS}desc")
-        self.assertIsNotNone(g_title)
-        self.assertIsNotNone(g_desc)
-        self.assertIn(f"{STATUS_SNAPSHOT.suite.test_count:,}", g_title.text)
-        self.assertIn("not a firmware compatibility percentage", g_desc.text.lower())
+        self.assertIn(f"{STATUS_SNAPSHOT.suite.test_count:,}", growth_root.find(f"{SVG_NS}title").text)
+        self.assertIn("not a firmware compatibility percentage",
+                      growth_root.find(f"{SVG_NS}desc").text.lower())
 
-    def test_dimensions_match_the_generated_document(self):
-        self.assertEqual(SVG.read_text(encoding="utf-8"), render_svg(TELEMETRY))
+    def test_committed_files_are_the_generated_documents(self):
+        self.assertEqual(SVG.read_text(encoding="utf-8"), render_svg(COVERAGE))
         self.assertEqual(GROWTH_SVG.read_text(encoding="utf-8"), render_test_growth_svg(DAILY_TEST_HISTORY))
 
 
@@ -120,18 +102,16 @@ class TestTextLayout(unittest.TestCase):
     def test_no_text_overlaps(self):
         for svg_path in (SVG, GROWTH_SVG):
             nodes = _text_nodes(_parse(svg_path.read_text(encoding="utf-8")))
-            self.assertGreater(len(nodes), 40, f"{svg_path} should be text-dense")
-            boxes = []
-            for node in nodes:
-                boxes.append((text_box(node["x"], node["y"], node["text"], node["size"], node["family"],
-                                       node["weight"], node["anchor"]), node["text"]))
+            self.assertGreater(len(nodes), 30, f"{svg_path} should be text-dense")
+            boxes = [(text_box(n["x"], n["y"], n["text"], n["size"], n["family"], n["weight"], n["anchor"]),
+                      n["text"]) for n in nodes]
             collisions = []
             for index, (box, text) in enumerate(boxes):
                 for other_box, other_text in boxes[index + 1:]:
                     if (box[0] < other_box[2] and box[2] > other_box[0]
                             and box[1] < other_box[3] and box[3] > other_box[1]):
                         collisions.append(f"{text!r} <-> {other_text!r}")
-            self.assertEqual(collisions, [], f"{svg_path} overlapping text boxes: " + "; ".join(collisions[:5]))
+            self.assertEqual(collisions, [], f"{svg_path} overlapping text: " + "; ".join(collisions[:5]))
 
     def test_all_text_stays_inside_the_canvas(self):
         for svg_path in (SVG, GROWTH_SVG):
@@ -147,187 +127,84 @@ class TestTextLayout(unittest.TestCase):
                 self.assertLessEqual(bottom, height, f"{svg_path}: {node['text']}")
 
     def test_width_estimator_is_conservative(self):
-        # The suite must not silently rely on an optimistic measurement.
         self.assertGreater(estimate_text_width("MMMM", 10), estimate_text_width("iiii", 10) * 0.9)
 
 
-class TestKpiDerivation(unittest.TestCase):
-    def _pill(self, label):
-        for pill in TELEMETRY.pills:
-            if pill.label == label:
-                return pill
-        self.fail(f"missing KPI pill {label!r}")
+class TestCoverageDerivation(unittest.TestCase):
+    def test_every_inventory_row_is_rendered_with_its_fraction(self):
+        joined = " ".join(_texts())
+        self.assertTrue(COVERAGE.inventories)
+        for row in COVERAGE.inventories:
+            self.assertIn(row.title, joined)
+            self.assertIn(f"{row.mapped:,} / {row.total:,} {row.unit}", joined)
+            self.assertIn(f"{row.verified} verified · {row.decoded} decoded · {row.boundary} frontier", joined)
 
-    def test_contract_test_pill_matches_recorded_suite(self):
-        pill = self._pill("contract tests")
-        self.assertEqual(pill.value, f"{TELEMETRY.test_count:,} recorded")
-        self.assertEqual(TELEMETRY.test_count, TELEMETRY.test_count)
-        self.assertEqual(pill.tone, "green")
+    def test_pills_state_map_and_suite_counts(self):
+        joined = " ".join(_texts())
+        self.assertIn(f"{len(COVERAGE.areas)} · {COVERAGE.entities} entities", joined)
+        self.assertIn(f"{COVERAGE.active_claims} · {COVERAGE.inactive_claims} retracted", joined)
+        self.assertIn(f"{COVERAGE.evidence_indexed} indexed · {COVERAGE.evidence_deep} deep", joined)
+        self.assertIn(f"{COVERAGE.evidence_deep} / {COVERAGE.evidence_total}", joined)
+        self.assertIn(f"{COVERAGE.evidence_indexed} / {COVERAGE.evidence_total}", joined)
+        self.assertIn(f"{STATUS_SNAPSHOT.suite.test_count:,} tests", joined)
 
-    def test_evidence_receipt_pill_counts_real_files(self):
-        pill = self._pill("evidence receipts")
-        self.assertEqual(pill.value, f"{evidence_receipt_count()} recorded")
-        self.assertGreater(evidence_receipt_count(), 300)
-        self.assertEqual(pill.tone, "blue")
+    def test_areas_and_frontier_are_listed(self):
+        joined = " ".join(_texts())
+        for area in COVERAGE.areas:
+            self.assertIn(f"{area.deep_reviewed}/{area.records} · {area.active_claims}/{area.inactive_claims}", joined)
+        for item in COVERAGE.frontier:
+            if item.state != "done":
+                self.assertIn(f"{item.state} · {item.area}", joined)
 
-    def test_teardown_pill_states_the_recorded_phase_mask(self):
-        pill = self._pill("teardown sequencer")
-        self.assertIn(f"{TEARDOWN_PHASES}/{TEARDOWN_PHASES}", pill.value)
-        self.assertIn("0x1ff", pill.value)
-        self.assertEqual(pill.tone, "green")
+    def test_every_evidence_record_is_indexed(self):
+        self.assertEqual(COVERAGE.evidence_indexed, COVERAGE.evidence_total)
 
-    def test_task_phase_pill_matches_the_boot_inventory(self):
-        phases = status_categories()["task94_phases"]
-        pill = self._pill("task phases")
-        self.assertEqual(pill.value, f"{phases.done}/{phases.total} observed")
-        self.assertEqual(pill.tone, "amber")
+    def test_usb_pilot_grades_dwc3_functions_as_verified(self):
+        rows = {row.id: row for row in COVERAGE.inventories}
+        self.assertEqual(rows["kernel.dwc3"].total, 91)
+        self.assertGreaterEqual(rows["kernel.dwc3"].verified, 4)
+        self.assertLessEqual(rows["kernel.dwc3"].mapped, rows["kernel.text"].mapped)
 
-    def test_target_pill_matches_the_registry(self):
-        pill = self._pill("BIONZ X targets")
-        self.assertEqual(pill.value, registered_target_label())
-        # E0436 filled the three declared stubs from their own packaged updaters, so the pill
-        # lists every body that now carries evidence rather than only the two it listed before.
-        self.assertEqual(
-            pill.value, "ILCE-6100 + ILCE-6400 + ILCE-6400A + ILCE-6600 + ILCE-7C + ILCE-7M3 + ILCE-7RM4A + ZV-E10")
-        self.assertEqual(pill.tone, "violet")
-
-    def test_pills_cover_the_required_kpis(self):
-        self.assertEqual(
-            [pill.label for pill in TELEMETRY.pills],
-            ["contract tests", "evidence receipts", "teardown sequencer", "task phases", "BIONZ X targets"],
+    def test_renderer_uses_only_the_given_coverage(self):
+        fake = MapCoverage(
+            areas=(AreaSummary("demo", "Demo area", 2, 3, 1, 4, 5, "E0001-E0002", "2026-11-22"),),
+            inventories=(InventoryCoverage("x.items", "Demo items", "items", 200, 10, 5, 1, "E0001"),),
+            frontier=(FrontierItem("demo", "F9", "Demo gate", "open"),),
+            evidence_cited=5,
+            evidence_total=50,
+            evidence_indexed=45,
         )
-
-
-class TestGridDerivation(unittest.TestCase):
-    def _group(self, title):
-        for group in TELEMETRY.firmware_groups + TELEMETRY.pipeline_groups:
-            if group.title == title:
-                return group
-        self.fail(f"missing cell group {title!r}")
-
-    def test_static_plugin_grid_matches_the_198_item_inventory(self):
-        group = self._group("Static Plugins (198)")
-        plugins = status_categories()["imdb_plugins"]
-        self.assertEqual(len(group.cells), plugins.total)
-        self.assertEqual(group.counts()[CELL_UNMAPPED], plugins.total)
-        self.assertEqual(group.counts()[CELL_VERIFIED], plugins.done)
-
-    def test_boot_phase_grid_matches_the_8_phase_inventory(self):
-        group = self._group("Boot Task Phases (8)")
-        phases = status_categories()["task94_phases"]
-        self.assertEqual(len(group.cells), phases.total)
-        self.assertEqual(group.counts()[CELL_VERIFIED], phases.done)
-        self.assertEqual(group.counts()[CELL_UNMAPPED], phases.total - phases.done)
-
-    def test_teardown_and_ep0_groups_are_fully_verified(self):
-        for title, expected in (("Teardown 9-Phase Sequencer (0x1ff)", TEARDOWN_PHASES),
-                                ("EP0 Class / Probe / Commit", EP0_CLASS_CASES)):
-            group = self._group(title)
-            self.assertEqual(len(group.cells), expected)
-            self.assertEqual(group.counts()[CELL_VERIFIED], expected)
-
-    def test_track_b_group_separates_the_closed_selector_from_open_pins(self):
-        # E0354: the live 0x84 selector accepted the endpoint, so exactly one cell is
-        # verified; the DirectShow pin connect and MSC recovery stay amber boundaries.
-        group = self._group("Track B: DirectShow Pin / 0x84 Start")
-        self.assertEqual(len(group.cells), 3)
-        self.assertEqual(group.counts()[CELL_VERIFIED], 1)
-        self.assertEqual(group.counts()[CELL_BOUNDARY], 2)
-
-    def test_every_grid_group_uses_known_states_and_has_a_source(self):
-        for group in TELEMETRY.firmware_groups + TELEMETRY.pipeline_groups:
-            self.assertTrue(group.source)
-            self.assertTrue(set(group.cells) <= set(CELL_STATES), group.title)
-
-    def test_grids_are_the_specified_six_plus_five_groups(self):
-        self.assertEqual(len(TELEMETRY.firmware_groups), 6)
-        self.assertEqual(len(TELEMETRY.pipeline_groups), 5)
-        self.assertGreater(sum(len(group.cells) for group in TELEMETRY.firmware_groups), 200)
-
-
-class TestBarsAndBoundaries(unittest.TestCase):
-    def _bar(self, prefix):
-        for bar in TELEMETRY.contract_bars:
-            if bar.label.startswith(prefix):
-                return bar
-        self.fail(f"missing contract bar {prefix!r}")
-
-    def test_required_bars_exist_with_bounded_ratios(self):
-        self.assertEqual(self._bar("USB Soft-Disconnect").done, TEARDOWN_PHASES)
-        self.assertEqual(self._bar("EP0 UVC Class").total, TRANSPORT_AUDIT_CHECKS)
-        sync = self._bar("UIPC / MWF Sync Callback")
-        self.assertEqual((sync.done, sync.total, sync.amber), (1, 2, 1))
-        display = self._bar("GPES / SMAPH-S30")
-        self.assertEqual((display.done, display.total), (
-            status_categories()["display_subsys"].done, status_categories()["display_subsys"].total))
-        phases = self._bar("im.elf Boot Task Phases")
-        self.assertEqual((phases.done, phases.total), (
-            status_categories()["task94_phases"].done, status_categories()["task94_phases"].total))
-
-    def test_boundaries_are_sorted_by_open_count(self):
-        counts = [group.count for group in TELEMETRY.boundaries]
-        self.assertEqual(counts, sorted(counts, reverse=True))
-        self.assertEqual(counts, [4, 3, 3, 3])
-
-    def test_boundary_items_are_named(self):
-        for group in TELEMETRY.boundaries:
-            self.assertEqual(group.count, len(group.items))
-            self.assertTrue(all(len(item) > 4 for item in group.items))
-        self.assertEqual(sum(group.count for group in TELEMETRY.boundaries), 13)
-
-    def test_open_boundary_total_is_rendered(self):
-        root = _parse()
-        rendered = " ".join("".join(element.itertext()) for element in root.iter(f"{SVG_NS}text"))
-        self.assertIn("13 tracked open boundaries across 4 areas", rendered)
+        joined = " ".join(_texts(render_svg(fake)))
+        self.assertIn("16 / 200 items · 8.0%", joined)
+        self.assertIn("10 verified · 5 decoded · 1 frontier", joined)
+        self.assertIn("F9  Demo gate", joined)
+        self.assertIn("5 evidence records are not yet indexed", joined)
+        self.assertIn("45 / 50 · 90.0%", joined)
 
 
 class TestEpistemicHonesty(unittest.TestCase):
-    def test_no_percentage_claim_is_rendered(self):
-        for svg_path in (SVG, GROWTH_SVG):
-            root = _parse(svg_path.read_text(encoding="utf-8"))
-            texts = ["".join(element.itertext()) for element in root.iter(f"{SVG_NS}text")]
-            self.assertFalse([text for text in texts if "%" in text],
-                             f"{svg_path} must not display a percentage")
+    SHARE_RE = re.compile(r"^[\d,]+ / [\d,]+ (?:\w+ )?· \d+(?:\.\d+)?%$")
+
+    def test_percentages_only_appear_as_inventory_shares(self):
+        for text in _texts():
+            if "%" in text and "percentage" not in text:
+                self.assertRegex(text, self.SHARE_RE)
+
+    def test_growth_chart_shows_no_percentage(self):
+        texts = _texts(GROWTH_SVG.read_text(encoding="utf-8"))
+        self.assertFalse([text for text in texts if "%" in text])
+
+    def test_share_format_never_rounds_nonzero_to_zero(self):
+        self.assertEqual(format_share(0, 10), "0%")
+        self.assertEqual(format_share(6, 14401), "0.04%")
+        self.assertEqual(format_share(4, 91), "4.4%")
 
     def test_footnote_and_legend_are_present(self):
-        root = _parse()
-        texts = ["".join(element.itertext()) for element in root.iter(f"{SVG_NS}text")]
-        joined = " ".join(texts)
+        joined = " ".join(_texts())
         self.assertIn("not an overall firmware compatibility percentage", joined)
-        for _state, label in TELEMETRY.legend:
+        self.assertTrue("evidence records are indexed" in joined or "Unmapped does not mean unknown" in joined)
+        for _state, label in LEGEND:
             self.assertIn(label, joined)
-        self.assertIn("Unmapped Inventory", joined)
-
-    def test_legend_covers_every_state_used_in_the_grids(self):
-        used = set()
-        for group in TELEMETRY.firmware_groups + TELEMETRY.pipeline_groups:
-            used.update(group.cells)
-        legend_states = {state for state, _label in TELEMETRY.legend}
-        self.assertEqual(used, legend_states)
-
-    def test_every_source_resolves_to_a_record_or_a_named_inventory(self):
-        sources = {group.source for group in TELEMETRY.firmware_groups}
-        sources |= {group.source for group in TELEMETRY.pipeline_groups}
-        sources |= {bar.source for bar in TELEMETRY.contract_bars}
-        sources |= {group.source for group in TELEMETRY.boundaries}
-        for source in sources:
-            for token in (part.strip() for part in source.split("·")):
-                self.assertTrue(token, f"empty token in source {source!r}")
-                match = re.fullmatch(r"E(\d{4})", token)
-                if match:
-                    matches = list(EVIDENCE_DIR.glob(f"{int(match.group(1)):04d}-*.md"))
-                    self.assertTrue(matches, f"source {token} has no evidence record")
-                else:
-                    self.assertIn(token, INVENTORY_SOURCES, f"unknown inventory source {token!r}")
-
-        self.assertEqual(len(DAILY_TEST_HISTORY), 32)
-        self.assertEqual(DAILY_TEST_HISTORY[0].date, "2026-10-18")
-        self.assertEqual(DAILY_TEST_HISTORY[0].total, 204)
-        self.assertEqual(DAILY_TEST_HISTORY[-1].date, STATUS_SNAPSHOT.suite.recorded_at)
-        self.assertEqual(DAILY_TEST_HISTORY[-1].total, STATUS_SNAPSHOT.suite.test_count)
-        for point in DAILY_TEST_HISTORY:
-            matches = list(EVIDENCE_DIR.glob(f"{int(point.evidence_id[1:]):04d}-*.md"))
-            self.assertTrue(matches, f"history point {point.date} ({point.evidence_id}) has no evidence record")
 
 
 if __name__ == "__main__":

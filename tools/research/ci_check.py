@@ -34,6 +34,7 @@ GUARDRAIL_TEST_MODULES = (
     "tests.test_research_status_sync",
     "tests.test_research_status_dashboard",
     "tests.test_agents_md_archive_integrity",
+    "tests.test_knowledge_map",
 )
 
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")

@@ -2,6 +2,8 @@
 
 Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and reverse-engineering platform.
 
+For subject lookups (an address, symbol, device, or "is E0xxx still valid?") use the [knowledge map](map/README.md) first: `python -m tools.research.knowledge_map query <term>`. All evidence records are indexed across 15 areas; see the area table in the map README.
+
 ## 1. Architecture & Multi-Device Platform
 
 | Document | Purpose |
