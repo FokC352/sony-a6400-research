@@ -2,6 +2,23 @@
 
 This catalog tracks transform controls, arithmetic, and transport for ARRI fine-tuning on the ILCE-6400. Addresses are tied to the image identified in each [E0505 receipt](evidence/0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md). CPU preparation order and register-write order describe software observations. The optical-to-encoded signal order and frame activation are separate verification tasks.
 
+The host emulator in [BIONZ Look Lab](BIONZ_LOOK_LAB.md) names each row below. The badge is the one in `bionz_core::stage_catalog`. A host match does not raise it.
+
+| Catalog row | Look Lab stage | Badge in the studio |
+| --- | --- | --- |
+| Sensor baseline | 1 RAW unpack | V for the container format only |
+| Sensor baseline | 2 optical black, 3 white balance, 5 resample | M |
+| Sensor baseline | 4 demosaic | A |
+| Picture Profile and knee | 6 camera to working RGB | M |
+| EC and FC gamma rows | 7 EC gamma | A, because the input scale is open |
+| EC and FC gamma rows | 8 FC gamma | M |
+| Grouped publication, per-frame refresh, color matrix | 9 matrix | M |
+| Matrix stage gain | 10 matrix-stage gain | A, because Movie applicability is open |
+| YCbCr and residual LUT, LUT publication | 11 RGB to YCbCr, 12 residual LUT | M |
+| Encoder range and chroma subsampling | 14 encoder | A |
+| Detail, not a catalog row | 13 detail | M |
+| Codec and preview | 15 codec, 16 view transform | A, and preview is not packed |
+
 | Transform or boundary | Firmware observation and format | What to establish before tuning |
 | --- | --- | --- |
 | Sensor baseline | Preserve the stock acquisition state. Base ISO, optical-black subtraction, sensor gains and white balance precede the calibrated-linear input assumed in the direct ARRI experiment. The experiment supplies no sensor calibration. | Map the Movie gain and black-level state, WB coefficients, and the point that first represents calibrated linear RGB. |

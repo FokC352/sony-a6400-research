@@ -7,9 +7,14 @@ inside a per-run copy, so the original eMMC image is never modified.
 Refuses to overwrite: exits non-zero if the 8.3 name already exists, the
 root directory is full, or there are not enough free clusters.
 
-usage: fat_add_file.py PARTITION_IMAGE SOURCE_FILE NAME.EXT
-       fat_add_file.py PARTITION_IMAGE SOURCE_FILE DIR/NAME   (DIR must already exist in the root; the
-                       file goes into a free slot of DIR's existing clusters, e.g. mode/dmode)
+usage: fat_add_file.py [--if-absent] PARTITION_IMAGE SOURCE_FILE NAME.EXT
+       fat_add_file.py [--if-absent] PARTITION_IMAGE SOURCE_FILE DIR/NAME   (DIR must already exist in
+                       the root; the file goes into a free slot of DIR's existing clusters, e.g.
+                       mode/dmode)
+
+--if-absent accepts one existing entry only when its recorded size equals the
+source (an input that is already staged, e.g. /setting/ulogio.bin in a prepared
+capture); a different size is still refused, and nothing is overwritten.
 """
 
 import struct
@@ -49,7 +54,11 @@ def short_name(name: str) -> tuple[bytes, int]:
 
 
 def main() -> int:
-    image_path, source_path, name = sys.argv[1:4]
+    argv = sys.argv[1:]
+    if_absent = bool(argv) and argv[0] == '--if-absent'
+    if if_absent:
+        argv = argv[1:]
+    image_path, source_path, name = argv[0:3]
     img = bytearray(open(image_path, 'rb').read())
     data = open(source_path, 'rb').read()
     bps, spc, reserved, nfats, root_entries, total16, _media, fat_sectors = \
@@ -68,7 +77,10 @@ def main() -> int:
     root_off = fat_off + nfats * fat_sectors * bps
 
     def find_slot(offsets):
-        """First free 32-byte slot among the given directory entry offsets; refuse duplicates."""
+        """First free 32-byte slot among the given directory entry offsets; refuse duplicates.
+
+        Returns 'present' when --if-absent found an entry whose size matches the source.
+        """
         slot = None
         for off in offsets:
             entry = img[off:off + 32]
@@ -79,6 +91,9 @@ def main() -> int:
                     break
                 continue
             if entry[11] != 0x0F and entry[:11] == raw_name:
+                if if_absent and struct.unpack_from('<I', entry, 28)[0] == len(data):
+                    print(f'{name} already present ({len(data)} B); leaving it unchanged')
+                    return 'present'
                 raise SystemExit(f'{name} already exists; refusing to overwrite')
         return slot
 
@@ -103,11 +118,15 @@ def main() -> int:
             offsets += [base + 32 * i for i in range(cluster_bytes // 32)]
             c = fat_entry(fat, fat12, c)
         slot_off = find_slot(offsets)
+        if slot_off == 'present':
+            return 0
         if slot_off is None:
             raise SystemExit(f'directory {dirname} has no free slot in its clusters')
         where = f'{dirname}/ slot {offsets.index(slot_off)}'
     else:
         slot_off = find_slot(root_offsets)
+        if slot_off == 'present':
+            return 0
         if slot_off is None:
             raise SystemExit('root directory full')
         where = f'root slot {(slot_off - root_off) // 32}'

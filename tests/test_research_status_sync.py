@@ -9,9 +9,10 @@ import re
 import unittest
 from pathlib import Path
 
-from tools.research.a6400_status_data import DAILY_TEST_HISTORY, STATUS_SNAPSHOT, TELEMETRY
+from tools.research.a6400_status_data import DAILY_TEST_HISTORY, STATUS_SNAPSHOT
 from tools.research.render_research_status import (
     GROWTH_IMAGE_REL,
+    _image_link_re,
     first_difference,
     readme_image_url,
     readme_image_url_in,
@@ -83,7 +84,7 @@ class TestResearchStatusSync(unittest.TestCase):
 
     def test_svg_is_the_generated_output(self):
         committed = _normalized_text(STATUS_SVG)
-        expected = render_svg(TELEMETRY)
+        expected = render_svg()
         if committed != expected:
             self.fail(
                 "docs/images/research-status.svg was not generated from STATUS_SNAPSHOT: "
@@ -100,8 +101,8 @@ class TestResearchStatusSync(unittest.TestCase):
             )
 
     def test_generator_is_deterministic(self):
-        first = render_svg(TELEMETRY)
-        self.assertEqual(first, render_svg(TELEMETRY))
+        first = render_svg()
+        self.assertEqual(first, render_svg())
         self.assertNotIn("\r", first)
         self.assertTrue(first.startswith("<svg "))
         self.assertTrue(first.endswith("\n"))
@@ -162,29 +163,17 @@ class TestResearchStatusSync(unittest.TestCase):
         embedded = readme_image_url_in(readme)
         committed = _normalized_text(STATUS_SVG)
         self.assertEqual(embedded, readme_image_url(committed))
-        self.assertEqual(embedded, readme_image_url(render_svg(TELEMETRY)))
+        self.assertEqual(embedded, readme_image_url(render_svg()))
         self.assertRegex(embedded, r"^docs/images/research-status\.svg\?v=[0-9a-f]{12}$")
         self.assertIn(f"?v={svg_cache_buster(committed)}", readme)
 
-        embedded_growth = readme_image_url_in(readme, GROWTH_IMAGE_REL)
-        committed_growth = _normalized_text(GROWTH_SVG)
-        self.assertEqual(embedded_growth, readme_image_url(committed_growth, GROWTH_IMAGE_REL))
-        self.assertEqual(
-            embedded_growth,
-            readme_image_url(render_test_growth_svg(DAILY_TEST_HISTORY), GROWTH_IMAGE_REL),
-        )
-        self.assertRegex(embedded_growth, r"^docs/images/test-growth\.svg\?v=[0-9a-f]{12}$")
-        self.assertIn(f"?v={svg_cache_buster(committed_growth)}", readme)
+        # The test-growth chart is linked from the telemetry section, not embedded.
+        self.assertIsNone(_image_link_re(GROWTH_IMAGE_REL).search(readme))
+        self.assertIn(f"]({GROWTH_IMAGE_REL})", readme)
 
     def test_cache_buster_sync_is_idempotent(self):
-        old_url, new_url = sync_readme_cache_buster(render_svg(TELEMETRY), write=False)
+        old_url, new_url = sync_readme_cache_buster(render_svg(), write=False)
         self.assertEqual(old_url, new_url, "README cache buster is stale; run --write")
-        old_g, new_g = sync_readme_cache_buster(
-            render_test_growth_svg(DAILY_TEST_HISTORY),
-            write=False,
-            image_path=GROWTH_IMAGE_REL,
-        )
-        self.assertEqual(old_g, new_g, "README test-growth cache buster is stale; run --write")
 
     def test_readme_evidence_links_resolve(self):
         readme = _normalized_text(README)

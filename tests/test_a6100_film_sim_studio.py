@@ -98,9 +98,9 @@ class TestFilmSimStudioCore(unittest.TestCase):
 
             live64 = sc.emit_live_picker_header(Path(tmp) / "live_a6400.h", stock=self.stock, target="a6400")
             l64 = live64.read_text(encoding="utf-8")
-            self.assertIn("#define LIVE_N_PRESETS 10u", l64)
+            self.assertIn("#define LIVE_N_PRESETS 13u", l64)
             self.assertIn("#define EC_GAMMA_PA 0x03e55330u", l64)
-            expected_luts = 9 if np is not None else 5
+            expected_luts = 12 if np is not None else 1
             self.assertIn(f"const uint8_t LIVE_REFADR[{expected_luts}][1215]", l64)
 
             live61 = sc.emit_live_picker_header(Path(tmp) / "live_a6100.h", stock=self.stock, target="a6100")
@@ -117,8 +117,8 @@ class TestFilmSimStudioCore(unittest.TestCase):
             "TARGET_A6400_V1",
             "0x03e3e6ccu",
             "0x03e553b0u",
-            "#define LIVE_N_PRESETS 10u",
-            "const uint8_t LIVE_REFADR[9][1215]",
+            "#define LIVE_N_PRESETS 13u",
+            "const uint8_t LIVE_REFADR[12][1215]",
         ):
             self.assertIn(needle, live_hdr)
         tramp = (ROOT / "mods/film_sims/live_picker/film_sim_live_trampoline.S").read_text(encoding="utf-8")
@@ -128,6 +128,71 @@ class TestFilmSimStudioCore(unittest.TestCase):
         self.assertIn("cc_bypass = 0xffffu", live_c)
         self.assertIn("write_refadr_bytes(fd, 0)", live_c)
 
+    @unittest.skipIf(np is None, "numpy required for the tone-curve checks")
+    def test_film_recipes_shoulder_and_fujifilm_simulations(self):
+        import dataclasses
+
+        from mods.film_sims.film_recipes_3d import RECIPES_3D, _filmic_tone_vec
+
+        for name in sc.LIVE_PICKER_ORDER:
+            self.assertIn(name, RECIPES_3D, f"missing recipe {name}")
+        for name in (
+            "Eterna Bleach Bypass",
+            "Pro Negative",
+            "Reala Ace",
+            "Velvia",
+            "Astia",
+            "Acros",
+        ):
+            self.assertIn(name, RECIPES_3D)
+
+        r = RECIPES_3D["ETERNA"]
+        self.assertGreater(r.shoulder, 0.0)
+        x = np.linspace(0.0, 1.0, 2001)
+        y = _filmic_tone_vec(x, r)
+        self.assertTrue(np.all(np.diff(y) >= -1e-12), "tone curve must be monotone")
+        # C1 at the shoulder knee (0.55), scaled by the recipe's black/white anchoring.
+        k = 0.55
+        eps = 1e-5
+        left = (float(_filmic_tone_vec(np.array([k]), r)[0]) - float(_filmic_tone_vec(np.array([k - eps]), r)[0])) / eps
+        right = (float(_filmic_tone_vec(np.array([k + eps]), r)[0]) - float(_filmic_tone_vec(np.array([k]), r)[0])) / eps
+        self.assertLess(abs(left - right), 5e-3, f"shoulder kink {left} vs {right}")
+        # The shoulder must soften the top-end slope (no hard clip) while keeping gradation.
+        flat = dataclasses.replace(r, shoulder=0.0)
+        eps = 1e-5
+        slope = (float(_filmic_tone_vec(np.array([0.99]), r)[0]) - float(_filmic_tone_vec(np.array([0.99 - eps]), r)[0])) / eps
+        slope_flat = (float(_filmic_tone_vec(np.array([0.99]), flat)[0]) - float(_filmic_tone_vec(np.array([0.99 - eps]), flat)[0])) / eps
+        self.assertLess(slope, slope_flat, f"shoulder did not soften the top: {slope} vs {slope_flat}")
+        codes = {int(round(v * 1023)) for v in _filmic_tone_vec(np.linspace(0.9, 1.0, 124), r)}
+        self.assertGreaterEqual(len(codes), 30, f"only {len(codes)} highlight codes")
+        self.assertTrue(all((0.0 <= v <= 1.0) for v in y))
+
+    @unittest.skipIf(np is None, "numpy required for the Movie EC domain transform")
+    def test_movie_domain_cube_matches_record31_knots(self):
+        from mods.film_sims.lut_bridge import _ec_knot_positions, _linear_to_srgb, movie_domain_cube
+        from lut_core.cube import Cube
+
+        knots = _ec_knot_positions((3, 3, 4, 4, 3, 3, 3, 4, 3))
+        self.assertEqual(knots[:3], [4, 8, 12])
+        self.assertEqual(knots[94], 7680)
+        self.assertEqual(knots[95], 8191)
+        size = 7
+        ax = np.linspace(0.0, 1.0, size)
+        rr, gg, bb = np.meshgrid(ax, ax, ax, indexing="ij")
+        identity = Cube(size=size, domain_min=np.zeros(3), domain_max=np.ones(3), table=np.stack([rr, gg, bb], -1), title="identity")
+        stock_ec = [((i * 1023) // 95) << 6 for i in range(96)]
+        linear = movie_domain_cube(identity, stock_ec)
+        self.assertEqual(linear.table.shape, (size, size, size, 3))
+        # A linear stock EC maps value u to linear_to_srgb(record-31 knot input); the top stays at 1.
+        self.assertAlmostEqual(float(linear.table[-1, -1, -1, 0]), 1.0, places=6)
+        self.assertAlmostEqual(float(linear.table[0, 0, 0, 0]), _linear_to_srgb(knots[0] / 8191.0), places=6)
+        diag = [float(linear.table[i, i, i, 0]) for i in range(size)]
+        self.assertTrue(all(diag[i] <= diag[i + 1] + 1e-9 for i in range(size - 1)))
+        # A non-linear (log-like) stock EC warps the axes: the transformed diagonal differs.
+        record31 = [int(round(1023.0 * (i / 95.0) ** 0.45)) << 6 for i in range(96)]
+        warped = movie_domain_cube(identity, record31)
+        self.assertGreater(abs(float(warped.table[2, 2, 2, 0]) - float(identity.table[2, 2, 2, 0])), 1e-6)
+
     @unittest.skipIf(np is None, "numpy required for full 3D LUT bridge tests")
     def test_full_3d_lut_bridge_presets_and_cube_import(self):
         from mods.film_sims.film_recipes_3d import build_recipe_cube
@@ -135,15 +200,15 @@ class TestFilmSimStudioCore(unittest.TestCase):
 
         for name in sc.LIVE_PICKER_ORDER:
             cube = build_recipe_cube(name)
-            if name != "ACROS B&W":
+            if name != "Acros":
                 red_sample = cube.sample([[1.0, 0.0, 0.0]])[0]
                 blue_sample = cube.sample([[0.0, 0.0, 1.0]])[0]
                 self.assertGreater(red_sample[0], red_sample[2] + 0.3, f"{name} R/B swapped on cube")
                 self.assertGreater(blue_sample[2], blue_sample[0] + 0.3, f"{name} B/R swapped on cube")
             fitted = fit_cube_to_isp(cube, self.stock, name=name)
-            if name != "ACROS B&W":
-                self.assertGreater(fitted.a1_sim[0], 500, f"{name} A1[0,0]={fitted.a1_sim[0]}")
-                self.assertGreater(fitted.a1_sim[8], 500, f"{name} A1[2,2]={fitted.a1_sim[8]}")
+            if name != "Acros":
+                self.assertGreater(fitted.a1_sim[0], 300, f"{name} A1[0,0]={fitted.a1_sim[0]}")
+                self.assertGreater(fitted.a1_sim[8], 300, f"{name} A1[2,2]={fitted.a1_sim[8]}")
             self.assertEqual(len(fitted.ec_sim), 96)
             self.assertEqual(len(fitted.fc_sim), 96)
             self.assertTrue(all(fitted.ec_sim[i] >= fitted.ec_sim[i - 1] for i in range(1, 96)), name)

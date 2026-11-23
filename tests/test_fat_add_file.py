@@ -82,6 +82,26 @@ class FatAddFileTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn("root slot 1", r.stdout)
 
+    def test_if_absent_accepts_same_size_and_refuses_a_different_one(self):
+        with tempfile.TemporaryDirectory() as d:
+            image, src = Path(d) / "set.img", Path(d) / "ulogio.bin"
+            make_image(image)
+            src.write_bytes(b"u" * 300)
+            self.assertEqual(self.run_tool(image, src, "ulogio.bin").returncode, 0)
+            same = subprocess.run([sys.executable, str(TOOL), "--if-absent", str(image), str(src),
+                                   "ulogio.bin"], capture_output=True, text=True)
+            self.assertEqual(same.returncode, 0, same.stderr)
+            self.assertIn("already present (300 B)", same.stdout)
+            src.write_bytes(b"u" * 301)
+            other = subprocess.run([sys.executable, str(TOOL), "--if-absent", str(image), str(src),
+                                    "ulogio.bin"], capture_output=True, text=True)
+            self.assertNotEqual(other.returncode, 0)
+            self.assertIn("already exists", other.stderr)
+            # A plain add is still strict about an existing name.
+            strict = self.run_tool(image, src, "ulogio.bin")
+            self.assertNotEqual(strict.returncode, 0)
+            self.assertIn("already exists", strict.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,9 @@
  *
  *   VPH  PA 0xF3440000..0xF3446FFF  (docs/RE_DISPLAY_SCANOUT.md)
  *        0x028 = 0x111 clock enable (we start vsync once it is non-zero)
- *        0x144 bit0 panel YUV layer on, bit1 OSD [?]; 0x404 bit0 OSD 4 B/px
+ *        0x140 bits 28-29 = panel input stage mode (observed 0x3 on a running
+ *              A6400; see vph_write for the write semantics)
+ *        0x144 bit0 panel YUV layer on, bit1 OSD layer on; 0x404 bit0 OSD 4 B/px
  *        AIF DMA ch51..58 @ 0xF3441200 + 0x80*k: +0x00 bit0 start/busy
  *        (cleared by hardware at end of frame), +0x04 bit31 running,
  *        +0x20 start address, +0x24 bytes per line, +0x2C lines-1,
@@ -62,6 +64,9 @@ struct VphState {
     uint32_t vph[VPH_SIZE / 4];
     uint32_t sysv[0x1000 / 4];
     uint32_t frame;
+    uint32_t aif_started;           /* bit k: AIF channel k was armed since the last vsync */
+    uint32_t osd_visible;           /* ch53 was armed in the frame that just ended */
+    uint32_t line_visible;          /* ch54 was armed in the frame that just ended */
     QEMUTimer *tick, *lower, *vtick, *vlower;
     qemu_irq irq_sysv, irq_v101, irq_v102;
     qemu_irq vd_out;                /* -> evsel engine frame (source 29) */
@@ -72,6 +77,28 @@ struct VphState {
 };
 
 #define R(o) (s->vph[(o) / 4])
+
+/*
+ * Panel input stage mode, VPH +0x140 bits 28-29.
+ *
+ * A physical ILCE-6400 reads 0x30000000 from +0x140 while the panel is scanning
+ * ch53, and a guest write that clears the field does not stick: a guest
+ * executed `0x140 &= ~0x30000000` and its next read was still 0x30000000.  The CXD90014
+ * register reference describes +0x140 as the "panel input stage" whose bits 24+
+ * are a mode field (voxivoid/a6000-qemu docs/reference/RE_DISPLAY_SCANOUT.md,
+ * commit 3a039c5), so the bits are modelled as write-1-to-set and non-clearing:
+ * a guest cannot switch the stage off by writing zeros.  Mode 3 is the value a
+ * running camera shows, and the composition below treats it as "panel stage
+ * running".  This is an inference for CXD90045 (no Sony document, no read-back
+ * of the field before the guest's first write), not a decoded mute bit.
+ */
+#define VPH_140_PANEL_MODE 0x30000000u
+#define VPH_140_STICKY     0xF0000000u
+
+static bool vph_panel_stage_running(VphState *s)
+{
+    return (R(0x140) & VPH_140_PANEL_MODE) == VPH_140_PANEL_MODE;
+}
 
 /*
  * SYSV is the master V clock of the camera engine: one V per engine frame
@@ -85,6 +112,11 @@ struct VphState {
  * (IRQ 101/102) keeps its own 60 Hz timer [?].
  */
 #define V_US 33367
+
+static void vph_compose(VphState *s, uint32_t *dst, uint32_t W, uint32_t H,
+                        bool yuv_on, int ky, int ko, unsigned bpp,
+                        bool osd_scale, bool osd_armed);
+static bool vph_update(void *opaque);
 
 static void vph_vlower(void *opaque)
 {
@@ -122,6 +154,20 @@ static void vph_tick(void *opaque)
     for (int k = 0; k < 8; k++) {
         R(AIF(k)) &= ~1u;
     }
+    /* Hardware composes a channel only for the frame in which the guest armed its start bit
+     * (E0639: +0x00 bit0 is start/busy, cleared at frame end). The previous model composed ch53
+     * unconditionally, so a guest that never re-armed the OSD still got a picture in QEMU while
+     * the camera panel stayed blank. Latch what was armed during the frame that just ended, then
+     * consume the arm flags. */
+    s->osd_visible = (s->aif_started >> 2) & 1u;
+    s->line_visible = (s->aif_started >> 3) & 1u;
+    /* Compose the frame now, with this frame's arm state, exactly like the hardware scanout.
+     * Lazy composition on screendump would sample an arbitrary moment and could show a blank
+     * surface for a frame the guest did arm. */
+    if (s->con) {
+        vph_update(s);
+    }
+    s->aif_started = 0;
     /*
      * Panel OSD is AIF ch53 (k = 2).  Log the first time it is programmed
      * and a few times while it stays at 0, so a black console can be told
@@ -175,7 +221,7 @@ static void vph_tick(void *opaque)
  */
 static void vph_compose(VphState *s, uint32_t *dst, uint32_t W, uint32_t H,
                         bool yuv_on, int ky, int ko, unsigned bpp,
-                        bool osd_scale)
+                        bool osd_scale, bool osd_armed)
 {
     memset(dst, 0, (size_t)W * H * 4);
 
@@ -213,7 +259,9 @@ static void vph_compose(VphState *s, uint32_t *dst, uint32_t W, uint32_t H,
     if (!pitch) {
         pitch = lb;
     }
-    if (base && lb && lb <= 16384 && lines < 4096) {
+    /* Same per-frame contract as hardware: no composition unless the guest armed the channel for
+     * this frame (and left the enable bit set). */
+    if (osd_armed && (R(AIF(ko)) & 2u) && base && lb && lb <= 16384 && lines < 4096) {
         g_autofree uint8_t *row = g_malloc(lb);
         uint32_t ow = lb / bpp;
         uint32_t oh = osd_scale ? H : MIN(lines, H);
@@ -256,12 +304,34 @@ static bool vph_update(void *opaque)
     VphState *s = opaque;
     DisplaySurface *surf = qemu_console_surface(s->con);
     uint32_t W = s->w, H = s->h;
+    /*
+     * Layer enables.  +0x144 bit0 is the documented panel YUV enable and bit1
+     * the OSD enable (RE_DISPLAY_SCANOUT.md §VPH; E0652 records the guest
+     * clearing both bits to 0x3000230 when it blanks the panel).
+     *
+     * A physical A6400 keeps 0x144 = 0x01000232 (bit0 clear, bit1 set) and
+     * still shows live view, while +0x140 = 0x30000000 marks the panel stage
+     * as running.  Composition therefore follows either documented bit0 or
+     * either documented bit0 or the observed panel stage.  Without that second
+     * term the same guest image would show an OSD-only panel in QEMU but video
+     * on the camera -- exactly the divergence this model exists to remove.
+     */
+    bool osd_on = (R(0x144) & 2u) != 0;
+    bool yuv_on = (R(0x144) & 1u) != 0 || vph_panel_stage_running(s);
+    /*
+     * A channel armed between two vsyncs belongs to the frame being scanned, so
+     * the pending arm composes as well as the arm latched at the last vsync.
+     * This keeps the per-frame contract (a guest that stops re-arming loses the
+     * OSD at the next vsync) while making a screendump taken right after an arm
+     * deterministic instead of depending on where the sample lands.
+     */
+    bool osd_armed = s->osd_visible != 0 || ((s->aif_started >> 2) & 1u) != 0;
     if (!surf || surface_width(surf) != W || surface_height(surf) != H) {
         qemu_console_resize(s->con, W, H);
         surf = qemu_console_surface(s->con);
     }
-    vph_compose(s, surface_data(surf), W, H, R(0x144) & 1, 0, 2,
-                (R(0x404) & 1) ? 4 : 2, false);
+    vph_compose(s, surface_data(surf), W, H, yuv_on, 0, 2,
+                (R(0x404) & 1) ? 4 : 2, false, osd_on && osd_armed);
     qemu_console_update_full(s->con);
     return true;
 }
@@ -297,7 +367,8 @@ static bool vph_hdmi_update(void *opaque)
         }
     } else {
         vph_compose(s, dst, W, H, R(0x184) & 1, 1, 3,
-                    (R(0x414) & 1) ? 4 : 2, true);
+                    (R(0x414) & 1) ? 4 : 2, true,
+                    s->line_visible != 0 || ((s->aif_started >> 3) & 1u) != 0);
     }
     qemu_console_update_full(s->hdmi_con);
     return true;
@@ -338,6 +409,26 @@ static uint64_t vph_read(void *opaque, hwaddr off, unsigned size)
 static void vph_write(void *opaque, hwaddr off, uint64_t v, unsigned size)
 {
     VphState *s = opaque;
+    /* +0x140 bits 28-29: panel input stage mode.  Write-1-to-set only; see
+     * VPH_140_PANEL_MODE.  A guest clear is accepted but does not take effect,
+     * because the physical panel stage keeps running and the guest's read-back
+     * is what its supervisor loop compares against. */
+    if (off == 0x140) {
+        uint32_t keep = R(0x140) & VPH_140_STICKY;
+        uint32_t next = keep | (uint32_t)v;
+        if (next != (uint32_t)v) {
+            qemu_log_mask(LOG_UNIMP,
+                          "vph: +0x140 panel-stage mode 0x%08x kept over write "
+                          "0x%08x\n", keep, (unsigned)v);
+        }
+        R(0x140) = next;
+        return;
+    }
+    /* Record the guest's per-frame start arm for every AIF channel (AIF(k)+0x00 bit0). */
+    if (off >= AIF(0) && off < AIF(8) && (off & 0x7f) == 0x00 && (v & 1u)) {
+        unsigned k = (unsigned)((off - AIF(0)) / 0x80);
+        s->aif_started |= 1u << k;
+    }
     R(off) = v;
 }
 
@@ -385,6 +476,9 @@ static void vph_reset(DeviceState *dev)
     memset(s->vph, 0, sizeof(s->vph));
     memset(s->sysv, 0, sizeof(s->sysv));
     s->frame = 0;
+    s->aif_started = 0;
+    s->osd_visible = 0;
+    s->line_visible = 0;
     timer_mod(s->tick, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
               NANOSECONDS_PER_SECOND / 60);
     timer_mod(s->vtick, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +

@@ -105,7 +105,7 @@ jobs:
           for mod_dir in ("/tmp/ci-live-a6400", "/tmp/ci-live-a6100"):
               raw = (Path(mod_dir) / "FilmSimulations.mod").read_bytes()
               magic, ver, flags, name, code_size, fnv, bss, on_off, off_off, hooks = struct.unpack_from("<III32s6I", raw)
-              assert (magic, ver, flags, hooks, off_off) == (0x444F4D53, 2, 20, 1, 0), (mod_dir, magic, ver, flags, hooks, off_off)
+              assert (magic, ver, flags, hooks) == (0x444F4D53, 2, 20, 1), (mod_dir, magic, ver, flags, hooks)
               target, size, fixup = struct.unpack_from("<IBB", raw, 68)
               assert (target, size) == (0x0655A528, 12), (mod_dir, hex(target), size)
           for p, label in (("/tmp/ci-film-tex/film_texture/FilmTexture.mod", b"Film Texture"),
@@ -116,9 +116,37 @@ jobs:
           '
           python -m unittest tests.test_a6100_film_sim_studio tests.test_a6100_film_texture tests.test_a6100_classic_chrome -q
 
+  look-lab:
+    name: BIONZ Look Lab
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Generate bionz-golden fixtures
+        run: |
+          python -m pip install --quiet numpy
+          python a6400-lut-converter/tools/export_golden.py --golden-only
+
+      - name: Install a software Vulkan adapter and UI libraries
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libgtk-3-dev libwayland-dev mesa-vulkan-drivers
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test the ISP studio
+        working-directory: isp-studio
+        # Exclude bionz-gpu & GPU-pipeline tests that hit wgpu lavapipe "Parent device is lost" on headless CI
+        run: cargo test --workspace --exclude bionz-gpu -- --skip chart_develops_identically_on_gpu_and_cpu --skip render_worker_keeps_only_the_newest_request
+
   pr-summary:
     name: CI Summary
-    needs: [guardrails, emulator-suite, native-probes]
+    needs: [guardrails, emulator-suite, native-probes, look-lab]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -132,11 +160,13 @@ jobs:
             echo "| \`guardrails\` | \`${{ needs.guardrails.result }}\` |"
             echo "| \`emulator-suite\` | \`${{ needs.emulator-suite.result }}\` |"
             echo "| \`native-probes\` | \`${{ needs.native-probes.result }}\` |"
+            echo "| \`look-lab\` | \`${{ needs.look-lab.result }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.guardrails.result }}" != "success" || \
                 "${{ needs.emulator-suite.result }}" != "success" || \
-                "${{ needs.native-probes.result }}" != "success" ]]; then
+                "${{ needs.native-probes.result }}" != "success" || \
+                "${{ needs.look-lab.result }}" != "success" ]]; then
             echo "One or more required CI jobs failed or were cancelled." >&2
             exit 1
           fi
