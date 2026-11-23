@@ -10,6 +10,11 @@ use thiserror::Error;
 
 pub const A6LT_MAGIC: &[u8; 4] = b"A6LT";
 pub const BZLK_MAGIC: &[u8; 4] = b"BZLK";
+
+/// Pure-Rust `SMOD v2` emitter: turns compiled tables into a `.mod` for `<SD>:\mods\` without a
+/// compiler, WSL or Python on the user's machine.
+pub mod smod_v2;
+pub use smod_v2::{emit_live_smod_v2, emit_smod_v2, live_template_layout, mod_filename, template_layout};
 /// Stock tables extracted from the hash-verified ILCE-6400 2.00 `av-cam.bin`
 /// (`a6400-lut-converter/tools/emit_stock_rs.py`).
 pub mod stock_a6400;
@@ -375,8 +380,14 @@ fn read_i16s(c: &mut Cursor<&[u8]>, n: usize) -> Result<Vec<i16>> {
 }
 
 pub fn load_bzlook(path: &Path) -> Result<Bzlook> {
-    let file = File::open(path)?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|e| err(e.to_string()))?;
+    let data = std::fs::read(path)?;
+    load_bzlook_bytes(&data)
+}
+
+/// Parse a `.bzlook` container held in memory. The portable app embeds its presets with
+/// `include_bytes!` and has no file beside the executable to open.
+pub fn load_bzlook_bytes(data: &[u8]) -> Result<Bzlook> {
+    let mut zip = zip::ZipArchive::new(Cursor::new(data)).map_err(|e| err(e.to_string()))?;
     let mut meta_text = String::new();
     zip.by_name("look.toml").map_err(|e| err(e.to_string()))?.read_to_string(&mut meta_text)?;
     let meta: LookMeta = toml::from_str(&meta_text).map_err(|e| err(e.to_string()))?;

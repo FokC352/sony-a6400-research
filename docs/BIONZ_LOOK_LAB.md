@@ -2,7 +2,18 @@
 
 Host studio for the evidence-backed BIONZ color chain. It lives in [`isp-studio/`](../isp-studio/) and does not talk to a camera, USB, or `/dev/mem`.
 
-A universal preset is a `.bzlook` zip. [`isp-studio/docs/PRESET_FORMAT.md`](../isp-studio/docs/PRESET_FORMAT.md) is the layout. The seven Film Sims recipes are packed under `mods/film_sims/presets/`. Their compiled tables use the synthetic stock recorded in `artifacts/tests/bionz-golden/`, not a dump of `av-cam.bin`, and they carry only an `a6400` table.
+A universal preset is a `.bzlook` zip. [`isp-studio/docs/PRESET_FORMAT.md`](../isp-studio/docs/PRESET_FORMAT.md) is the layout. The twelve Film Sims recipes are packed under `mods/film_sims/presets/`. Their compiled tables use the hash-verified `av-cam.bin` stock and carry both an `a6400` and an `a6100` table plus a Movie variant for each.
+
+## Portable release
+
+`scripts/build_look_lab_release.ps1` produces `dist/BIONZ-Look-Lab-portable/bionz-look-lab.exe` (and a zip). The executable is self-contained: the twelve presets and the ARM `SMOD v2` template are compiled in, so it runs from an empty folder with no Python, GCC, WSL or preset files. It is built with the statically linked MSVC CRT (`isp-studio/.cargo/config.toml`, `+crt-static`) and `windows_subsystem = "windows"`, so it needs no Visual C++ redistributable and opens no console window.
+
+Two scripts check the promise without a camera:
+
+- `scripts/verify_look_lab_export.ps1` copies the exe into `C:\Temp\LookLabTest` (nothing else in it), runs `bionz-look-lab.exe --export-mod <out> --look "Classic Chrome" --bodies both`, and asserts `preset_dir = null` (all twelve looks came from the bundle), that `out\a6400\mods\<Look>.mod` and `out\a6100\mods\<Look>.mod` exist, that each starts with `SMOD` version 2 / `FLAG_ACTION` and matches its FNV-1a 32, that the two bodies differ in the address payload, and that a single body written into a folder already named `mods` does not create a nested `mods` folder.
+- `scripts/smoke_look_lab_portable.ps1` starts the same copy the way a double click does (`cmd /c start`) and checks that the process is still alive with a main window after 8 s.
+
+`--export-mod` is the Export dialog's write path driven from the command line: it loads the library with `looks::load_library_with_bundled`, picks the look by name, and calls `looks::export_mods_report`, the same function the dialog's **Export .mod** button runs. It prints a JSON receipt (`presets_loaded`, `presets_built_in`, `preset_dir`, `files` with size and SHA-256). Without a recognised flag the process starts the GUI as usual.
 
 ## Using the app
 
@@ -14,10 +25,10 @@ cargo run --release -p bionz-app
 You can also pass files: `bionz-look-lab.exe <photo.ARW> [<camera.JPG>]`.
 
 1. **Open photo / RAW** (Ctrl+O), or drop a file on the window. A Sony ARW is decoded from the CFA: the file's black and white levels, as-shot white balance, the file crop, a 2×2 super-pixel demosaic and the orientation tag. No host color matrix is applied. JPEG, PNG and TIFF files are display images (badge S), so they start at −3 EV. **Try the test chart** loads a built-in ColorChecker-style chart.
-2. **Pick a preset** in the left list. The list holds every `.bzlook` found in `BIONZ_PRESETS`, or in `presets/` or `mods/film_sims/presets/` next to the executable or the working directory. **Import preset** adds a `.bzlook`, a `.cube` (fitted onto the ISP tables) or a legacy `.a6lt`.
+2. **Pick a preset** in the left list. The list starts with the twelve presets compiled into the executable, then adds every `.bzlook` found in `BIONZ_PRESETS`, or in `presets/` or `mods/film_sims/presets/` next to the executable or the working directory. A disk preset with the same name replaces the built-in copy. **Import preset** adds a `.bzlook`, a `.cube` (fitted onto the ISP tables) or a legacy `.a6lt`.
 3. **Tune** the look with the Tone, Color, Hue sectors and Split toning sliders. Releasing a slider refits the tables in the background (17³ cube). A dot (•) marks unsaved changes. **Save preset as…** (Ctrl+S) writes a `.bzlook`.
 4. **Compare** with the Emulated, Split (drag the divider), Side by side, Difference, ΔE map and B views. B is the same image through the preset's stock tables. The label reads "Stock (synthetic)" for the shipped presets. To compare against the real camera, shoot RAW+JPEG with the preset active and use **Add camera JPEG**. Dropping a JPEG with the same file name as the open ARW also works. When a same-stem `.JPG` already sits next to the ARW, **Use paired .JPG** switches side B to it and **Simulated Stock (.jpg)** switches back, so the camera JPEG never replaces the stock baseline without a click. The bottom bar shows ΔE mean and p95 for the current A and B.
-5. **Pack for Film Sims** writes `film_sim_data_<target>.h` and `film_sim_live_data_<target>.h`. It refuses tables with synthetic stock. Those headers would restore made-up `*_STOCK` values when the mod turns off, and `COLOR_A0_PA` sits in the backup-persisted matrix table (imaging hazard H01). For a camera build, use `mods/film_sims/studio_core.py`, which reads the stock tables from `av-cam.bin`.
+5. **Export Camera Mod (.mod)** writes finished `SMOD v2` files for `<SD>:\mods\`, in two kinds. **Single look**: one `.mod` per look, switched in MENU -> Mods. **Live picker**: one `FilmSimulations.mod` holding every exportable look, which opens in Live View and switches looks with Left/Right (or Up/Down); ENTER locks the choice, MENU leaves it armed. Pick `a6400 + a6100` to get `<folder>\a6400\mods\…` and `<folder>\a6100\mods\…`, or one body to write `<folder>\mods\…` (or `<folder>\…` when the folder is already named `mods`, so `<SD>:\` and `<SD>:\mods\` both work). Both are generated inside the app by `bionz-preset::smod_v2` from committed ARM Thumb payloads: no Python, WSL or compiler is needed, and the body's physical addresses and the preset tables are written into a fixed payload, with an FNV-1a 32 checksum over the code. They refuse tables with synthetic stock (the mod restores `*_STOCK` when it returns to stock, and `COLOR_A0_PA` sits in the backup-persisted matrix table, imaging hazard H01) and presets that carry a Color Mode base matrix or `/usr/sabin` tables (those belong to `mods/arri_isp/arrivederci`). The older **Advanced: write C headers** button still writes `film_sim_data_<target>.h` and `film_sim_live_data_<target>.h` for the `mods/film_sims` build.
 
 The **Input** section sets exposure, the gamma path and the encoder range. Exposure is the gain before the chain: RAW sensor white maps to the top EC knot at 0 EV. The gamma path is one of: Movie EC only (default), Still FC only, or either experimental order. **ISP stages (advanced)** bypasses stages 6–14 and shows the selected stage's output on a small copy of the image. The view also shows the EC/FC curves against stock, the A0 matrix and a dY slice of the 5×9×9 LUT.
 
@@ -28,15 +39,15 @@ GPU: the chain runs on one persistent wgpu device. The backend order is DX12, th
 | Crate | Check |
 | --- | --- |
 | `bionz-core` | Gamma, matrix, `apply_ycc` bits, 8-bit encode, and eSRAM words against the Python oracle. The integer chain is the GPU model. |
-| `bionz-preset` | A6LT round trip and `film_sim_data.h` / live header text against the golden headers. |
+| `bionz-preset` | A6LT round trip and `film_sim_data.h` / live header text against the golden headers. `smod_v2` emits `SMOD v2` `.mod` files from the committed ARM Thumb payloads: header shape, FNV-1a 32 over the code, the body's seven physical addresses, every table, the refusal of synthetic stock and of base-matrix presets, and a `.mod` for all twelve presets on both bodies; for the Live Picker, one hook, 48 bytes of bss, `FLAG_ACTION|FLAG_RELOC`, one relocated word, fifteen slots and the per-look tables. |
 | `bionz-gpu` | The post-gain RGB is cached, then detail, the residual LUT, and the encoder run from that cache. Changing only the LUT level leaves the cache identical and changes the encoded taps. The same chain matches the CPU on the rail pixels and on the compiled Classic Chrome a6400 tables. A LUT-level edit can rerun detail, the residual LUT, and the encoder from the stored post-gain cache. `bionz-cli bench` prints the host wait for those two submits. |
 | `bionz-raw` | `rawler` decodes an ARW or DNG into an integer CFA. Black, white balance, and a selectable demosaic then feed the integer chain. A `dcv` center slice and `spica` taps load only after a SHA-256 match. A video frame is extracted only by an external ffmpeg binary. |
 | `bionz-fit` | Recipe probes match `evaluate_recipe_3d` within 1e-6. The cube fitter matches the golden tiny cube exactly. On the seven Film Sims recipes and both ARRI targets, its ΔE76 is less than or equal to the Python preset scored on the same samples, and the rail count matches. |
 | `bionz-target` | a6400 and a6100 Film Sims addresses from `studio_core`. ILCE-6400A addresses stay unknown. |
 | `bionz-compare` | CIEDE2000, an absolute difference, a ΔE heatmap, a 6×4 patch-grid search, phase correlation on power-of-two luma, and a one-pixel SAD check. A detected grid is a layout candidate. Receipts set `promotes_badge` to false. |
-| `bionz-cli` | `pack` (refuses synthetic stock unless `--allow-synthetic-stock`), `bench`, `compare`, `parity`, and `render` (RAW or image through a preset, or through its stock tables with `--stock`, to PNG). |
+| `bionz-cli` | `pack` (refuses synthetic stock unless `--allow-synthetic-stock`), `smod` (one look, one `SMOD v2` `.mod` for `a6400` or `a6100`, no compiler), `live-mod` (a folder of `.bzlook` presets into one Live Picker `FilmSimulations.mod`), `bench`, `compare`, `parity`, and `render` (RAW or image through a preset, or through its stock tables with `--stock`, to PNG). |
 | `bionz-py` | `bionz_isp.fit_cube` returns gamma, matrix, and delta. `simulate` runs that fit through `apply_ycc`. `compile_preset` and `pack_live` emit Film Sims headers from `.bzlook` files. `lut_bridge` uses those tables when the module is installed and keeps the Python fitter otherwise. `studio_core.build_mod` calls `bionz-cli pack` when `BIONZ_CLI` and `BIONZ_BZLOOK` are set. |
-| `bionz-app` | Library discovery, import, background recipe refit, save, the viewer, scopes and stage taps described in "Using the app" above. Tests: the chart develops identically on the GPU and the CPU; look and stock differ; recipe refit keeps the stock and changes RefAdr; A6LT import composes onto stock; pack refuses synthetic stock and writes both headers for real stock. |
+| `bionz-app` | Library discovery (twelve built-in presets, then disk presets, deduplicated by name), import, background recipe refit, save, the `.mod` export dialog, the viewer, scopes and stage taps described in "Using the app" above. Tests: the chart develops identically on the GPU and the CPU; look and stock differ; recipe refit keeps the stock and changes RefAdr; A6LT import composes onto stock; pack refuses synthetic stock and writes both headers for real stock; the twelve built-in presets load with no file on disk; `export_mods` writes both `<body>/mods/` trees and respects a folder already named `mods`; the Export dialog body renders in a bare `egui::Context` and its write path produces the files it reports; `--export-mod` (headless, same code as the dialog) writes both bodies and fails on an unknown look name. |
 
 `lut_core` stays the numeric oracle. The Tk GUI in `a6400-lut-converter/lut_gui` is deprecated.
 
@@ -51,7 +62,42 @@ C:\Python314\python.exe a6400-lut-converter\tools\export_golden.py
 cd isp-studio
 cargo test --workspace
 .\target\debug\bionz-cli.exe pack --target a6400 --allow-synthetic-stock -o target\host-only\film_sim_data.h ..\mods\film_sims\presets\classic-chrome.bzlook
+.\target\debug\bionz-cli.exe smod ..\mods\film_sims\presets\classic-chrome.bzlook --target a6100 -o ..\artifacts\tests\ClassicChrome.mod
 .\target\release\bionz-cli.exe render E:\DCIM\100MSDCF\_DSC1479.ARW --preset ..\mods\film_sims\presets\classic-chrome.bzlook -o target\renders\chrome.png
+```
+
+## Camera `.mod` export (2026-11-23)
+
+`bionz-preset::smod_v2` is a pure-Rust `SMOD v2` packer. The Film Simulation lifecycle code is compiled once, during development, by `mods/film_sims/template/build_template_wsl.sh` into `isp-studio/crates/bionz-preset/assets/film_sim_template.blob` plus `film_sim_template.json` (code length, FNV-1a 32, `sim_life` offset, and every `struct sim_payload` field offset taken from an ARM `offsetof` probe). Every physical address and every table lives inside that one payload, so one template serves both bodies; the packer clones it, writes `TargetAddrs`, `mod_tag`, `/tmp_bt/mods/<slug>.log`, the stock/simulated EC, FC, A0, A1 and B2 tables and the 1215-byte `RefAdr[0]`, then emits the 68-byte header (`SMOD`, version 2, `FLAG_ACTION`, name, code length, FNV-1a 32, `bss` 0, `on/off = sim_life|1`, no hooks) and the code.
+
+The payload must be read at run time: the template is `const`, so `swap()`/`write_refadr()` take `const volatile` pointers. Without the qualifier GCC constant-folds the zero-initialized payload and every physical address becomes 0 — the Unicorn test catches exactly that.
+
+Verification (`tests/test_look_lab_smod_v2.py`) exports a `.mod` through `bionz-cli smod` for every shipped preset and both bodies, validates it with `src.a6400.mod_manager.smod.parse_smod`, decodes each `.bzlook`'s BZLK table independently to compare the payload byte for byte, and runs the lifecycle in Unicorn the way Mod Loader v2 does (code at an arbitrary base, `/dev/mem` `mmap2` serviced per physical page): `sim_life(1)` must swap EC/FC/A0/A1/B2, `RefAdr[0]` and the CC tuning word, a repeated `sim_life(1)` must be idempotent, `sim_life(0)` must restore stock, and a foreign table must be left untouched and reported as `x` in the mod log.
+
+### Live Picker (`FilmSimulations.mod`)
+
+`emit_live_smod_v2` packs up to fifteen looks into one mod. The skeleton in `assets/film_sim_live_template.mod` is built once by `mods/film_sims/live_picker/build_live_template_wsl.sh` from `film_sim_live_template.c`: it already carries the `event_push` hook at `0x0655a528` (`libObj`), 48 bytes of bss for `struct live_state`, `FLAG_ACTION | FLAG_RELOC` and the one-word RLC1 table that moves the trampoline's resume address. The packer rewrites only the name, the `struct live_payload` (addresses, `n_presets`/`n_looks`, names, `lut_idx`, the stock tables and every look's EC/FC/A0/A1/B2/RefAdr) and the code checksum, so the hook and relocation stay exactly as verified.
+
+Two details that matter: the payload and the 5x7 banner font are separate named sections passed as `--data-symbol`, because the relocation scanner otherwise read glyph bytes as `libmintx` addresses (three false relocations); and the payload is read through `const volatile` pointers so the template's zero initializer is never folded. The emitter refuses more than fifteen looks, synthetic stock, base matrices, non-ASCII names, and looks whose stock tables differ from the first one's (the picker stores one stock set). Both exporters share `live_picker_skip_reason`, so a folder export skips the same looks in the app and in `bionz-cli live-mod`.
+
+`tests/test_look_lab_live_smod_v2.py` installs the hook the way the loader does (trampoline at the firmware target plus the `base + entry` fixup), runs `live_life(1)`, and drives `event_push` with the real key ids: Right/Down and Left/Up step through Stock and every look (each step must write that look's tables into the emulated `/dev/mem` pages), slot 0 restores stock and bypasses the CC tuning word, ENTER locks and clears the banner on both OSD surfaces, the paired release is swallowed once, disarmed keys and foreign events reach the original `event_push`, MENU disarms after its closing event, and the 640x480 RGBA4444 banner is drawn and cleared at `0x0bfd0000`/`0x0cfdd000` (the bases the mod finds by scanning `/proc/self/maps` for the `0x23a80000`/`0x23b16000` offsets, E0298).
+
+
+```powershell
+# regenerate the ARM payloads after editing the templates
+wsl.exe -d Ubuntu -- bash mods/film_sims/template/build_template_wsl.sh
+wsl.exe -d Ubuntu -- bash mods/film_sims/live_picker/build_live_template_wsl.sh
+# offline end-to-end checks (exports + strict parser + Unicorn)
+.\venv\Scripts\python.exe -m unittest tests.test_look_lab_smod_v2 tests.test_look_lab_live_smod_v2 -v
+# portable Windows release
+.\scripts\build_look_lab_release.ps1
+# portable proof: the shipped exe, from an empty folder
+.\scripts\verify_look_lab_export.ps1
+.\scripts\smoke_look_lab_portable.ps1
+# the same exports from the command line, anywhere
+.\dist\BIONZ-Look-Lab-portable\bionz-look-lab.exe --export-mod C:\Temp\mods-out --look "Gold 200" --bodies a6100
+.\dist\BIONZ-Look-Lab-portable\bionz-look-lab.exe --export-mod C:\Temp\mods-out --kind live --bodies both
+.\isp-studio\target\debug\bionz-cli.exe live-mod .\mods\film_sims\presets --target a6100 -o C:\Temp\FilmSimulations.mod
 ```
 
 ## Debayer, DCV and Arrivederci (2026-11-22)
@@ -149,7 +195,7 @@ Side A of the still path no longer runs the Movie EC chain. `GammaPath::StillJpe
 
 `preset-eval` renders every `.bzlook` against the camera JPEG (same folder or `Pictures\Sony a6400\*\` by stem, or `--camera`), writes camera|emulated PNGs, and reports ΔE2000, neutral-axis drift, skin hue/chroma, shadow/highlight retention and LUT rail margins. `render --gamma-path` accepts `still-jpeg` (default), `movie-ec` and `still-fc`.
 
-The shipped presets are now compiled at 33³ against the hash-verified a6400 `av-cam.bin` stock (`flags = 0`, `avcam_sha256 dd8f8d0c…`), with rendered thumbnails, and pack for Film Sims without the synthetic-stock refusal. The a6100 tables are not compiled: `artifacts/a6100-inputs/av-cam.bin` is absent on this host, and `export_golden.py` reports the skip instead of inventing stock. The recipe curve is C¹ (two Hermite segments sharing the crossover slope) and the look matrix is row-stochastic, with `warmth` applied as a luminance-tapered midtone tint.
+The shipped presets are now compiled at 33³ against the hash-verified `av-cam.bin` stock for both `a6400` and `a6100` (including Movie variants), with rendered thumbnails, and pack for Film Sims without the synthetic-stock refusal. The recipe curve is C¹ (two Hermite segments sharing the crossover slope) and the look matrix is row-stochastic, with `warmth` applied as a luminance-tapered midtone tint.
 
 ### Highlight shoulder and the Fujifilm set (2026-11-22)
 

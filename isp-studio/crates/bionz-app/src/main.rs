@@ -1,11 +1,17 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! BIONZ Look Lab. Develops RAW or display images through compiled BIONZ X preset tables on the GPU
 //! and compares the result with the stock camera tables or with a camera JPEG. No USB or camera calls.
 //!
 //! The UI thread never runs the ISP chain or the fitter. A render worker and a fit worker take the
 //! newest request only. While a control moves, the picture is rendered from a small proxy image;
 //! when the control is released it is rendered at preview size, and at full size when zoomed in.
+//!
+//! Release builds set `windows_subsystem = "windows"` above, so the portable `.exe` opens without a
+//! console window.
 
+mod bundled_presets;
 mod front_state;
+mod headless;
 mod looks;
 mod scopes;
 mod spatial_src;
@@ -37,6 +43,13 @@ const SETTLE: Duration = Duration::from_millis(180);
 const ACCENT: Color32 = Color32::from_rgb(232, 160, 60);
 
 fn main() -> eframe::Result<()> {
+    // `--export-mod <DIR>` runs the Export dialog's write path and prints a JSON receipt, so the
+    // portable build can be verified from a folder that holds only the executable. Anything else is
+    // a normal GUI launch.
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if let Some(code) = headless::run(&args) {
+        std::process::exit(code);
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1440.0, 900.0]).with_min_inner_size([1000.0, 640.0]).with_title("BIONZ Look Lab"),
         ..Default::default()
@@ -184,6 +197,9 @@ enum Action {
     Import,
     SaveAs,
     Pack,
+    OpenModExport,
+    PickModDir,
+    WriteMod,
     Export,
     Select(usize),
     Undo,
@@ -193,6 +209,136 @@ enum Action {
     ZoomFit,
     ZoomTo(f32),
     ZoomBy(f32),
+}
+
+/// Which kind of `.mod` the export dialog writes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ModKind {
+    /// One look, one mod (`<Look>.mod`): EC/FC/A0/A1/B2 + RefAdr swapped once.
+    SingleLook,
+    /// Every exportable look in one mod (`FilmSimulations.mod`), switched live in Live View.
+    LivePicker,
+}
+
+impl ModKind {
+    #[cfg(test)]
+    fn label(self) -> &'static str {
+        match self {
+            ModKind::SingleLook => "Single look",
+            ModKind::LivePicker => "Live picker",
+        }
+    }
+}
+
+/// State of the "Export Camera Mod (.mod)" dialog.
+struct ModExport {
+    open: bool,
+    targets: looks::ModTargetSelection,
+    kind: ModKind,
+    dir: Option<PathBuf>,
+    status: String,
+}
+
+impl Default for ModExport {
+    fn default() -> Self {
+        Self { open: false, targets: looks::ModTargetSelection::Both, kind: ModKind::SingleLook, dir: None, status: String::new() }
+    }
+}
+
+/// The body of the "Export Camera Mod (.mod)" window.
+///
+/// Kept out of `update` so a headless test can render it in a bare `egui::Context` and assert that it
+/// requests exactly the actions the window's buttons stand for.
+fn mod_export_ui(ui: &mut egui::Ui, state: &mut ModExport, look_name: &str, targets_note: &str, actions: &mut Vec<Action>) {
+    ui.label(RichText::new(format!("Look: {look_name}")).strong());
+    ui.label(RichText::new(targets_note).weak());
+    ui.add_space(6.0);
+    ui.label(RichText::new("Mod kind").strong());
+    ui.horizontal(|ui| {
+        for (value, label) in [(ModKind::SingleLook, "Single look (.mod)"), (ModKind::LivePicker, "Live picker (FilmSimulations.mod)")] {
+            if ui.selectable_label(state.kind == value, label).clicked() {
+                state.kind = value;
+            }
+        }
+    });
+    ui.label(
+        RichText::new(match state.kind {
+            ModKind::SingleLook => "One look in one .mod. Switching it in MENU -> Mods applies or removes that look.",
+            ModKind::LivePicker => {
+                "Every exportable look in one .mod. It opens in Live View: Left/Right (or Up/Down) switches, ENTER locks the \
+                 chosen look, MENU leaves it armed."
+            }
+        })
+        .small()
+        .weak(),
+    );
+    ui.add_space(6.0);
+    ui.label(RichText::new("Camera body").strong());
+    ui.horizontal(|ui| {
+        for (value, label) in [
+            (looks::ModTargetSelection::Both, "a6400 + a6100"),
+            (looks::ModTargetSelection::A6400, "ILCE-6400 (a6400)"),
+            (looks::ModTargetSelection::A6100, "ILCE-6100 (a6100)"),
+        ] {
+            if ui.selectable_label(state.targets == value, label).clicked() {
+                state.targets = value;
+            }
+        }
+    });
+    ui.add_space(6.0);
+    ui.label(RichText::new("Destination").strong());
+    ui.horizontal(|ui| {
+        if ui.button("📁 Choose folder or SD card…").clicked() {
+            actions.push(Action::PickModDir);
+        }
+        match &state.dir {
+            Some(path) => ui.label(RichText::new(path.display().to_string()).monospace()),
+            None => ui.label(RichText::new("no folder chosen yet").weak()),
+        };
+    });
+    ui.label(
+        RichText::new(match (state.kind, state.targets) {
+            (_, looks::ModTargetSelection::Both) => "Writes <folder>\\a6400\\mods\\ and <folder>\\a6100\\mods\\.",
+            _ => "Writes <folder>\\mods\\, or <folder>\\ when the folder is already named mods.",
+        })
+        .small()
+        .weak(),
+    );
+    ui.add_space(8.0);
+    if ui
+        .add_enabled(state.dir.is_some(), egui::Button::new("📦 Export .mod"))
+        .on_disabled_hover_text("Choose a destination folder first")
+        .clicked()
+    {
+        actions.push(Action::WriteMod);
+    }
+    if !state.status.is_empty() {
+        ui.add_space(6.0);
+        ui.separator();
+        ui.label(RichText::new(&state.status).monospace());
+    }
+    ui.add_space(8.0);
+    ui.separator();
+    ui.label(RichText::new("How it works").strong());
+    ui.label(
+        "The .mod contains the same content-guarded single-page swaps as the Film Sims builds: EC Record 28, FC Table 0, \
+         the A0/A1/B2 color matrices, RefAdr[0] and the CC tuning word. It is generated here, in Rust, from the preset's \
+         compiled tables; no Python, WSL or ARM compiler is needed. The address set and every table are written into a \
+         fixed payload structure, and the checksum is FNV-1a 32 over the code.",
+    );
+    ui.add_space(6.0);
+    ui.label(
+        "Copy the file into <SD>:\\mods\\ (create the folder if needed), then enable the look in MENU -> Mods. \
+         Turning it off writes the stock tables back, so do not delete the .mod while it is active.",
+    );
+    ui.add_space(6.0);
+    if ui
+        .button("Advanced: write C headers (Pack for Film Sims)")
+        .on_hover_text("film_sim_data_<target>.h / film_sim_live_data_<target>.h for the studio_core.py or film_sim.c build")
+        .clicked()
+    {
+        actions.push(Action::Pack);
+    }
 }
 
 struct LabApp {
@@ -263,18 +409,23 @@ struct LabApp {
     routing: IspRouting,
     /// Last Movie spatial path, restored when switching back to Movie.
     last_movie_spatial: SpatialPath,
+    mod_export: ModExport,
 }
 
 impl LabApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         apply_theme(&cc.egui_ctx, true);
         let preset_dir = looks::find_preset_dir();
-        let (library, errors) = preset_dir.as_deref().map(looks::load_library).unwrap_or_default();
+        let (library, errors) = looks::load_library_with_bundled(preset_dir.as_deref());
         let gpu_info = bionz_gpu::adapter_info().unwrap_or_else(|e| format!("no GPU ({e}); CPU fallback"));
         let status = match (&preset_dir, errors.is_empty()) {
-            (None, _) => "No preset folder found. Use Import to add .bzlook, .cube or .a6lt presets, or set BIONZ_PRESETS.".into(),
-            (Some(dir), true) => format!("Loaded {} presets from {}.", library.len(), dir.display()),
+            (Some(dir), true) => format!("Loaded {} presets ({} built in) from {}.", library.len(), bundled_presets::COUNT, dir.display()),
             (Some(_), false) => format!("Some presets failed to load: {}", errors.join("; ")),
+            (None, true) => format!(
+                "Loaded {} built-in presets: the executable needs no files beside it. Use Import to add .bzlook, .cube or .a6lt.",
+                library.len()
+            ),
+            (None, false) => format!("Some built-in presets failed to load: {}", errors.join("; ")),
         };
         let (tx, rx) = channel();
         let (rendered_tx, render_rx) = channel();
@@ -359,6 +510,7 @@ impl LabApp {
             mode: LabMode::Photo,
             routing: IspRouting::default(),
             last_movie_spatial: SpatialPath::Uhd4k,
+            mod_export: ModExport::default(),
         };
         // `bionz-look-lab <image> [<camera.jpg>]`, also used by "Open with" in Explorer.
         // Preset files (.bzlook, .cube, .a6lt, .mod, arrivederci_data.h) are imported first, so the
@@ -1122,6 +1274,49 @@ impl LabApp {
                     };
                 }
             }
+            Action::OpenModExport => {
+                if self.entry().is_none() {
+                    return;
+                }
+                self.mod_export.open = true;
+                self.mod_export.status.clear();
+            }
+            Action::PickModDir => {
+                if let Some(dir) = rfd::FileDialog::new()
+                    .set_title("Destination folder or SD card root for the .mod files")
+                    .pick_folder()
+                {
+                    self.mod_export.dir = Some(dir);
+                    self.mod_export.status.clear();
+                }
+            }
+            Action::WriteMod => {
+                let Some(entry) = self.library.get(self.selected) else { return };
+                let Some(dir) = self.mod_export.dir.clone() else {
+                    self.mod_export.status = "Choose a destination folder or SD card first.".into();
+                    return;
+                };
+                let targets = self.mod_export.targets;
+                let kind = self.mod_export.kind;
+                let result = match kind {
+                    ModKind::SingleLook => looks::export_mods_report(&dir, entry, targets),
+                    ModKind::LivePicker => looks::export_live_mods_report(&dir, &self.library, targets),
+                };
+                self.mod_export.status = match result {
+                    Ok((summary, detail)) => {
+                        self.status = format!(
+                            "{} ({})",
+                            summary,
+                            detail.lines().map(|line| file_name(Path::new(line))).collect::<Vec<_>>().join(", ")
+                        );
+                        format!("{summary}\n{detail}")
+                    }
+                    Err(err) => {
+                        self.status = format!("Export failed: {err}");
+                        format!("Export failed: {err}")
+                    }
+                };
+            }
             Action::Export => {
                 let Some(source) = &self.source else { return };
                 let default = format!(
@@ -1615,8 +1810,8 @@ impl eframe::App for LabApp {
                 if ui.add_enabled(self.entry().is_some(), egui::Button::new("💾 Save preset as…")).on_hover_text("Ctrl+S").clicked() {
                     actions.push(Action::SaveAs);
                 }
-                if ui.add_enabled(self.entry().is_some(), egui::Button::new("📦 Pack for Film Sims")).on_hover_text("Writes film_sim_data_<target>.h and film_sim_live_data_<target>.h for the mod build").clicked() {
-                    actions.push(Action::Pack);
+                if ui.add_enabled(self.entry().is_some(), egui::Button::new("📦 Export Camera Mod (.mod)")).on_hover_text("Writes a ready-to-copy .mod for <SD>:\\mods\\ for a6400 and/or a6100. No compiler needed.").clicked() {
+                    actions.push(Action::OpenModExport);
                 }
                 if ui.add_enabled(self.source.is_some(), egui::Button::new("🖼 Export image")).on_hover_text("Full-resolution PNG of the emulated output").clicked() {
                     actions.push(Action::Export);
@@ -2084,7 +2279,7 @@ impl eframe::App for LabApp {
                         ("1", "Open a Sony ARW (or drop it on this window)."),
                         ("2", "Pick a preset on the left. Tune it with the Look sliders on the right."),
                         ("3", "Compare: Split shows emulated vs stock. Add the in-camera JPEG of the same shot to compare with the real camera."),
-                        ("4", "Save the preset (.bzlook) and Pack for Film Sims to build the camera mod."),
+                        ("4", "Save the preset (.bzlook) and Export Camera Mod (.mod) to build the camera mod."),
                     ] {
                         ui.label(RichText::new(format!("{n}.  {text}")).size(15.0));
                     }
@@ -2140,6 +2335,21 @@ impl eframe::App for LabApp {
             self.viewer(ui, b_name);
         });
 
+        if self.mod_export.open {
+            let mut state = std::mem::take(&mut self.mod_export);
+            let mut open = state.open;
+            let name = self.entry().map(|e| e.name.clone()).unwrap_or_default();
+            let targets_note = match self.entry() {
+                Some(e) => format!("This preset carries tables for: {}.", e.targets().join(", ")),
+                None => String::new(),
+            };
+            egui::Window::new("Export Camera Mod (.mod)").open(&mut open).default_width(560.0).show(ctx, |ui| {
+                mod_export_ui(ui, &mut state, &name, &targets_note, &mut actions);
+            });
+            state.open = open;
+            self.mod_export = state;
+        }
+
         if self.show_help {
             egui::Window::new("How to use BIONZ Look Lab").open(&mut self.show_help).default_width(520.0).show(ctx, |ui| {
                 ui.label(RichText::new("Load an image").strong());
@@ -2155,7 +2365,7 @@ impl eframe::App for LabApp {
                 ui.label("Shoot RAW+JPEG with the preset active on the camera. Open the ARW, then Add camera JPEG (or drop the JPEG with the same name). Split, Difference and ΔE map then compare Emulated with the camera, and the bottom bar shows ΔE. Without a JPEG, the comparison is against the stock tables. In-camera JPEGs come from the still path: try Gamma path: Still: FC gamma only. Which gamma table the still path uses is not verified yet.");
                 ui.add_space(6.0);
                 ui.label(RichText::new("Film Sims").strong());
-                ui.label("Pack for Film Sims writes film_sim_data_<target>.h and film_sim_live_data_<target>.h. It refuses tables with synthetic stock (the shipped presets), because the mod restores the stock arrays on the camera.");
+                ui.label("Export Camera Mod (.mod) writes a finished SMOD v2 file for <SD>:\\mods\\ for the a6400 and/or the a6100. Pick both bodies to get <folder>\\a6400\\mods\\ and <folder>\\a6100\\mods\\, or one body to write straight into the folder you point at. The mod is generated inside the app; no compiler is needed. Templates whose stock tables are synthetic, and Movie/Arrivederci presets with a Color Mode base matrix, are refused: the mod restores the stock tables when it turns off. The C header packer used by mods/film_sims is still available under Advanced in the same dialog.");
                 ui.add_space(6.0);
                 ui.label(RichText::new("Badges").strong());
                 ui.label("V = verified in firmware or on hardware, M = modeled from evidence, A = assumption. A-stages are switchable models, not camera measurements.");
@@ -2229,6 +2439,87 @@ mod tests {
         }
         assert_eq!(seen.last(), Some(&20));
         assert!(seen.len() < 20, "stale requests were not dropped: {seen:?}");
+    }
+
+    #[test]
+    fn live_picker_dialog_writes_filmsimulations_for_the_whole_library() {
+        let (entries, _) = looks::load_library(&presets());
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/look-lab-dialog-live");
+        let _ = std::fs::remove_dir_all(&dir);
+        let ctx = egui::Context::default();
+        let mut state = ModExport { open: true, targets: looks::ModTargetSelection::Both, kind: ModKind::LivePicker, dir: Some(dir.clone()), status: String::new() };
+        let mut actions = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                mod_export_ui(ui, &mut state, "Classic Chrome", "", &mut actions);
+            });
+        });
+        assert!(actions.is_empty(), "rendering must not export anything");
+        assert_eq!(state.kind.label(), "Live picker");
+        let (summary, detail) = looks::export_live_mods_report(&dir, &entries, state.targets).unwrap();
+        state.status = format!("{summary}\n{detail}");
+        let a6400 = dir.join("a6400").join("mods").join("FilmSimulations.mod");
+        let a6100 = dir.join("a6100").join("mods").join("FilmSimulations.mod");
+        assert_eq!(detail.lines().collect::<Vec<_>>(), vec![a6400.display().to_string(), a6100.display().to_string()]);
+        assert!(summary.contains("12 look(s)"), "{summary}");
+        for path in [&a6400, &a6100] {
+            let blob = std::fs::read(path).unwrap();
+            assert_eq!(&blob[..4], b"SMOD");
+            assert_eq!(u32::from_le_bytes(blob[8..12].try_into().unwrap()), 20, "FLAG_ACTION | FLAG_RELOC");
+            assert_eq!(&blob[12..28], b"Film Simulations");
+            assert_eq!(u32::from_le_bytes(blob[64..68].try_into().unwrap()), 1, "the event_push hook");
+        }
+        let mut actions = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                mod_export_ui(ui, &mut state, "Classic Chrome", "", &mut actions);
+            });
+        });
+        assert!(state.status.contains("FilmSimulations.mod"));
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn mod_export_dialog_renders_headless_and_writes_the_files_it_reports() {
+        let (entries, _) = looks::load_library(&presets());
+        let chrome = entries.iter().find(|e| e.name == "Classic Chrome").unwrap();
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/look-lab-dialog-export");
+        let _ = std::fs::remove_dir_all(&dir);
+        // The dialog body runs in a bare egui context: no window, no GPU, no camera.
+        let ctx = egui::Context::default();
+        let mut state = ModExport { open: true, targets: looks::ModTargetSelection::Both, kind: ModKind::SingleLook, dir: Some(dir.clone()), status: String::new() };
+        let mut actions = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                mod_export_ui(ui, &mut state, &chrome.name, "This preset carries tables for: a6400, a6100.", &mut actions);
+            });
+        });
+        assert!(actions.is_empty(), "rendering the dialog must not export anything by itself");
+        assert_eq!(state.targets, looks::ModTargetSelection::Both);
+
+        // The dialog's Export button pushes exactly this action; run its body.
+        let (summary, detail) = looks::export_mods_report(&dir, chrome, state.targets).unwrap();
+        state.status = format!("{summary}\n{detail}");
+        let a6400 = dir.join("a6400").join("mods").join("ClassicChrome.mod");
+        let a6100 = dir.join("a6100").join("mods").join("ClassicChrome.mod");
+        assert!(a6400.is_file() && a6100.is_file(), "{detail}");
+        assert_eq!(detail.lines().collect::<Vec<_>>(), vec![a6400.display().to_string(), a6100.display().to_string()]);
+        for path in [&a6400, &a6100] {
+            let blob = std::fs::read(path).unwrap();
+            assert_eq!(&blob[..4], b"SMOD");
+            assert_eq!(u32::from_le_bytes(blob[4..8].try_into().unwrap()), 2);
+            assert_eq!(&blob[12..26], b"Classic Chrome");
+        }
+
+        // Re-render with the status the window shows, so the reported paths are on screen.
+        let mut actions = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                mod_export_ui(ui, &mut state, &chrome.name, "", &mut actions);
+            });
+        });
+        assert!(state.status.contains("ClassicChrome.mod"));
+        assert!(actions.is_empty());
     }
 
     #[test]
