@@ -288,9 +288,9 @@ frame (currently a black clear) and loads `viewUnified2.so`.
 - **[E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) / [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md)** add opt-in QEMU SYSV/VPH/evsel frame clock and oracle-backed SIO ch3, GPIO `0x32`, and ADC `0x3FF` peripheral models to `UnicornMachine`.
 - **UVC / 5 GHz Wi-Fi Streaming & CinemaHUD tooling:** adds offline-tested UVC-PTP adapter (`uvc_ptp_adapter.c`), Run B26 pre-arm harness (`tools/research/run_b26_uvc_prearm.py`), BCM4339 5 GHz Wi-Fi liveview bootstrap/daemon/client (`tools/native_camera/wifi_5ghz_bootstrap.sh`, `camera-daemon/src/wifi_stream.c`, `tools/research/wifi_uvc_client.py`), and CinemaHUD updates.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=651e69dbcf01)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=a1a757ff1ef5)
 
-![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
+![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 
 ---
 

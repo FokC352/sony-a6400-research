@@ -4,7 +4,7 @@
 
 - **Scope:** The ILCE-6400A 1.01 reference target: native debugger boundary, kernel/partition map, Jiritsu/Senser service packets, DMM fixtures, MISCREG/eFuse and the read-only partition captures.
 - **Evidence span:** see record index; last reviewed 2026-11-22.
-- **Deep review:** 0 of 18 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 0 of 20 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -85,7 +85,7 @@ Current knowledge:
 
 - **C04** `PHYSICAL` Neither DGU5 nor the ILCE-6400 / ILCE-6400A kernels verify kernel signatures; live MISCREG/eFuse values were read with a bounded single-page /dev/mem probe; a single-slot <= 512 KiB chunk planner was added. ([E0643](../evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md))
 
-## Record index (18 files)
+## Record index (20 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -109,3 +109,5 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0673](../evidence/0673-a6400a-first-actual-nflasha5-capture.md) | 2026-11-15 | first actual ILCE-6400A nflasha5 capture |  | A tightly coupled reporting correction follows: unexpected non-normal |
 | [E0674](../evidence/0674-a6400a-readonly-msc-lun-capture-and-flash-boundary.md) | 2026-11-15 | a6400A read-only MSC LUN capture and remaining flash boundary |  | nonexistent Python import. The corrected hash-only check succeeds without |
 | [E0675](../evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md) | 2026-11-16 | a6400A expanded bootstrap review and full-dump boundary |  |  |
+| [E0678](../evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md) | 2026-11-21 | QEMU boots captured ILCE-6400A 1.01 firmware to the stock rear-LCD UI and interactive menu |  |  |
+| [E0679](../evidence/0679-ilce-6400a-mod-loader-v2-and-mods-port.md) | 2026-11-22 | Mod Loader v2 and Full 9-Mod `SMOD v2` Port to `ILCE-6400A` 1.01 |  |  |

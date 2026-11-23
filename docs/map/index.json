@@ -11888,6 +11888,42 @@
     "0677-unicorn-sio-gpio-oracle.md": [
       "l2-kernel-boot"
     ],
+    "0678-dcv-psf-table-layout-and-arrivederci-v5-offset-defect.md": [
+      "imaging-pipeline"
+    ],
+    "0678-ilce-7rm4a-usb-pids-are-bk4-preset-units.md": [
+      "platform-multidevice"
+    ],
+    "0678-qemu-ilce-6400a-captured-firmware-boot.md": [
+      "a6400a-acquisition"
+    ],
+    "0679-ilce-6400a-mod-loader-v2-and-mods-port.md": [
+      "a6400a-acquisition"
+    ],
+    "0679-still-dcv-psf-layout-calibration-and-mod.md": [
+      "imaging-pipeline"
+    ],
+    "0680-photonbin-6mp-and-mlv2-nested-submenus.md": [
+      "mods"
+    ],
+    "0680-still-high-iso-nr-crispening-and-paired-jpg.md": [
+      "imaging-pipeline"
+    ],
+    "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md": [
+      "mods"
+    ],
+    "0682-still-jpeg-film-look-domain-and-recipe-recalibration.md": [
+      "imaging-pipeline"
+    ],
+    "0683-arri-shoulder-and-fujifilm-simulations.md": [
+      "imaging-pipeline"
+    ],
+    "0686-photo-movie-modes-and-dual-variant-presets.md": [
+      "imaging-pipeline"
+    ],
+    "0687-photo-movie-fixes.md": [
+      "imaging-pipeline"
+    ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"
     ],

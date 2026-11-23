@@ -102,4 +102,8 @@ android-client-ref/.gradle/
 # Private Custom OS repository (separate nested Git repo)
 /custom_os/
 
+# Per-run scratch directories and files that host tools create in the repository root
+# (random tmp<8-char> names). Test-owned fixtures belong under artifacts/tests/.
+/tmp*
+
 /qemu-a6400/zve10-menu.inputs.local.json

@@ -17,6 +17,8 @@ records = [
   "E0554",
   "E0643",
   "E0667-E0675",
+  "0678-qemu-ilce-6400a-captured-firmware-boot.md",
+  "0679-ilce-6400a-mod-loader-v2-and-mods-port.md",
 ]
 
 [[entity]]

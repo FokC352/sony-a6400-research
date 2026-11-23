@@ -1,4 +1,8 @@
-"""Windows-first Tkinter front-end. Only calls lut_core; contains no colour math."""
+"""Deprecated Windows Tkinter front-end.
+
+Use ``isp-studio`` (``bionz-look-lab``). This module only calls ``lut_core``
+and contains no colour math. ``lut_core`` remains the numeric oracle.
+"""
 from dataclasses import replace
 import math
 import os

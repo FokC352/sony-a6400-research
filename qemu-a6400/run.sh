@@ -32,6 +32,7 @@
 # WATCHDOG=1 (opt-in CXD4115 hardware watchdog at 0xF2402000, E0636; expiry follows
 # QEMU -action watchdog=, add e.g. QEMU_EXTRA="-icount shift=0,sleep=on -action watchdog=pause").
 # WORK_DMA=1 (opt-in work DMA copy channel at 0xF0102000, E0641).
+# F30A_FILL=1 (opt-in 0xF30A memory-fill engine at 0xF30A1280, E0642).
 # DDRB_CONTROL=1 (opt-in initialized DDR-B idle/active-mode sequence).
 # DFS_CONTROL=1 (opt-in DFS clock-switch completion handshake).
 # ZMA1_STARTUP=1 (opt-in captured ZMA1 startup interrupt, not JPEG decode).
@@ -49,6 +50,10 @@
 # SUBMICRO_LENS_POWER=1 (opt-in lens rail status in slot B; no lens protocol).
 # IDT_CAM (opt-in original sabin/idt_cam.bin, captured boot profile only).
 # SD_IMAGE and SD_SHA256 (opt-in checked raw card; starts ejected).
+# KERNEL and INITRD (Custom OS tests only): boot this kernel/initrd pair instead of the captured
+# ones; the SHA-256 of each override is printed for the receipt. The captured inputs are still
+# verified, so the override is one declared file each, not a replacement data dir. With INITRD set
+# the cmdline's initrd=0x...,size token is rewritten to the file's real size.
 # SERIAL (QEMU -serial backend for ttyAM0; default mon:stdio). The mod tools use a unix socket.
 # SETTING_FILES ("HOST_PATH:NAME ..." added to /setting on the run's disposable overlay only;
 # host paths must not contain spaces). Mod development stages the guard and request this way.
@@ -116,6 +121,19 @@ else
     AVCAM="${AVCAM:-$E/../firmware/extracted_a6400/firmware.tar_unpacked/0700_part_image/dev/nflasha3_unpacked/av-cam.bin}"
 fi
 AVCAM_PA=0x035C6000
+# Custom OS tests (build_full_initrd.py): boot a declared kernel/initrd pair
+# instead of the captured ones. Every other prepared input stays verified, and
+# the override hashes are printed for the receipt. With INITRD set, the
+# cmdline's initrd=0x...,size token is rewritten to the file's real size so the
+# kernel does not read past the loaded image.
+KERNEL_OVERRIDE="${KERNEL:-}"
+INITRD_OVERRIDE="${INITRD:-}"
+for f in "$KERNEL_OVERRIDE" "$INITRD_OVERRIDE"; do
+    if [ -n "$f" ] && [ ! -f "$f" ]; then
+        echo "KERNEL/INITRD override is missing: $f" >&2
+        exit 1
+    fi
+done
 IDT_BOOT=()
 if [ -n "${IDT_CAM:-}" ]; then
     if [ "$PREPARED" != 1 ] || ! printf '%s  %s\n' \
@@ -164,6 +182,16 @@ else
           | sed 's/ \*[[:space:]]*$//; s/^kemco //; s/console=ttynull/console=ttyAM0,115200n8 amba2.console=1/')
 fi
 
+# Keep the initrd= token consistent with a declared initrd override.
+if [ -n "$INITRD_OVERRIDE" ]; then
+    ISZ=$(stat -Lc '%s' -- "$INITRD_OVERRIDE")
+    CMD=$(printf '%s\n' "$CMD" | sed -E "s#initrd=0x[0-9a-fA-F]+,[^ ]+#initrd=0x00700000,0x$(printf '%08x' "$ISZ")#")
+    if ! printf '%s\n' "$CMD" | grep -q "initrd=0x00700000,0x$(printf '%08x' "$ISZ")"; then
+        echo "Could not size the initrd= token for the INITRD override." >&2
+        exit 1
+    fi
+fi
+
 rm -f "$R/emmc-overlay.qcow2"
 "$Q/build/qemu-img" create -q -f qcow2 -F raw -b "$D/emmc.img" "$R/emmc-overlay.qcow2"
 
@@ -180,7 +208,7 @@ if [ -n "$ULOGIO" ] || [ -n "${SETTING_FILES:-}" ]; then
     dd if="$D/emmc.img" of="$R/setting-part.img" bs=1M skip=$((SET_OFF >> 20)) \
        count=$((SET_LEN >> 20)) status=none
     if [ -n "$ULOGIO" ]; then
-        python3 "$E/tools/fat_add_file.py" "$R/setting-part.img" "$ULOGIO" ulogio.bin >&2
+        python3 "$E/tools/fat_add_file.py" --if-absent "$R/setting-part.img" "$ULOGIO" ulogio.bin >&2
     fi
     for item in ${SETTING_FILES:-}; do
         python3 "$E/tools/fat_add_file.py" "$R/setting-part.img" "${item%%:*}" "${item##*:}" >&2
@@ -284,6 +312,9 @@ fi
 if [ "${LOWMEM_ABORT:-0}" = 1 ]; then
     MACHINE="$MACHINE,lowmem-abort=on"
 fi
+if [ "${F30A_FILL:-0}" = 1 ]; then
+    MACHINE="$MACHINE,f30a-fill=on"
+fi
 LIVEVIEW_ARGS=()
 if [ -n "${LIVEVIEW_SOURCE:-}" ]; then
     LIVEVIEW_ARGS=(-M "liveview-source=${LIVEVIEW_SOURCE//,/,,}")
@@ -312,11 +343,23 @@ if [ "${ZMA1_JPEG_FILL:-0}" = 1 ]; then
     SA+=(-global cxd90014-sa.zma1-jpeg-fill=on)
 fi
 
+echo "machine: $MACHINE" >&2
 echo "Backup.bin -> $BACKUP_PA, av-cam.bin -> $AVCAM_PA, overlay $R/emmc-overlay.qcow2" >&2
+KERNEL_PATH="${KERNEL_OVERRIDE:-$D/nflasha3-Image}"
+INITRD_PATH="${INITRD_OVERRIDE:-$D/nflasha3-initrd}"
+if [ -n "$KERNEL_OVERRIDE" ]; then
+    printf 'kernel override: %s %s\n' \
+        "$(sha256sum -- "$KERNEL_PATH" | cut -d' ' -f1)" "$KERNEL_PATH" >&2
+fi
+if [ -n "$INITRD_OVERRIDE" ]; then
+    printf 'initrd override: %s %s (%s bytes)\n' \
+        "$(sha256sum -- "$INITRD_PATH" | cut -d' ' -f1)" "$INITRD_PATH" \
+        "$(stat -Lc '%s' -- "$INITRD_PATH")" >&2
+fi
 T=()
 if [ "${TIMEOUT:-0}" != 0 ]; then T=(timeout "$TIMEOUT"); fi
 exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial "${SERIAL:-mon:stdio}" \
-  -kernel "$D/nflasha3-Image" -initrd "$D/nflasha3-initrd" \
+  -kernel "$KERNEL_PATH" -initrd "$INITRD_PATH" \
   -append "$CMD ${EXTRA:-}" \
   -drive if=sd,format=qcow2,file="$R/emmc-overlay.qcow2" \
   -device loader,file="$R/Backup.bin",addr="$BACKUP_PA",force-raw=on \

@@ -4,7 +4,7 @@
 
 - **Scope:** Thirteen official updaters, nine kernels, command tables, IPC and call graphs, update-chain integrity, firmware signatures, additional bodies (ILCE-7RM4A) and the project checkpoint inventory.
 - **Evidence span:** see record index; last reviewed 2026-11-22.
-- **Deep review:** 0 of 19 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 0 of 20 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -87,7 +87,7 @@ Current knowledge:
 
 - **C12** `PHYSICAL` The ILCE-7RM4A GetModelInfo extcmd chain is byte-identical to the a6400A; physically, firmware 1.13 enumerates as Mass Storage 054C:0D9D and answers native GetModelInfo. ([E0645](../evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md), [E0646](../evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md))
 
-## Record index (30 files)
+## Record index (31 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -112,6 +112,7 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0646](../evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md) | 2026-11-19 | ILCE-7RM4A physical USB identity and native GetModelInfo on firmware 1.13 |  | 1. Firmware version, and a correction to E0570 / at the time and is superseded here. E0570's measurements are unaffected: they are read from the |
 | [E0663](../evidence/0663-callgraph-plt-correction-and-real-ipc-table.md) | 2026-11-20 | Correction: E0483's 29 "IPC call sites" were calls to other imports; the graph had four decoding defects |  | Supersedes the figures of E0483 (the whole IPC table) and the call-graph figures of E0484 and / caller — **stands** and is re-measured here on thirteen bodies with the corrected tools. |
 | [E0666](../evidence/0666-a6400-updater-signature-verification.md) | 2026-11-21 | Updater firmware signature: how the camera checks it and whether custom firmware can be pushed (ILCE-6400) |  | CRAMFS writing pitfall (corrected) |
+| [E0678](../evidence/0678-ilce-7rm4a-usb-pids-are-bk4-preset-units.md) | 2026-11-22 | ILCE-7RM4A per-mode USB product ids are BK4 preset units, not compiled descriptors |  | 6. Superseded / boundary are superseded: `0x0D9F` is the BK4 preset unit `0x00E70035` that DID `0x3B` of the stock USB |
 | [aes-key-blocks.tsv](../evidence/cross_model/aes-key-blocks.tsv) |  | attachment |  |  |
 | [command-delta.tsv](../evidence/cross_model/command-delta.tsv) |  | attachment |  |  |
 | [ipc-callgraph-bodies-e0663.tsv](../evidence/cross_model/ipc-callgraph-bodies-e0663.tsv) |  | attachment |  |  |

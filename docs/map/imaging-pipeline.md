@@ -4,7 +4,7 @@
 
 - **Scope:** av-cam CC 3D LUT and gamma, the Arrivederci/ARRI color work, debayer/PSF/detail stages, RAW develop, IMX284, Open Gate and high-bit-depth paths, AIF DMA and the RCRAW probes.
 - **Evidence span:** see record index; last reviewed 2026-11-22.
-- **Deep review:** 0 of 35 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 0 of 42 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -91,7 +91,7 @@ Current knowledge:
 - **C09** `PHYSICAL` On a real ILCE-6400, a read-only MSC baseline, a RAM-only Mod Loader v2 + RCRAW_Enable_Test run and a post-recording check show RCRAW_EN = 1 persisting across recording. ([E0632](../evidence/0632-a6400-hardware-rcraw-aif-msc-baseline.md), [E0633](../evidence/0633-a6400-hardware-rcraw-enable-test-live-run.md), [E0634](../evidence/0634-a6400-hardware-rcraw-post-recording-check.md))
 - **C10** `OFFLINE` RCRAW_SET (0x63B2D560) and 0x63767ACC map to the 160..640 FOPD sub-path, with hardware G1/G2 readback. ([E0635](../evidence/0635-a6400-rcraw-fopd-vs-full-pipeline.md))
 
-## Record index (35 files)
+## Record index (42 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -132,3 +132,10 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0633](../evidence/0633-a6400-hardware-rcraw-enable-test-live-run.md) | 2026-11-19 | Real ILCE-6400 RAM-only Mod Loader v2 + RCRAW_Enable_Test.mod execution and live AIF0 W1/W2 readout |  |  |
 | [E0634](../evidence/0634-a6400-hardware-rcraw-post-recording-check.md) | 2026-11-19 | Real ILCE-6400 post-recording check with RCRAW_EN = 1 |  |  |
 | [E0635](../evidence/0635-a6400-rcraw-fopd-vs-full-pipeline.md) | 2026-11-19 | RCRAW_SET (0x63B2D560) and 0x63767ACC mapped to 160..640 FOPD sub-path; hardware G1/G2 readback |  |  |
+| [E0678](../evidence/0678-dcv-psf-table-layout-and-arrivederci-v5-offset-defect.md) | 2026-11-22 | `dcv_psf_table` layout decoded; Arrivederci v4/v5 DCV tables built at the wrong offsets |  |  |
+| [E0679](../evidence/0679-still-dcv-psf-layout-calibration-and-mod.md) | 2026-11-22 | Still `dcv_psf_table_still.bin` layout, Look Lab still-path calibration, and `StillDetail` mod |  |  |
+| [E0680](../evidence/0680-still-high-iso-nr-crispening-and-paired-jpg.md) | 2026-11-22 | Still high-ISO NR / detail-crispening model, calibrated `cam_to_srgb` for Film presets, and paired-JPEG compare |  |  |
+| [E0682](../evidence/0682-still-jpeg-film-look-domain-and-recipe-recalibration.md) | 2026-11-22 | Still-JPEG domain for Film looks, C¹ filmic curve, white-point-preserving look matrix, and real-stock 33³ presets |  | color_matrix = M_sim · M_stock⁻¹` in Q10, diagonal-corrected to row sum **1024** (`relative_q10_matrix`). The shipped presets' `a0` is `M_look · STOCK_A0`, so the relative matrix is exactly `M_look`. |
+| [E0683](../evidence/0683-arri-shoulder-and-fujifilm-simulations.md) | 2026-11-22 | ARRI-style highlight shoulder and the Fujifilm simulation set |  |  |
+| [E0686](../evidence/0686-photo-movie-modes-and-dual-variant-presets.md) | 2026-11-22 | Photo/Movie modes, dual-variant `.bzlook` presets, and ISP routing |  |  |
+| [E0687](../evidence/0687-photo-movie-fixes.md) | 2026-11-22 | Photo/Movie fixes: bypass precedence, Movie-domain fit, locked Gamma path |  |  |

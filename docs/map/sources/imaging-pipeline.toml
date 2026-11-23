@@ -17,6 +17,13 @@ records = [
   "E0599-E0610",
   "E0612:live",
   "E0620-E0635",
+  "0678-dcv-psf-table-layout-and-arrivederci-v5-offset-defect.md",
+  "0679-still-dcv-psf-layout-calibration-and-mod.md",
+  "0680-still-high-iso-nr-crispening-and-paired-jpg.md",
+  "0682-still-jpeg-film-look-domain-and-recipe-recalibration.md",
+  "0683-arri-shoulder-and-fujifilm-simulations.md",
+  "0686-photo-movie-modes-and-dual-variant-presets.md",
+  "0687-photo-movie-fixes.md",
 ]
 
 [[entity]]
