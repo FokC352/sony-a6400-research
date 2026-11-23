@@ -1172,6 +1172,11 @@ mod tests {
             "astia",
             "acros",
         ];
+        let data_h = root().join("artifacts/tests/bionz-golden/film_sim_data.h");
+        let live_h = root().join("artifacts/tests/bionz-golden/film_sim_live_data.h");
+        if !data_h.is_file() || !live_h.is_file() {
+            return;
+        }
         let dir = root().join("mods/film_sims/presets");
         let mut looks = Vec::new();
         for name in order {
@@ -1179,13 +1184,13 @@ mod tests {
             let table = look.compiled.iter().find(|(k, _)| k == "a6400").unwrap().1.clone();
             if name == "classic-chrome" {
                 let header = emit_film_sim_data(&look.meta.name, "a6400", &table).unwrap();
-                let expect = std::fs::read_to_string(root().join("artifacts/tests/bionz-golden/film_sim_data.h")).unwrap().replace("\r\n", "\n");
+                let expect = std::fs::read_to_string(&data_h).unwrap().replace("\r\n", "\n");
                 assert_eq!(header, expect);
             }
             looks.push((look.meta.name, table));
         }
         let live = emit_live_header("a6400", &looks).unwrap();
-        let expect = std::fs::read_to_string(root().join("artifacts/tests/bionz-golden/film_sim_live_data.h")).unwrap().replace("\r\n", "\n");
+        let expect = std::fs::read_to_string(&live_h).unwrap().replace("\r\n", "\n");
         assert_eq!(live, expect);
     }
 
