@@ -2694,8 +2694,9 @@ static void sony_a6400_init(MachineState *machine)
      *     three pages are outside it, and DFS 0xF2916000 is not covered.
      *   - 0xF3020000: 0xF3020800..0xF3020BFF (L0090); the AIF model at
      *     0xF3020000 covers only its first 0x800 bytes.  L0093 adds the rest
-     *     of the page above it (0xF3020C00..0xF3020FFF), which the 120 s
-     *     baseline writes only.
+     *     of the page above it (0xF3020C00..0xF3020FFF), and L0096 the 4 KiB
+     *     above that (0xF3021000..0xF3021FFF); the 120 s baseline writes
+     *     all of it only.
      */
     {
         static const struct {
@@ -2710,6 +2711,7 @@ static void sony_a6400_init(MachineState *machine)
             { 0xF2910000ULL, 0xF2915000ULL, 0x1000, "cxd90045.camcore-f291-5000" },
             { 0xF3020000ULL, 0xF3020800ULL, 0x400,  "cxd90045.camcore-f302-0800" },
             { 0xF3020000ULL, 0xF3020C00ULL, 0x400,  "cxd90045.camcore-f302-rest" },
+            { 0xF3020000ULL, 0xF3021000ULL, 0x1000, "cxd90045.camcore-f302-1000" },
         };
         size_t k;
 

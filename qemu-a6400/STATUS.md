@@ -154,6 +154,24 @@ pairs, -37; every other 4 KiB page is identical). The enclosing 64 KiB block
 word still reads back its last write, and the unruled `+0xD04` still logs
 both ways.
 
+## CamCore 0xF3021000..0xF3021FFF window (2026-11-21 / L0096)
+
+The same certified 120 s baseline boot logs 73 distinct catch-all pairs at
+block-relative `0x1000..0x1FFF` (PA `0xF3021000..0xF3021FFF`), all writes:
+`+0x154C/+0x1550/+0x1554` (337 writes each), `+0x1500/+0x1700/+0x1C00/
++0x1D00/+0x1E00` (one write) and the rest of `+0x1500..+0x16BC` (four writes).
+`cxd90045-camcore` now mounts a third 4 KiB sub-window there (priority -600),
+selected by the `window` property, with one block-relative Z0 rule per offset;
+the L0090 and L0093 tables and windows are unchanged. A fresh post-change boot
+(qemu sha256 `204b4d08…734de7`, log sha256 `7119c851…26231d`) has 0 catch-all
+pairs in the window, the same final sequencer state as the baseline (index 42,
+step `0x897F`, status/mirror `0x0102`, top/b5_top/b5_opd 1, 43 steps), and only
+the `0x03021000` page changes (811 -> 738 distinct catch-all pairs, -73; every
+other 4 KiB page is identical). The enclosing 64 KiB block
+`0x03020000..0x0302FFFF` now has 0 pairs. qtest 14/14: ruled Z0 words read 0
+and are silent, the L0090 RF word still reads back its last write, the L0093
+Z0 word is still silent, and the unruled `+0x1104` still logs both ways.
+
 ## Contributor boot scores for merged emulator patches (2026-11-19 / E0614–E0618)
 
 Pull requests #35, #37 and #40 map plain `cxd90014-regfile` read-back over
