@@ -141,8 +141,8 @@ jobs:
 
       - name: Test the ISP studio
         working-directory: isp-studio
-        # Skip GPU-pipeline tests that hit wgpu lavapipe "Parent device is lost" on headless CI
-        run: cargo test --workspace -- --skip chart_develops_identically_on_gpu_and_cpu --skip render_worker_keeps_only_the_newest_request
+        # Exclude bionz-gpu & GPU-pipeline tests that hit wgpu lavapipe "Parent device is lost" on headless CI
+        run: cargo test --workspace --exclude bionz-gpu -- --skip chart_develops_identically_on_gpu_and_cpu --skip render_worker_keeps_only_the_newest_request
 
   pr-summary:
     name: CI Summary
