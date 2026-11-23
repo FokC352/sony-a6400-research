@@ -22,6 +22,7 @@ if str(CONVERTER) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from lut_core.arri import ArriReference  # noqa: E402
 from lut_core.cube import Cube, parse_cube  # noqa: E402
 from lut_core.color import delta_e76, display_rgb_to_lab  # noqa: E402
 from lut_core.decompose import decompose  # noqa: E402
@@ -506,6 +507,20 @@ def main() -> None:
             "probe_out": _f64(evaluate_recipe_3d(probe_rgb, recipe)),
         }
     (OUT / "recipe_fits.json").write_text(json.dumps(recipe_fits, indent=2), encoding="utf-8")
+    for fname, ref, ec in (
+        ("arri_rec709_fit.json", ArriReference.rec709(), 0.0),
+        ("arri_wide_fit.json", ArriReference("wide-gamut"), 0.12),
+    ):
+        ap, ar = decompose(ref, PROFILE, source="S-Log3 / S-Gamut3.Cine", edge_compression=ec, interpolation="trilinear")
+        (OUT / fname).write_text(
+            json.dumps({
+                "gamma_u16": _i64(ap.gamma),
+                "matrix_i16": _i64(ap.matrix),
+                "delta_i8": _i64(ap.delta),
+                "at_rail_nodes": int(ar["at_rail_nodes"]),
+            }),
+            encoding="utf-8",
+        )
     if args.golden_only:
         (OUT / "recipes.json").write_text(json.dumps(recipes_out), encoding="utf-8")
         print(f"wrote golden fixtures to {OUT} (presets untouched)")
