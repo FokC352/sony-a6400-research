@@ -6,15 +6,17 @@
 area = "mods"
 title = "Mod Loader and firmware mods"
 scope = """
-Mod Loader v2 in QEMU and on cameras, command items, the ILCE-6100 Picture Profile unlock and Mod Loader port, mod qualification and the external ZV-E10 adapted menu."""
+Mod Loader v2 in QEMU and on cameras, command items, nested SMNU submenus, standalone SD auto-boot, the ILCE-6100 Picture Profile unlock and Mod Loader port, mod qualification, candidate 36-exposure film-roll tracking, and the external ZV-E10 adapted menu."""
 evidence_span = "see record index"
-reviewed = "2026-11-22"
+reviewed = "2026-11-24"
 records = [
   "E0575-E0577",
   "E0592",
   "E9101-E9103",
   "0680-photonbin-6mp-and-mlv2-nested-submenus.md",
   "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
+  "E0688",
+  "E0689",
   "mods/*",
   "external-zve10-menu/*",
 ]
@@ -37,6 +39,14 @@ id = "mod.zve10-adapted-menu"
 kind = "module"
 name = "External ZV-E10 adapted menu"
 summary = "Contributor-local adapted ZV-E10 menu in QEMU with receipts; not an upstream stock-boot milestone."
+
+[[entity]]
+id = "mod.film-roll-36"
+kind = "module"
+name = "36-exposure Film Roll mode (candidate)"
+aliases = ["FilmRoll.mod", "36-exposure roll"]
+related = ["mod.loader-v2"]
+summary = "Candidate SMOD v2 SMNU film-stock selector, 36-shot ARW roll tracker hooking ImageBuilder::MakeRawInfoArea, and zero-scratch USTAR/ZIP-STORE roll streamer."
 
 [[claim]]
 id = "C01"
@@ -86,3 +96,32 @@ entities = ["mod.zve10-adapted-menu"]
 status = "verified-offline"
 text = "A contributor-local adapted ZV-E10 menu runs in QEMU with English screenshots and receipts, and an upstream-board integration validation; it is not an upstream stock-boot milestone."
 evidence = ["doc:external-zve10-menu/README.md", "doc:external-zve10-menu/integration-validation.md"]
+
+[[claim]]
+id = "C08"
+entities = ["mod.loader-v2"]
+status = "verified-offline"
+text = "Mod Loader v2 CTX_VERSION=3 supports FNV-verified SMNU nested submenus and hooks ImageBuilder::MakeRawInfoArea (libObj.so+0x00D7861C) in PhotonBin6MP.mod, verified in Unicorn and captured ILCE-6400A 1.01 QEMU."
+evidence = ["E0680:photonbin"]
+
+[[claim]]
+id = "C09"
+entities = ["mod.loader-v2"]
+status = "verified-offline"
+text = "Standalone SD auto-boot (MLV2.TAR) reads FAT32 and exFAT directly from /dev/mmca1 (block 250:11) in 4 KiB chunks without mounting the card, verified in offline suites and captured ILCE-6400A 1.01 QEMU."
+evidence = ["E0681"]
+
+[[claim]]
+id = "C10"
+entities = ["mod.film-roll-36", "mod.loader-v2"]
+status = "verified-offline"
+text = "Current camera helpers cannot package or stream 36 ARW exposures unmodified: card_read.c scans only root_cluster, caps archives at 4 MiB / 2,048 clusters and stages to /tmp_bt/mlv2/card.tar, while camera-daemon/src/wifi_stream.c is an MJPEG streamer that drops frames whenever SIOCOUTQ > 16,384 bytes."
+evidence = ["E0681", "E0689"]
+
+[[frontier]]
+id = "F01"
+title = "36-exposure FilmRoll.mod counter and zero-scratch roll streaming"
+state = "not-started"
+entities = ["mod.film-roll-36", "mod.loader-v2"]
+evidence = ["E0680:photonbin", "E0681", "E0688", "E0689"]
+next = "Prototype an SMNU stock-selector (with fitted 5x9x9 RefAdr[0] EVF preview restoring 0x6444a044 on exit) and MakeRawInfoArea 36-shot roll manifest in QEMU, and extend card_read.c for 2-level DCIM/100MSDCF traversal + 16 KiB-aligned zero-scratch USTAR/ZIP-STORE streaming over a backpressured socket within the 8 MiB MemFree floor."

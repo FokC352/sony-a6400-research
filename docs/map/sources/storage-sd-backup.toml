@@ -8,7 +8,7 @@ title = "Storage, SD card and backup service"
 scope = """
 Storage tables, ring-buffer write pipeline, backup service and presets, SD/SDHCI/ADMA2 stack, mmca/ms character devices and SD recovery."""
 evidence_span = "see record index"
-reviewed = "2026-11-22"
+reviewed = "2026-11-24"
 records = [
   "E0009-E0014",
   "E0029-E0032",
@@ -16,6 +16,7 @@ records = [
   "E0078",
   "E0079",
   "E0138",
+  "E0689",
 ]
 
 [[entity]]
@@ -102,3 +103,11 @@ title = "Physical SD card is an input, not a scratch disk"
 effect = "SD changes can corrupt camera state or lose captures."
 rule = "Physical SD (E:) is read-only for emulator inputs; diagnostic writes stay under /tmp_bt unless explicitly authorized."
 evidence = ["E0056", "E0219"]
+
+[[frontier]]
+id = "F01"
+title = "Zero-scratch read-only DCIM/100MSDCF USTAR streaming from /dev/mmca1"
+state = "not-started"
+entities = ["dev.sd-stack"]
+evidence = ["E0056", "E0689"]
+next = "Extend card_read.c's read-only FAT32/exFAT parser (/dev/mmca1 250:11) with 2-level DCIM/100MSDCF lookup and stream 16 KiB-page-aligned POSIX ustar headers + ARW clusters over a backpressured socket with 0 B written to /tmp_bt or SD."

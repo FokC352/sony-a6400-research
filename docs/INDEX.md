@@ -49,6 +49,9 @@ For subject lookups (an address, symbol, device, or "is E0xxx still valid?") use
 | [ARCHITECTURE_UVC_MONITOR.md](ARCHITECTURE_UVC_MONITOR.md) | UVC monitor architecture (hash-pinned by `E0348`) |
 | [UVC_HANDOVER_PLAN.md](UVC_HANDOVER_PLAN.md) | UVC/PTP handover plan |
 | [CINEMAHUD_STOCK_PTP.md](CINEMAHUD_STOCK_PTP.md) | CinemaHUD stock PTP reference |
+| [BIONZ_LOOK_LAB.md](BIONZ_LOOK_LAB.md) | Host Rust/`wgpu` Look Lab (`isp-studio/`) and `.bzlook` / `SMOD v2` film-simulation workflow |
+| [Android SpektraFilm GPU roll architecture (E0688)](evidence/0688-android-gpu-spektrafilm-film-roll-architecture.md) | Candidate two-tier film simulation & 3-pass NDK Vulkan 36-exposure `.ARW` darkroom engine for `CinemaHUD Android` |
+| [Mobile fotufilm-engine GPU roll architecture (E0689)](evidence/0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md) | Apache-2.0 `DhaliwalX/fotufilm-engine` audit, Halide Metal/Vulkan bottlenecks, and `<350 MB` 36-exposure `.ARW` mobile GPU blueprint |
 | [ISP_TRANSFORM_CATALOG.md](ISP_TRANSFORM_CATALOG.md) | Transform formats, control dependencies, evidence, and open verification for ARRI tuning |
 | [ROADMAP.md](ROADMAP.md) | Long-term project roadmap |
 

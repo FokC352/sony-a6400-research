@@ -16,7 +16,7 @@
     "imaging-pipeline": {
       "title": "Imaging pipeline: color, RAW, RCRAW and recording paths",
       "doc": "docs/map/imaging-pipeline.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-24",
       "evidence_span": "see record index"
     },
     "l2-kernel-boot": {
@@ -40,7 +40,7 @@
     "mods": {
       "title": "Mod Loader and firmware mods",
       "doc": "docs/map/mods.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-24",
       "evidence_span": "see record index"
     },
     "native-debugger": {
@@ -64,7 +64,7 @@
     "storage-sd-backup": {
       "title": "Storage, SD card and backup service",
       "doc": "docs/map/storage-sd-backup.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-24",
       "evidence_span": "see record index"
     },
     "usb-composite": {
@@ -88,7 +88,7 @@
     "wifi-and-remote": {
       "title": "Wi-Fi and remote control",
       "doc": "docs/map/wifi-and-remote.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-24",
       "evidence_span": "see record index"
     }
   },
@@ -271,7 +271,8 @@
       "active_claims": [
         "C01",
         "C02",
-        "C11"
+        "C11",
+        "C16"
       ],
       "inactive_claims": []
     },
@@ -303,7 +304,9 @@
       "active_claims": [
         "C03",
         "C04",
-        "C05"
+        "C05",
+        "C12",
+        "C14"
       ],
       "inactive_claims": []
     },
@@ -341,6 +344,43 @@
         "C08",
         "C09",
         "C10"
+      ],
+      "inactive_claims": []
+    },
+    "app.android-spektrafilm": {
+      "area": "imaging-pipeline",
+      "name": "CinemaHUD Android SpektraFilm engine (candidate)",
+      "kind": "host",
+      "address": null,
+      "aliases": [
+        "SpektraFilm",
+        "CinemaHUD Android",
+        "ARW2 GPU",
+        "film roll"
+      ],
+      "anchor": "imaging-pipeline.md#app-android-spektrafilm",
+      "active_claims": [
+        "C12",
+        "C13"
+      ],
+      "inactive_claims": []
+    },
+    "app.mobile-fotufilm": {
+      "area": "imaging-pipeline",
+      "name": "Mobile fotufilm-engine GPU darkroom (candidate)",
+      "kind": "host",
+      "address": null,
+      "aliases": [
+        "fotufilm-engine",
+        "fotufilm",
+        "FotufilmHalide",
+        "FilmTileMetalBuilder"
+      ],
+      "anchor": "imaging-pipeline.md#app-mobile-fotufilm",
+      "active_claims": [
+        "C14",
+        "C15",
+        "C16"
       ],
       "inactive_claims": []
     },
@@ -747,7 +787,10 @@
         "C02",
         "C03",
         "C05",
-        "C06"
+        "C06",
+        "C08",
+        "C09",
+        "C10"
       ],
       "inactive_claims": []
     },
@@ -772,6 +815,21 @@
       "anchor": "mods.md#mod-zve10-adapted-menu",
       "active_claims": [
         "C07"
+      ],
+      "inactive_claims": []
+    },
+    "mod.film-roll-36": {
+      "area": "mods",
+      "name": "36-exposure Film Roll mode (candidate)",
+      "kind": "module",
+      "address": null,
+      "aliases": [
+        "FilmRoll.mod",
+        "36-exposure roll"
+      ],
+      "anchor": "mods.md#mod-film-roll-36",
+      "active_claims": [
+        "C10"
       ],
       "inactive_claims": []
     },
@@ -2156,6 +2214,12 @@
         "id": "C04",
         "file": "0056-sd-card-inputs-and-update-surface.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "storage-sd-backup",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0056-sd-card-inputs-and-update-surface.md"
       },
       {
         "area": "storage-sd-backup",
@@ -7714,6 +7778,13 @@
         "id": "C01",
         "file": "0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C16",
+        "file": "0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md",
+        "status": "inference"
       }
     ],
     "E0506": [
@@ -8775,6 +8846,20 @@
         "id": "C05",
         "file": "0601-arw-superpixel-2x2-prototype.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C12",
+        "file": "0601-arw-superpixel-2x2-prototype.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0601-arw-superpixel-2x2-prototype.md",
+        "status": "verified-offline"
       }
     ],
     "E0602": [
@@ -9466,6 +9551,12 @@
         "id": "C05",
         "file": "0662-file-access-is-a-camera-mode.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "wifi-and-remote",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0662-file-access-is-a-camera-mode.md"
       }
     ],
     "E0663": [
@@ -9638,6 +9729,137 @@
         "kind": "frontier",
         "id": "F01",
         "file": "0677-unicorn-sio-gpio-oracle.md"
+      }
+    ],
+    "E0680": [
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C08",
+        "file": "0680-photonbin-6mp-and-mlv2-nested-submenus.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0680-photonbin-6mp-and-mlv2-nested-submenus.md"
+      }
+    ],
+    "E0681": [
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C09",
+        "file": "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md"
+      }
+    ],
+    "E0688": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C12",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C13",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md",
+        "status": "inference"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md"
+      },
+      {
+        "area": "mods",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md"
+      },
+      {
+        "area": "wifi-and-remote",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md"
+      }
+    ],
+    "E0689": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C15",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C16",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md",
+        "status": "inference"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
+      },
+      {
+        "area": "storage-sd-backup",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
+      },
+      {
+        "area": "wifi-and-remote",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
       }
     ],
     "E9001": [
@@ -11923,6 +12145,17 @@
     ],
     "0687-photo-movie-fixes.md": [
       "imaging-pipeline"
+    ],
+    "0688-android-gpu-spektrafilm-film-roll-architecture.md": [
+      "imaging-pipeline",
+      "mods",
+      "wifi-and-remote"
+    ],
+    "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md": [
+      "imaging-pipeline",
+      "mods",
+      "storage-sd-backup",
+      "wifi-and-remote"
     ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"
