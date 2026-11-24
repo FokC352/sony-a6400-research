@@ -9,13 +9,13 @@ Relocatable **`SMOD v2`** low-light photography mod for **Sony `ILCE-6400A` (FW 
    - **`FD Conv Gain` (`Mconv`, P2S reg `0x099C`):** Overrides Main (`PA 0x0379FEC6`) and ZAF (`PA 0x0379FF7C`) floating-diffusion conversion gain (`Force HCG` `+9.805 dB` / `3.092×` at all ISOs, `Stock Auto` ISO 400 crossover, or `Force LCG`).
    - **`14b 1H2H Read` (`ADnum = 2`):** Overrides `CaptureUtilityImager` Silent Shutter (`PA 0x038ECC48`) and Bulb (`PA 0x038ECC56`) gates so 14-bit dual-ADC readout remains active instead of dropping to 12-bit `1H1H`.
 
-See **[E0680](../../docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md)** for full disassembly, SNR math, Unicorn test receipts, and live `ILCE-6400A` `1.01` QEMU menu screenshots.
+See **[E0680](../../docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md)** for full disassembly, SNR math, and `ILCE-6400A` `1.01` QEMU menu screenshots, and **[E9104](../../docs/evidence/9104-a6100-photonbin-6mp-port.md)** for the `ILCE-6100` `1.00` port and physical camera verification.
 
 ---
 
 ## Nested Menu Options (`MENU -> Mods -> PhotonBin 6MP`)
 
-Requires **Mod Loader v2 `core.bin` `CTX_VERSION >= 3`** (`SMOD_V2_FLAG_SUBMENU` / `SMNU`). Pressing `Center` on `PhotonBin 6MP` (`OFF >` / `ON >`) opens its 2-page nested submenu:
+Requires **Mod Loader v2 `core.bin` `CTX_VERSION >= 4`** (`SMOD_V2_FLAG_SUBMENU` / `SMNU`; `v3` renders it as a plain toggle). When updating `MLV2.TAR` on an SD-boot camera, also update the expected SHA-256 in `/setting/mlv2_sd_boot.sh`. Pressing `Center` on `PhotonBin 6MP` (`OFF >` / `ON >`) opens its 2-page nested submenu:
 
 | Page | Row | Setting | Options (`*` = Default) | Behavior |
 | :---: | :---: | :--- | :--- | :--- |

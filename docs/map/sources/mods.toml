@@ -12,7 +12,7 @@ reviewed = "2026-11-24"
 records = [
   "E0575-E0577",
   "E0592",
-  "E9101-E9103",
+  "E9101-E9104",
   "0680-photonbin-6mp-and-mlv2-nested-submenus.md",
   "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
   "E0688",
@@ -89,6 +89,13 @@ entities = ["mod.loader-v2"]
 status = "verified-offline"
 text = "Mods and firmware were qualified offline on 2026-11-19 without camera, SD or USB access."
 evidence = ["doc:mods/2026-11-19-firmware-qualification.md"]
+
+[[claim]]
+id = "C11"
+entities = ["mod.loader-v2"]
+status = "verified-physical"
+text = "PhotonBin 6MP was ported to ILCE-6100 1.00 and verified on physical hardware (6 MP 16-bit .ARW, Force HCG, and SMNU v4 core.bin)."
+evidence = ["E9104"]
 
 [[claim]]
 id = "C07"

@@ -69,6 +69,7 @@ For subject lookups (an address, symbol, device, or "is E0xxx still valid?") use
 | [Local a6400A E0673](evidence/0673-a6400a-first-actual-nflasha5-capture.md) | Actual 60 MiB nflasha5 capture, independent host hash, failed idle handoff, unacknowledged exit/recovery boundary and remaining-partition research |
 | [Local a6400A E0674](evidence/0674-a6400a-readonly-msc-lun-capture-and-flash-boundary.md) | Actual read-only 2 MiB MSC LUN 1 capture, unverified nflasha23 backing, native postflight, unchanged guards and blocked remaining firmware scope |
 | [Local a6400A E0675](evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md) | Expanded-scope bootstrap investigation, fresh identity/postflight, existing capture integrity, Jiritsu internal-flash and MPR file-write effects; no new partition capture |
+| [ILCE-6100 E9103](evidence/9103-a6100-mod-loader-port.md) & [E9104](evidence/9104-a6100-photonbin-6mp-port.md) | `ILCE-6100` 1.00 `Mod Loader v2` port and `PhotonBin 6MP` hardware verification (`_DSC5765.ARW`, `Force HCG`, `SMNU` `v4` `core.bin`, `/setting/mlv2_sd_boot.sh` SHA-256 pinning) |
 | [decisions/](decisions/) | Architectural decision records (ADRs) |
 | [archives/agent-notes-2026-11-13-e0210-to-e0476.md](archives/agent-notes-2026-11-13-e0210-to-e0476.md) | Complete verbatim archive of `AGENTS.md` experiment logs `E0210–E0476` |
 | [archives/agent-notes-2026-11-09.md](archives/agent-notes-2026-11-09.md) | Earlier `AGENTS.md` historical notes (prior to 2026-11-09) |
