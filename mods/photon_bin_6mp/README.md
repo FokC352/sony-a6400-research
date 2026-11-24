@@ -1,6 +1,6 @@
 # PhotonBin 6MP (`PhotonBin6MP.mod`)
 
-Relocatable **`SMOD v2`** low-light photography mod for **Sony `ILCE-6400A` (FW `1.01`)** combining:
+Relocatable **`SMOD v2`** low-light photography mod for **Sony `ILCE-6400A` (FW `1.01`)** and **Sony `ILCE-6100` (FW `1.00`)** combining:
 
 1. **Option 1 — Pre-Demosaic `4×4 → 2×2` Bayer & `2×2` Monochrome Photon Convergence into `.ARW` (`ImageBuilder::MakeRawInfoArea` hook in `libObj.so`):**
    - Decodes 14-bit `6024×4024` RAW captures from Sony `ARW 2.3` `cRAW` (`Compression = 32767`, using each frame's `Tag 0x7010` `SonyToneCurve` knots) or 16-bit Uncompressed RAW.
@@ -35,7 +35,9 @@ Requires **Mod Loader v2 `core.bin` `CTX_VERSION >= 3`** (`SMOD_V2_FLAG_SUBMENU`
 ```powershell
 # Build in WSL (from the repository root)
 wsl.exe -- bash mods/photon_bin_6mp/build_wsl.sh artifacts/mods/ilce_6400a/photon_bin_6mp --target ilce_6400a
+wsl.exe -- bash mods/photon_bin_6mp/build_wsl.sh artifacts/mods/ilce_6100/photon_bin_6mp --target ilce_6100
 
 # Run offline Unicorn verification suite (Option 3 + Option 1 + ARW2 round-trip)
 .\venv\Scripts\python.exe mods\photon_bin_6mp\test_mod_v2_unicorn.py artifacts\mods\ilce_6400a\photon_bin_6mp
+.\venv\Scripts\python.exe mods\photon_bin_6mp\test_mod_v2_unicorn.py artifacts\mods\ilce_6100\photon_bin_6mp
 ```

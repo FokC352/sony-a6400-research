@@ -33,11 +33,19 @@
 #define PB_MAX_IN_W         6048u
 #define PB_MAX_OUT_W        3024u
 
+#if defined(TARGET_A6100) || defined(TARGET_ILCE6100)
+/* ILCE-6100 1.00 av-cam.bin (ORIL_BASE 0x635C6000 -> LIRO PA = VA - 0x60000000) */
+#define PA_MAIN_MCONV       0x0379EC9Au
+#define PA_ZAF_MCONV        0x0379ED50u
+#define PA_1H2H_SILENT      0x038EA8FCu
+#define PA_1H2H_BULB        0x038EA90Au
+#else
 /* ILCE-6400A 1.01 av-cam.bin (ORIL_BASE 0x635C6000 -> LIRO PA = VA - 0x60000000) */
 #define PA_MAIN_MCONV       0x0379FEC6u
 #define PA_ZAF_MCONV        0x0379FF7Cu
 #define PA_1H2H_SILENT      0x038ECC48u
 #define PA_1H2H_BULB        0x038ECC56u
+#endif
 
 struct pb_phys_ext {
     uint32_t phys_addr;
@@ -54,9 +62,14 @@ struct pb_bss_state {
     uint32_t last_out_wh;
     uint32_t last_out_bytes;
     uint32_t opt3_apply_cnt;
+    uint32_t last_ext_cnt;                  /* extents kept after Call 1 trim */
+    uint32_t add_valid;                     /* add_buf holds the patched rawAdditionalInfo */
     uint16_t curve_lut[2048];             /* 11-bit (0..2047) -> 14-bit linear (0..16383) */
     uint16_t row_ring[8][PB_MAX_IN_W];    /* 8-row decoded 14-bit input ring buffer */
     uint16_t out_row[PB_MAX_OUT_W];       /* 1-row converged pixel staging buffer */
+    uint8_t  in_raw_row[PB_MAX_IN_W * 2u];  /* cached input row staging for /dev/mem */
+    uint8_t  out_raw_row[PB_MAX_OUT_W * 2u]; /* cached output row staging for /dev/mem */
+    uint8_t  add_buf[1024];                 /* writable copy of rawAdditionalInfo */
 };
 
 extern uint8_t __smod_bss[] __attribute__((visibility("hidden")));
@@ -215,16 +228,20 @@ static uint32_t rd_u32_le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+/* Byte-wise volatile stores: the compiler must never coalesce these into an unaligned
+ * strh/str (ARMv7 alignment fault on uncached DMM mappings). */
 static void wr_u16_le(uint8_t *p, uint16_t v) {
-    p[0] = (uint8_t)(v & 0xffu);
-    p[1] = (uint8_t)(v >> 8);
+    volatile uint8_t *vp = p;
+    vp[0] = (uint8_t)(v & 0xffu);
+    vp[1] = (uint8_t)(v >> 8);
 }
 
 static void wr_u32_le(uint8_t *p, uint32_t v) {
-    p[0] = (uint8_t)(v & 0xffu);
-    p[1] = (uint8_t)((v >> 8) & 0xffu);
-    p[2] = (uint8_t)((v >> 16) & 0xffu);
-    p[3] = (uint8_t)(v >> 24);
+    volatile uint8_t *vp = p;
+    vp[0] = (uint8_t)(v & 0xffu);
+    vp[1] = (uint8_t)((v >> 8) & 0xffu);
+    vp[2] = (uint8_t)((v >> 16) & 0xffu);
+    vp[3] = (uint8_t)(v >> 24);
 }
 
 /* Build 11-bit (0..2047) -> 14-bit (0..16383) linear LUT from SonyToneCurve (Tag 0x7010) knots.
@@ -349,9 +366,21 @@ static void encode_arw2_block(const uint16_t *src_stride2, const uint16_t *lut, 
     }
 }
 
+static void copy_mem_words(uint8_t *dst, const uint8_t *src, uint32_t n) {
+    uint32_t i = 0u;
+    if ((((uintptr_t)dst | (uintptr_t)src) & 3u) == 0u) {
+        for (; i + 4u <= n; i += 4u) {
+            *(volatile uint32_t *)(dst + i) = *(const volatile uint32_t *)(src + i);
+        }
+    }
+    for (; i < n; i++) dst[i] = src[i];
+}
+
 static void decode_input_row(const uint8_t *raw_base, uint32_t in_row_bytes, uint32_t in_w,
-                             uint16_t in_comp, const uint16_t *lut, uint32_t y, uint16_t *dst) {
-    const uint8_t *rp = raw_base + y * in_row_bytes;
+                             uint16_t in_comp, const uint16_t *lut, uint32_t y, uint16_t *dst,
+                             uint8_t *scratch_row) {
+    copy_mem_words(scratch_row, raw_base + y * in_row_bytes, in_row_bytes);
+    const uint8_t *rp = scratch_row;
     if (in_comp == 32767u) {
         uint32_t col = 0u;
         const uint8_t *dp = rp;
@@ -432,8 +461,11 @@ static void update_additional_ifd(uint8_t *raw_info_area, uint16_t out_w, uint16
     uint32_t cnt = rd_u32_le(base + ifd_off);
     if (cnt > 64u || ifd_off + 4u + cnt * 12u > add_sz) return;
 
+    /* SetRawAdditionalInfoToIfd resolves out-of-line values as (base + ifd_off) + val. */
+    uint8_t *ifd = base + ifd_off;
+    uint32_t room = add_sz - ifd_off;
     for (uint32_t i = 0u; i < cnt; i++) {
-        uint8_t *ent = base + ifd_off + 4u + i * 12u;
+        uint8_t *ent = ifd + 4u + i * 12u;
         uint16_t tag  = rd_u16_le(ent + 0u);
         uint16_t type = rd_u16_le(ent + 2u);
         uint32_t ecnt = rd_u32_le(ent + 4u);
@@ -442,29 +474,29 @@ static void update_additional_ifd(uint8_t *raw_info_area, uint16_t out_w, uint16
             if (type == 3u) {
                 wr_u16_le(ent + 8u,  crop_x);
                 wr_u16_le(ent + 10u, crop_y);
-            } else if (type == 4u && val + 8u <= add_sz) {
-                wr_u32_le(base + val,      crop_x);
-                wr_u32_le(base + val + 4u, crop_y);
+            } else if (type == 4u && val <= room && room - val >= 8u) {
+                wr_u32_le(ifd + val,      crop_x);
+                wr_u32_le(ifd + val + 4u, crop_y);
             }
         } else if (tag == 0xC620u && ecnt == 2u) { /* DefaultCropSize */
             if (type == 3u) {
                 wr_u16_le(ent + 8u,  crop_w);
                 wr_u16_le(ent + 10u, crop_h);
-            } else if (type == 4u && val + 8u <= add_sz) {
-                wr_u32_le(base + val,      crop_w);
-                wr_u32_le(base + val + 4u, crop_h);
+            } else if (type == 4u && val <= room && room - val >= 8u) {
+                wr_u32_le(ifd + val,      crop_w);
+                wr_u32_le(ifd + val + 4u, crop_h);
             }
-        } else if (tag == 0xC68Du && ecnt == 4u && val + 8u <= add_sz) { /* ActiveArea */
-            if (type == 3u) {
-                wr_u16_le(base + val + 0u, 0u);
-                wr_u16_le(base + val + 2u, 0u);
-                wr_u16_le(base + val + 4u, out_h);
-                wr_u16_le(base + val + 6u, out_w);
-            } else if (type == 4u && val + 16u <= add_sz) {
-                wr_u32_le(base + val + 0u,  0u);
-                wr_u32_le(base + val + 4u,  0u);
-                wr_u32_le(base + val + 8u,  out_h);
-                wr_u32_le(base + val + 12u, out_w);
+        } else if (tag == 0xC68Du && ecnt == 4u && val <= room) { /* ActiveArea */
+            if (type == 3u && room - val >= 8u) {
+                wr_u16_le(ifd + val + 0u, 0u);
+                wr_u16_le(ifd + val + 2u, 0u);
+                wr_u16_le(ifd + val + 4u, out_h);
+                wr_u16_le(ifd + val + 6u, out_w);
+            } else if (type == 4u && room - val >= 16u) {
+                wr_u32_le(ifd + val + 0u,  0u);
+                wr_u32_le(ifd + val + 4u,  0u);
+                wr_u32_le(ifd + val + 8u,  out_h);
+                wr_u32_le(ifd + val + 12u, out_w);
             }
         } else if (tag == 0xC61Du && ecnt == 1u) { /* WhiteLevel */
             if (type == 3u) wr_u16_le(ent + 8u, white_level);
@@ -502,6 +534,18 @@ static void pb_process_raw_info_area(uint8_t *raw_info_area) {
     uint16_t in_h    = rd_u16_le(src_data + 0x04u);
     uint16_t in_bps  = rd_u16_le(src_data + 0x08u);
     uint16_t in_comp = rd_u16_le(src_data + 0x0cu);
+    if ((in_w == 3008u && in_h == 2008u) ||
+        (s->frames_binned && (((uint32_t)in_w << 16) | in_h) == s->last_out_wh)) {
+        /* Already binned on Call 1 (shared RawMmapInfo/src_data), but this call's stack
+         * RawInfoArea was rebuilt from the original values: re-apply the trimmed fields. */
+        if (s->frames_binned && s->last_out_bytes) {
+            wr_u32_le(raw_info_area + 0x114u, s->last_out_bytes);
+            if (s->last_ext_cnt) wr_u32_le(raw_info_area + 0x11cu, s->last_ext_cnt);
+            if (s->add_valid) wr_u32_le(raw_info_area + 0x120u, (uint32_t)(uintptr_t)s->add_buf);
+        }
+        s->frames_skipped++;
+        return;
+    }
     if (in_w < 64u || in_w > PB_MAX_IN_W || (in_w & 3u) != 0u ||
         in_h < 16u || in_h > 4048u || (in_h & 3u) != 0u ||
         (in_comp != 32767u && in_comp != 1u) || (in_bps != 14u && in_bps != 16u)) {
@@ -527,7 +571,7 @@ static void pb_process_raw_info_area(uint8_t *raw_info_area) {
     uint16_t out_w = (uint16_t)(in_w >> 1);
     uint16_t out_h = (uint16_t)(in_h >> 1);
     uint16_t crop_x = 0u, crop_y = 0u, crop_w = out_w, crop_h = out_h;
-    if (in_w == 6024u && in_h == 4024u) {
+    if ((in_w == 6024u || in_w == 6048u) && in_h == 4024u) {
         x_off = 4u;
         y_off = 4u;
         out_w = 3008u;
@@ -594,7 +638,7 @@ static void pb_process_raw_info_area(uint8_t *raw_info_area) {
         uint32_t max_need_y = clamp_idx(y0 + 5, h_m2, 1u);
         while (decoded_next_y <= max_need_y && decoded_next_y < (uint32_t)in_h) {
             decode_input_row(raw_buf, in_row_bytes, in_w, in_comp, s->curve_lut,
-                             decoded_next_y, s->row_ring[decoded_next_y & 7u]);
+                             decoded_next_y, s->row_ring[decoded_next_y & 7u], s->in_raw_row);
             decoded_next_y++;
         }
 
@@ -665,8 +709,8 @@ static void pb_process_raw_info_area(uint8_t *raw_info_area) {
                 }
             }
 
-            /* Serialize output row oy into raw_buf (write pointer strictly trails read pointer). */
-            uint8_t *wp = raw_buf + oy * out_row_bytes;
+            /* Serialize output row oy into cached out_raw_row, then word-copy to raw_buf. */
+            uint8_t *wp = s->out_raw_row;
             if (arw_mode == 2u) {
                 for (uint32_t col = 0u; col + 31u < (uint32_t)out_w; col += 32u, wp += 32u) {
                     encode_arw2_block(s->out_row + col,      s->curve_lut, wp);
@@ -677,6 +721,7 @@ static void pb_process_raw_info_area(uint8_t *raw_info_area) {
                     wr_u16_le(wp + (ox << 1), s->out_row[ox]);
                 }
             }
+            copy_mem_words(raw_buf + oy * out_row_bytes, s->out_raw_row, out_row_bytes);
         }
     }
 
@@ -703,16 +748,28 @@ static void pb_process_raw_info_area(uint8_t *raw_info_area) {
         uint32_t rem = new_raw_bytes;
         uint32_t kept = 0u;
         for (uint32_t i = 0u; i < ext_cnt && rem > 0u; i++) {
-            if (ext[i].size > rem) ext[i].size = rem;
-            rem -= ext[i].size;
+            /* libObj validates (phys & 0xfff) == 0 && (size & 0xfff) == 0 on these. */
+            uint32_t want = (rem + 0xfffu) & ~0xfffu;
+            if (ext[i].size > want) ext[i].size = want;
+            rem = (rem > ext[i].size) ? rem - ext[i].size : 0u;
             kept++;
         }
         wr_u32_le(raw_info_area + 0x11cu, kept);
+        s->last_ext_cnt = kept;
     }
 
     uint16_t white_lvl = 16383u;
     if (arw_mode == 0u) {
         white_lvl = (gain_mode == 0u) ? 63996u : ((gain_mode == 1u) ? 32254u : 16383u);
+    }
+    uint32_t add_va = rd_u32_le(raw_info_area + 0x120u);
+    uint32_t add_sz = rd_u32_le(raw_info_area + 0x124u);
+    if (add_va && add_sz >= 16u && add_sz <= sizeof(s->add_buf)) {
+        copy_mem_words(s->add_buf, (const uint8_t *)(uintptr_t)add_va, add_sz);
+        wr_u32_le(raw_info_area + 0x120u, (uint32_t)(uintptr_t)s->add_buf);
+        s->add_valid = 1u;
+    } else {
+        s->add_valid = 0u;
     }
     update_additional_ifd(raw_info_area, out_w, out_h, crop_x, crop_y, crop_w, crop_h, white_lvl);
 

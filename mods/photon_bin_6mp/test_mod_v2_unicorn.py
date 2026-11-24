@@ -35,15 +35,45 @@ from src.a6400.mod_manager.smod import SMOD_V2_FLAG_RELOC, SMOD_V2_FLAG_SUBMENU,
 from tools.research.pack_mod import extract_elf_text  # noqa: E402
 
 BUILD = Path(sys.argv[1])
-AVCAM_PATH = ROOT / "firmware/extracted_a6400a_v101/firmware.tar_unpacked/0700_part_image/dev/nflasha3_unpacked/av-cam.bin"
 AVCAM_ORIL = 0x635C6000
 
 MOD_BYTES = (BUILD / "PhotonBin6MP.mod").read_bytes()
 _, CODE, SYMS = extract_elf_text((BUILD / "photon_bin_6mp.elf").read_bytes(), expected_code_addr=0)
 BSS_SIZE = struct.unpack_from("<I", MOD_BYTES, 52)[0]
 
+info = parse_smod(MOD_BYTES, "PhotonBin6MP.mod")
+TARGETS = {
+    "0x06d3a61c": {
+        "label": "ILCE-6400A 1.01",
+        "avcam": ROOT / "firmware/extracted_a6400a_v101/firmware.tar_unpacked/0700_part_image/dev/nflasha3_unpacked/av-cam.bin",
+        "orig_stub": 0x06D3A600,
+        "pa_main_mconv": 0x0379FEC6,
+        "pa_zaf_mconv": 0x0379FF7C,
+        "pa_1h2h_silent": 0x038ECC48,
+        "pa_1h2h_bulb": 0x038ECC56,
+    },
+    "0x06b04bcc": {
+        "label": "ILCE-6100 1.00",
+        "avcam": Path.home() / "a6100-qemu-inputs/av-cam.bin",
+        "orig_stub": 0x06B04BC0,
+        "pa_main_mconv": 0x0379EC9A,
+        "pa_zaf_mconv": 0x0379ED50,
+        "pa_1h2h_silent": 0x038EA8FC,
+        "pa_1h2h_bulb": 0x038EA90A,
+    },
+}
+hook_tgt = info.hooks[0]["target"] if info.hook_count else ""
+if hook_tgt not in TARGETS:
+    raise AssertionError(f"Unsupported hook target {hook_tgt!r}")
+TGT = TARGETS[hook_tgt]
+AVCAM_PATH = TGT["avcam"]
+ORIG_STUB = TGT["orig_stub"]
+PA_MAIN_MCONV = TGT["pa_main_mconv"]
+PA_ZAF_MCONV = TGT["pa_zaf_mconv"]
+PA_1H2H_SILENT = TGT["pa_1h2h_silent"]
+PA_1H2H_BULB = TGT["pa_1h2h_bulb"]
+
 MOD_BASE  = 0x40000000
-ORIG_STUB = 0x06D3A600
 WORK_MEM  = 0x20000000
 RAW_MEM   = 0x22000000
 DEVMEM_VA = 0x50000000
@@ -151,7 +181,7 @@ class ModHarness:
         # Wait: pb_orig_make_raw_info_area did: push.w {r4..r11,lr}; sub sp,#0x14; add r7,sp,#8; mov r4,r0; mov r6,r1
         # So at 0x06d3a628 we undo sub sp,#0x14 -> add sp,#0x14; movs r0,#0; pop.w {r4..r11,pc}!
         # add sp, #0x14 = 0xB005; movs r0, #0 = 0x2000; pop.w {r4..r11, pc} = 0xE8BD 0x8FF0
-        self.m.mem_write(0x06D3A628, bytes.fromhex("05b00020bde8f08f"))
+        self.m.mem_write(int(hook_tgt, 16) + 12, bytes.fromhex("05b00020bde8f08f"))
 
         self.m.mem_map(WORK_MEM, 0x10000)
         self.m.mem_map(RAW_MEM, 0x2000000)   # 32 MiB DMM RAW arena
@@ -159,9 +189,9 @@ class ModHarness:
         self.m.mem_map(STACK_TOP - 0x20000, 0x20000)
         self.m.mem_map(STOP_PC, 0x1000)
 
-        # Populate physical LIRO pages from real ILCE-6400A av-cam.bin
+        # Populate physical LIRO pages from real av-cam.bin
         self.phys_pages: dict[int, bytearray] = {}
-        for pa in (0x0379F000, 0x038EC000):
+        for pa in (PA_MAIN_MCONV & ~0xFFF, PA_1H2H_SILENT & ~0xFFF):
             off = (pa + 0x60000000) - AVCAM_ORIL
             self.phys_pages[pa] = bytearray(avcam[off : off + 0x1000])
 
@@ -228,75 +258,80 @@ class ModHarness:
 
 
 print("1. Validating SMOD v2 + RLC1 + SMNU package format")
-info = parse_smod(MOD_BYTES, "PhotonBin6MP.mod")
 check(info.version == 2 and info.name == "PhotonBin 6MP", f"parsed {info.name!r} ({info.file_size} B)")
 check(bool(info.flags & SMOD_V2_FLAG_RELOC) and bool(info.flags & SMOD_V2_FLAG_SUBMENU),
       f"carries both RELOC and SUBMENU flags (flags={info.flags:#x})")
-check(info.hook_count == 1 and info.hooks[0]["target"] == "0x06d3a61c",
-      f"hooks MakeRawInfoArea @ {info.hooks[0]['target']}")
+check(info.hook_count == 1 and info.hooks[0]["target"] == hook_tgt,
+      f"hooks MakeRawInfoArea @ {info.hooks[0]['target']} ({TGT['label']})")
 
 print("2. Verifying Option 3 LIRO instruction swaps & live IMX284 execution in Unicorn")
 avcam = AVCAM_PATH.read_bytes()
 h = ModHarness(avcam)
-stock_mc_main = h.read_pa(0x0379FEC6, 6)
-stock_mc_zaf  = h.read_pa(0x0379FF7C, 6)
-stock_sil     = h.read_pa(0x038ECC48, 2)
-stock_bulb    = h.read_pa(0x038ECC56, 2)
+stock_mc_main = h.read_pa(PA_MAIN_MCONV, 6)
+stock_mc_zaf  = h.read_pa(PA_ZAF_MCONV, 6)
+stock_sil     = h.read_pa(PA_1H2H_SILENT, 2)
+stock_bulb    = h.read_pa(PA_1H2H_BULB, 2)
 check(stock_mc_main.hex() == "b8f1000f03d0" and stock_mc_zaf.hex() == "b8f1000f03d0" and
       stock_sil.hex() == "f2b9" and stock_bulb.hex() == "19e0",
-      "verified real ILCE-6400A 1.01 av-cam.bin stock instruction bytes")
+      f"verified real {TGT['label']} av-cam.bin stock instruction bytes")
 
 h.set_cfg(b_mode=0, gain=0, kern=0, arw=0, mconv=0, h2h=0)  # Force HCG + Bulb/Silent 1H2H
 h.call("pb_on", 1)
-check(h.read_pa(0x0379FEC6, 6).hex() == "b8f1000f00bf" and
-      h.read_pa(0x0379FF7C, 6).hex() == "b8f1000f00bf" and
-      h.read_pa(0x038ECC48, 2).hex() == "00bf" and
-      h.read_pa(0x038ECC56, 2).hex() == "00bf",
+check(h.read_pa(PA_MAIN_MCONV, 6).hex() == "b8f1000f00bf" and
+      h.read_pa(PA_ZAF_MCONV, 6).hex() == "b8f1000f00bf" and
+      h.read_pa(PA_1H2H_SILENT, 2).hex() == "00bf" and
+      h.read_pa(PA_1H2H_BULB, 2).hex() == "00bf",
       f"pb_on patched Main/ZAF Mconv -> HCG and Silent/Bulb -> 14b 1H2H ({h.logs[-1].strip()})")
 
-# Execute real av-cam.bin Main Mconv slice (0x6379fec6..0x6379fedc) with r8=0 (ISO 100!) to prove bit 1 (0x02) sets!
+# Execute real av-cam.bin Main Mconv slice with r8=0 (ISO 100!) to prove bit 1 (0x02) sets!
+mc_page_pa = PA_MAIN_MCONV & ~0xFFF
+mc_page_va = mc_page_pa + 0x60000000
+mc_start_va = PA_MAIN_MCONV + 0x60000000
+mc_end_va = mc_start_va + 0x16
 mu_mc = uc.Uc(uc.UC_ARCH_ARM, uc.UC_MODE_THUMB)
-mu_mc.mem_map(0x6379F000, 0x1000)
+mu_mc.mem_map(mc_page_va, 0x1000)
 mu_mc.mem_map(0x70000000, 0x1000)
-mu_mc.mem_write(0x6379F000, bytes(h.phys_pages[0x0379F000]))
+mu_mc.mem_write(mc_page_va, bytes(h.phys_pages[mc_page_pa]))
 mu_mc.mem_write(0x70000100, b"\x00\x00\x20\x00")  # reg 0x099C initial = 0x20 (bit 1 clear)
 mu_mc.reg_write(A.UC_ARM_REG_R4, 0x70000100)
 mu_mc.reg_write(A.UC_ARM_REG_R8, 0)  # ISO 100 -> stock would keep LCG (bit 1 = 0)
-mu_mc.emu_start(0x6379FEC6 | 1, 0x6379FEDC, count=32)
+mu_mc.emu_start(mc_start_va | 1, mc_end_va, count=32)
 reg_099c = mu_mc.mem_read(0x70000102, 1)[0]
 check(reg_099c == 0x22, f"Unicorn executed patched IMX284 Mconv @ ISO 100: reg 0x099C = {reg_099c:#04x} (HCG bit 1 SET)")
 
 # Live submenu updates via pb_cfg(2): Force LCG + Stock 1H2H Gate
 h.set_cfg(mconv=2, h2h=1)
 h.call("pb_cfg", 2)
-check(h.read_pa(0x0379FEC6, 6).hex() == "4ff0000803e0" and
-      h.read_pa(0x038ECC48, 2) == stock_sil and h.read_pa(0x038ECC56, 2) == stock_bulb,
+check(h.read_pa(PA_MAIN_MCONV, 6).hex() == "4ff0000803e0" and
+      h.read_pa(PA_1H2H_SILENT, 2) == stock_sil and h.read_pa(PA_1H2H_BULB, 2) == stock_bulb,
       f"live pb_cfg(2) switched Mconv -> Force LCG and restored Stock 1H2H gate ({h.logs[-1].strip()})")
 
 # Execute Force LCG with r8=1 (ISO 6400!) on a fresh Unicorn CPU (avoid stale TCG TB cache!)
 mu_lcg = uc.Uc(uc.UC_ARCH_ARM, uc.UC_MODE_THUMB)
-mu_lcg.mem_map(0x6379F000, 0x1000)
+mu_lcg.mem_map(mc_page_va, 0x1000)
 mu_lcg.mem_map(0x70000000, 0x1000)
-mu_lcg.mem_write(0x6379F000, bytes(h.phys_pages[0x0379F000]))
+mu_lcg.mem_write(mc_page_va, bytes(h.phys_pages[mc_page_pa]))
 mu_lcg.mem_write(0x70000100, b"\x00\x00\x22\x00")  # bit 1 initially set
 mu_lcg.reg_write(A.UC_ARM_REG_R4, 0x70000100)
 mu_lcg.reg_write(A.UC_ARM_REG_R8, 1)  # high ISO
-mu_lcg.emu_start(0x6379FEC6 | 1, 0x6379FEDC, count=32)
+mu_lcg.emu_start(mc_start_va | 1, mc_end_va, count=32)
 reg_099c_lcg = mu_lcg.mem_read(0x70000102, 1)[0]
 check(reg_099c_lcg == 0x20, f"Unicorn executed Force LCG @ ISO 6400: reg 0x099C = {reg_099c_lcg:#04x} (bit 1 CLEARED)")
 
 # Foreign-byte fail-closed test + pb_off restoration
-h.phys_pages[0x038EC000][0xC48:0xC4A] = b"\xaa\xbb"
+sil_pg_pa = PA_1H2H_SILENT & ~0xFFF
+sil_pg_off = PA_1H2H_SILENT & 0xFFF
+h.phys_pages[sil_pg_pa][sil_pg_off : sil_pg_off + 2] = b"\xaa\xbb"
 h.set_cfg(mconv=0, h2h=0)
 h.call("pb_cfg", 2)
-check(h.read_pa(0x038ECC48, 2) == b"\xaa\xbb" and "h2h=x," in h.logs[-1],
+check(h.read_pa(PA_1H2H_SILENT, 2) == b"\xaa\xbb" and "h2h=x," in h.logs[-1],
       "foreign bytes at 1H2H site refused without modification (sw='x')")
-h.phys_pages[0x038EC000][0xC48:0xC4A] = stock_sil
+h.phys_pages[sil_pg_pa][sil_pg_off : sil_pg_off + 2] = stock_sil
 h.call("pb_off", 0)
-check(h.read_pa(0x0379FEC6, 6) == stock_mc_main and
-      h.read_pa(0x0379FF7C, 6) == stock_mc_zaf and
-      h.read_pa(0x038ECC48, 2) == stock_sil and
-      h.read_pa(0x038ECC56, 2) == stock_bulb,
+check(h.read_pa(PA_MAIN_MCONV, 6) == stock_mc_main and
+      h.read_pa(PA_ZAF_MCONV, 6) == stock_mc_zaf and
+      h.read_pa(PA_1H2H_SILENT, 2) == stock_sil and
+      h.read_pa(PA_1H2H_BULB, 2) == stock_bulb,
       "pb_off restored all 4 av-cam.bin LIRO sites byte-for-byte to stock")
 
 print("3. Verifying Option 1 .ARW 4x4->2x2 Bayer & 2x2 Mono photon convergence in Unicorn")
@@ -338,16 +373,27 @@ def setup_frame(h: ModHarness, in_w: int, in_h: int, rggb_vals: tuple[int, int, 
     struct.pack_into("<H", src_buf, 0x60, in_h)
     h.m.mem_write(src_va, bytes(src_buf))
 
-    # Additional IFD with DefaultCropOrigin (0xC61F), DefaultCropSize (0xC620), WhiteLevel (0xC61D)
-    add_buf = bytearray(128)
-    struct.pack_into("<III", add_buf, 0, 1, 0, 16)
-    struct.pack_into("<I", add_buf, 16, 3)
-    struct.pack_into("<HHII", add_buf, 20, 0xC61F, 3, 2, (12 << 16) | 12)
-    struct.pack_into("<HHII", add_buf, 32, 0xC620, 3, 2, ((in_h - 24 if in_h > 64 else in_h) << 16) | (in_w - 24 if in_w > 64 else in_w))
-    struct.pack_into("<HHII", add_buf, 44, 0xC61D, 3, 1, 16383)
+    # rawAdditionalInfo as in firmware: {version=1, dev_ifd_off=12, raw_ifd_off}; out-of-line
+    # values are relative to the START OF THEIR OWN IFD (SetRawAdditionalInfoToIfd).
+    add_buf = bytearray(160)
+    dev_off, raw_off = 12, 48
+    struct.pack_into("<III", add_buf, 0, 1, dev_off, raw_off)
+    struct.pack_into("<I", add_buf, dev_off, 2)
+    struct.pack_into("<HHII", add_buf, dev_off + 4, 0x0001, 4, 1, 0xDEAD)
+    struct.pack_into("<HHII", add_buf, dev_off + 16, 0x0002, 4, 2, 28)   # -> dev_off + 28
+    struct.pack_into("<II", add_buf, dev_off + 28, 2008, 3008)
+    struct.pack_into("<I", add_buf, raw_off, 4)
+    struct.pack_into("<HHII", add_buf, raw_off + 4, 0xC61F, 4, 2, 52)
+    struct.pack_into("<HHII", add_buf, raw_off + 16, 0xC620, 4, 2, 60)
+    struct.pack_into("<HHII", add_buf, raw_off + 28, 0xC68D, 3, 4, 68)
+    struct.pack_into("<HHII", add_buf, raw_off + 40, 0xC61D, 3, 1, 16383)
+    struct.pack_into("<II", add_buf, raw_off + 52, 12, 12)
+    struct.pack_into("<II", add_buf, raw_off + 60, 6000, 4000)
+    struct.pack_into("<HHHH", add_buf, raw_off + 68, 0, 0, in_h, in_w)
     h.m.mem_write(add_va, bytes(add_buf))
 
-    h.m.mem_write(ext_va, struct.pack("<II", 0x70000000, len(raw_blob)))
+    ext_sz = (len(raw_blob) + 0xFFF) & ~0xFFF   # libObj requires 4 KiB-aligned extents
+    h.m.mem_write(ext_va, struct.pack("<II", 0x70000000, ext_sz))
 
     info_buf = bytearray(0x200)
     struct.pack_into("<II", info_buf, 0x0D0, src_va, len(src_buf))
@@ -420,7 +466,41 @@ info_va, src_va, add_va = setup_frame(h, 128, 16, (1024, 1024, 1024, 1024), comp
 h.set_cfg(b_mode=0, gain=0, kern=0, arw=0)
 h.call("pb_hook_make_raw_info_area", info_va, 0, 0)
 ext_trimmed = struct.unpack_from("<II", h.m.mem_read(WORK_MEM + 0x2000, 8))
-check(ext_trimmed[1] == 64 * 8 * 2, f"physical DMM extent trimmed cleanly to {ext_trimmed[1]} B")
+check(ext_trimmed[1] == 0x1000 and (ext_trimmed[1] & 0xFFF) == 0,
+      f"physical DMM extent trimmed to 4 KiB-aligned {ext_trimmed[1]:#x} B")
+
+# 3f. rawAdditionalInfo: DevInfo IFD untouched, raw IFD out-of-line values patched IFD-relative,
+#     and Call 2 (same shared src_data/ext, fresh RawInfoArea) gets the trimmed fields re-applied.
+h.set_cfg(b_mode=0, gain=0, kern=0, arw=0)
+info_va, src_va, add_va = setup_frame(h, 128, 16, (1024, 1024, 1024, 1024), comp=32767)
+orig_add = bytes(h.m.mem_read(add_va, 160))
+h.call("pb_hook_make_raw_info_area", info_va, 0, 0)
+new_add_va = struct.unpack_from("<I", h.m.mem_read(info_va + 0x120, 4))[0]
+check(new_add_va != add_va, "Call 1 redirects rawAdditionalInfo to the cached add_buf copy")
+patched = bytes(h.m.mem_read(new_add_va, 160))
+check(patched[:48] == orig_add[:48], "DevInfo IFD (header + dev entries + payload) survives uncorrupted")
+oo_w, oo_h = 64, 8
+check(struct.unpack_from("<II", patched, 48 + 52) == (0, 0),
+      "DefaultCropOrigin patched at raw_ifd + val")
+check(struct.unpack_from("<II", patched, 48 + 60) == (oo_w, oo_h),
+      f"DefaultCropSize patched at raw_ifd + val: {struct.unpack_from('<II', patched, 48 + 60)}")
+check(struct.unpack_from("<HHHH", patched, 48 + 68) == (0, 0, oo_h, oo_w), "ActiveArea patched at raw_ifd + val")
+call1_sz = struct.unpack_from("<I", h.m.mem_read(info_va + 0x114, 4))[0]
+ext1 = struct.unpack_from("<II", h.m.mem_read(WORK_MEM + 0x2000, 8))
+check((ext1[0] & 0xFFF) == 0 and (ext1[1] & 0xFFF) == 0, "extent phys/size 4 KiB-aligned after Call 1")
+
+# Call 2: new RawInfoArea whose fields were rebuilt from the original (stale) values.
+info2 = WORK_MEM + 0x4000
+ib = bytearray(h.m.mem_read(info_va, 0x200))
+struct.pack_into("<I", ib, 0x114, 0x01735B00)
+struct.pack_into("<I", ib, 0x11C, 1)
+struct.pack_into("<I", ib, 0x120, add_va)
+h.m.mem_write(info2, bytes(ib))
+h.call("pb_hook_make_raw_info_area", info2, 0, 0)
+r2 = h.m.mem_read(info2, 0x200)
+check(struct.unpack_from("<I", r2, 0x114)[0] == call1_sz and
+      struct.unpack_from("<I", r2, 0x120)[0] == new_add_va,
+      "Call 2 re-applies trimmed raw size + patched add_buf")
 
 h.call("pb_off", 0)
 print("ALL PHOTONBIN 6MP UNICORN TESTS PASSED")
