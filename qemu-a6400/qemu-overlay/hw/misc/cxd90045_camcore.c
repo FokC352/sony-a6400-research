@@ -288,7 +288,10 @@ static const CamCoreRule camcore_rules_f291[] = {
     { 0x2550, CAM_ZERO, 0x00000001, "never written; bit getter 0x63a69e8c (and #1)" },
     { 0x2554, CAM_ZERO, 0xffffffff, "copy getter 0x63a69ca4; written by other code" },
     { 0x2F04, CAM_ZERO, 0xffffffff, "copy getter 0x63a69ca4 (ldr, str to memory)" },
+    { 0x4048, CAM_ZERO, 0xffffffff, "L0117: write-only in the 120 s baseline, no reads" },
     { 0x5010, CAM_ZERO, 0xffffffff, "never written; 2 reads, no CPU reader (rwatch all 4 vCPUs)" },
+    { 0x5044, CAM_ZERO, 0xffffffff, "L0117: write-only in the 120 s baseline, no reads" },
+    { 0x5114, CAM_ZERO, 0xffffffff, "L0117: write-only in the 120 s baseline, no reads" },
 };
 
 /*
