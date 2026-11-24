@@ -237,6 +237,10 @@ static const CamCoreRule camcore_rules_f312[] = {
  * reader is ldr/bfi/str on the same word, so all are RF.  PCs are the Thumb
  * load instructions (disasm.txt).
  */
+/*
+ * L0111 (F-0109): 13 write-only offsets inside this window (0xF3C04208..0xF3C0422C
+ * and 0xF3C08280..0xF3C0828C) are Z0 rows: the guest only writes them and reads 0.
+ */
 static const CamCoreRule camcore_rules_f3c0[] = {
     { 0x4100, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a562; every read -> write" },
     { 0x4104, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a5a2; every read -> write" },
@@ -244,7 +248,16 @@ static const CamCoreRule camcore_rules_f3c0[] = {
     { 0x410C, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a5fa; every read -> write" },
     { 0x4200, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a3b6; every read -> write" },
     { 0x4204, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a416; every read -> write" },
+    { 0x4208, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a4a6; read 0" },
+    { 0x420C, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a4b2; read 0" },
+    { 0x4210, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a4be; read 0" },
+    { 0x4214, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a4ca; read 0" },
+    { 0x4218, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a4d6; read 0" },
+    { 0x421C, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a4e2; read 0" },
     { 0x4220, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a4ee; every read -> write" },
+    { 0x4224, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a52e; read 0" },
+    { 0x4228, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a53a; read 0" },
+    { 0x422C, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, one-shot zero write at 0x63b0a546; read 0" },
     { 0x4230, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a552; every read -> write" },
     { 0x4300, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a1be; every read -> write" },
     { 0x4304, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x63b0a1fe; every read -> write" },
@@ -261,6 +274,10 @@ static const CamCoreRule camcore_rules_f3c0[] = {
     { 0x8000, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x6384967e; every read -> write" },
     { 0x8270, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x6384a00c; every read -> write" },
     { 0x8274, CAM_RF,   0xffffffff, "RMW ldr/bfi/str at 0x6384a036; every read -> write" },
+    { 0x8280, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, repeated sensor-readout write at 0x6384a0ac; read 0" },
+    { 0x8284, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, repeated sensor-readout write at 0x6384a0b2; read 0" },
+    { 0x8288, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, repeated sensor-readout write at 0x6384a0be; read 0" },
+    { 0x828C, CAM_ZERO, 0xffffffff, "L0111/F-0109 write-only, repeated sensor-readout write at 0x6384a0b8; read 0" },
 };
 
 /*
