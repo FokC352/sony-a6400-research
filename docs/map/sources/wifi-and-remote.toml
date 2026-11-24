@@ -8,13 +8,15 @@ title = "Wi-Fi and remote control"
 scope = """
 BCM4339 Wi-Fi/Bluetooth, SDIO and the WLAN baseline, ScalarWebAPI over Wi-Fi, Imaging Edge Mobile behavior and the Wi-Fi shutter."""
 evidence_span = "see record index"
-reviewed = "2026-11-22"
+reviewed = "2026-11-24"
 records = [
   "E0406-E0412",
   "-E0407:a-three",
   "-E0407:b1",
   "E0658-E0662",
   "E0664",
+  "E0688",
+  "E0689",
   "cross_model/a6400-scalarwebapi-*",
   "cross_model/scalarwebapi-apis.json",
   "cross_model/imaging-edge-mobile-control.json",
@@ -92,3 +94,11 @@ title = "Enabling Wi-Fi on the unit with the SDIO fault"
 effect = "The camera rebooted every time Wi-Fi was enabled from the menu."
 rule = "Treat that unit's WLAN as faulty; do not inject OSAL 0x1000 or override bands/TX while investigating."
 evidence = ["E0409", "E0411"]
+
+[[frontier]]
+id = "F01"
+title = "Send to Smartphone .ARW original availability and HTTP throughput"
+state = "open"
+entities = ["api.scalarwebapi", "dev.bcm4339"]
+evidence = ["E0662", "E0688", "E0689"]
+next = "Place a physical ILCE-6400 into Send to Smartphone mode via the camera menu, run tools.research.camera_transfer with --transcript, and determine whether avContent/getContentList exposes full 24.5 MB ARW 2.3 originals or only proxy JPEGs."
