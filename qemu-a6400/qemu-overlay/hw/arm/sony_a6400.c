@@ -2890,6 +2890,21 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     /*
+     * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
+     * /kmod/i2c.ko, channel 0/1 at 0xF2401000/0xF2402000, IRQ 199/200).
+     * Only the driver-defined start/config handshake and the message-setup
+     * writes are modelled (L0036); the addressed-slave phase is not, so no
+     * IRQ is connected and nothing completes.  Mapped at -500, above the
+     * cxd90045.unmodelled catch-all (-1000); nothing else maps this page.
+     */
+    {
+        DeviceState *i2c = qdev_new("cxd90045-i2c");
+
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(i2c), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(i2c), 0, 0xF2401000ULL, -500);
+    }
+
+    /*
      * Imager / ComboPHY window (E0534).  av-cam keeps absolute pointers
      * here (Leo clk 0xFC021000, MIPI D-PHY register blocks, sensor tables
      * under 0xFC0Axxxx).  Reads of unassigned space are 0, so a
