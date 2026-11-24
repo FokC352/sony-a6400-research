@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "default_rea_profile": "current",
-  "rea_tools_root": "/home/administrator/a6400-rea-tools",
+  "rea_tools_root": "~/a6400-rea-tools",
   "rea_profiles": {
     "legacy": {
       "rea_version": "6.7.0",
@@ -23,7 +23,7 @@
   "python_version": "3.15.2",
   "npm_version": "12.2.2",
   "workspace_mcp": {
-    "root": "/home/administrator/a6400-mcp-tools/20261117",
+    "root": "~/a6400-mcp-tools/20261117",
     "ghidra_install_root": "~/a6400-mcp-tools/20261121",
     "python": "/usr/bin/python3",
     "python_version": "3.14.4",

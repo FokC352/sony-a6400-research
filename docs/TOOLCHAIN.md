@@ -92,8 +92,9 @@ global MCP configuration, system packages or existing Ghidra extensions changed.
 
 ### Availability and storage
 
-The native Copilot configuration is [workspace-root `.mcp.json`](../.mcp.json),
-not the deprecated editor-only `servers` format. Start a new Copilot session
+The native Copilot configuration template is [workspace-root `.mcp.json.example`](../.mcp.json.example),
+not the deprecated editor-only `servers` format. Copy `.mcp.json.example` to
+`.mcp.json` (ignored by Git) if needed on your host, start a new Copilot session
 in this workspace, or reload the workspace, and approve the servers when the
 client prompts. The skill commands are `/pyghidra-analysis`,
 `/ghidra-dataflow` and `/reverify-claims`. Command/protocol checks below do not
@@ -216,7 +217,7 @@ classification were fixed and tested; the model was verified and search rerun.
 No failed analysis or incomplete index is promoted to successful evidence.
 
 To disable these additions, stop the three workspace MCP servers and remove only
-their entries from `.mcp.json` and the three corresponding skill directories.
+their entries from your local `.mcp.json` (and the three corresponding skill directories if desired).
 Keep the isolated installation, projects and receipts unless their removal is
 explicitly intended. No qualified REA/QEMU rollback or global configuration
 change is needed.

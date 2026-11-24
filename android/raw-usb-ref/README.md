@@ -155,7 +155,7 @@ Procedure (once, on a machine with network access):
 
 ```powershell
 # from the repository root, with the native cpp tree already present
-cd android-client-ref\app\src\main\cpp\third_party
+cd android\raw-usb-ref\app\src\main\cpp\third_party
 git clone --depth 1 --branch 3.0.4 https://github.com/libjpeg-turbo/libjpeg-turbo.git libjpeg-turbo
 Remove-Item -Recurse -Force libjpeg-turbo\.git
 ```
@@ -183,7 +183,7 @@ Rules for that tree:
 ### 3.4 Build and install
 
 ```powershell
-cd android-client-ref
+cd android\raw-usb-ref
 gradle wrapper --gradle-version 8.7      # once
 .\gradlew.bat :app:assembleDebug
 adb install -r app\build\outputs\apk\debug\app-debug.apk
@@ -254,7 +254,7 @@ from memory or from a PTP reference document alone.
 ## 7. Layout
 
 ```
-android-client-ref/
+android/raw-usb-ref/
 â”śâ”€â”€ settings.gradle.kts, build.gradle.kts, gradle.properties
 â”śâ”€â”€ app/build.gradle.kts, app/proguard-rules.pro
 â”śâ”€â”€ app/src/main/AndroidManifest.xml
@@ -280,7 +280,7 @@ android-client-ref/
 ## 8. Verifying the tree without an SDK
 
 ```powershell
-.\venv\Scripts\python.exe android-client-ref\tools\verify_structure.py
+.\venv\Scripts\python.exe android\raw-usb-ref\tools\verify_structure.py
 ```
 
 It fails loudly on: a missing file, a changed JNI signature, a missing PTP opcode, a

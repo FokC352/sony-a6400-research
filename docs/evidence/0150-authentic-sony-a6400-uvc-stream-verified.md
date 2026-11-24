@@ -46,7 +46,7 @@ Constraints: All camera writes strictly limited to RAM `/tmp_bt`; no SD/NAND/boo
      - Web UI: `http://127.0.0.1:8080/` (WebGL2 AMD FidelityFX FSR 1.0 EASU + RCAS).
      - MJPEG Stream: `http://127.0.0.1:8080/liveview.mjpg`.
      - JSON API: `http://127.0.0.1:8080/api/status` confirms `"mode": "UVC Stream"`, `"camera": "Sony ILCE-6400"`, `"fps": 30.0`.
-     - Captured frame: [`artifacts/sony_a6400_uvc_cinema_verified.jpg`](file:///c:/Users/Administrator/Desktop/a6400%20project/artifacts/sony_a6400_uvc_cinema_verified.jpg) (1280×720 RGB, 35,448 bytes).
+     - Captured frame: `artifacts/sony_a6400_uvc_cinema_verified.jpg` (1280×720 RGB, 35,448 bytes).
 
 ---
 

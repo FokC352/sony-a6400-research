@@ -137,7 +137,7 @@ All builds are offline. Nothing in this directory talks to a camera.
 .\make.cmd clean
 
 # or directly
-wsl -d Ubuntu -- bash -lc "cd '/mnt/c/Users/Administrator/Desktop/a6400 project/camera-daemon' && ./build.sh"
+wsl -d Ubuntu -- bash -lc "cd '<repo-root>/camera-daemon' && ./build.sh"
 python test/run_host_tests.py
 ```
 

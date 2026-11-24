@@ -7,7 +7,7 @@
 # libjpeg-turbo is NOT vendored in this repository.  Build it for arm64-v8a and
 # install it under:
 #
-#   android-client-ref/third_party/libjpeg-turbo/
+#   android/raw-usb-ref/third_party/libjpeg-turbo/
 #       include/turbojpeg.h
 #       lib/libturbojpeg.a          (or libturbojpeg.so)
 #
@@ -52,7 +52,7 @@ find_library(turbojpeg-lib
 if(NOT turbojpeg-lib)
     message(FATAL_ERROR
         "libjpeg-turbo (turbojpeg) was not found.\n"
-        "Vendor it under android-client-ref/third_party/libjpeg-turbo/ with\n"
+        "Vendor it under android/raw-usb-ref/third_party/libjpeg-turbo/ with\n"
         "  include/turbojpeg.h\n"
         "  lib/libturbojpeg.a  (or libturbojpeg.so)\n"
         "and rebuild.  This project does not download or embed libjpeg-turbo.\n"
@@ -69,7 +69,7 @@ find_path(turbojpeg-include
 if(NOT turbojpeg-include)
     message(FATAL_ERROR
         "turbojpeg.h was not found next to the libjpeg-turbo library.\n"
-        "Expected android-client-ref/third_party/libjpeg-turbo/include/turbojpeg.h.")
+        "Expected android/raw-usb-ref/third_party/libjpeg-turbo/include/turbojpeg.h.")
 endif()
 
 # Embed the two GLSL files at configure time.  Keeping the shipping shader in a

@@ -254,7 +254,7 @@ validator/decode stage accepts.
 libjpeg-turbo is not vendored.  Build it for arm64-v8a and place:
 
 ```text
-android-client-ref/third_party/libjpeg-turbo/
+android/raw-usb-ref/third_party/libjpeg-turbo/
   include/turbojpeg.h
   lib/libturbojpeg.a        (or .so)
 ```
