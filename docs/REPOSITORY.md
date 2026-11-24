@@ -12,11 +12,13 @@ The root now holds only standard project files and core directories:
 | Entry | Purpose |
 | --- | --- |
 | `README.md`, `LICENSE`, `CONTRIBUTING.MD`, `AGENTS.MD` | Project, licence, contributor and agent instructions |
-| `pyproject.toml`, `requirements.txt` | Project metadata and the deterministic offline test/emulation dependency set |
+| `pyproject.toml`, `requirements*.txt` | Project metadata and deterministic offline test, tool, and GUI dependency sets |
 | `project_paths.py` | Single root path-resolution module (see below) |
-| `.github/`, `docs/`, `src/`, `tools/`, `tests/`, `scripts/`, `legacy/`, `probes/` | Source, tooling and documentation |
-| `android/`, `android-client-ref/`, `camera-daemon/` | Track A / Track B client and camera-side work |
-| `firmware/`, `backups/`, `artifacts/`, `reports/`, `scratch/` | Local preserved inputs and generated results; excluded from publication |
+| `.mcp.json.example` | Portable workspace MCP server template (copy to ignored `.mcp.json` on Windows/WSL hosts) |
+| `.github/`, `docs/`, `src/`, `tools/`, `tests/`, `scripts/`, `legacy/`, `probes/` | GitHub CI/Release workflows & templates, source, tooling, and documentation |
+| `mods/`, `isp-studio/`, `a6400-lut-converter/`, `qemu-a6400/` | Camera mods, Rust BIONZ Look Lab, LUT pipeline, and native QEMU `sony-a6400` machine |
+| `android/` (`cinemahud/`, `raw-usb-ref/`), `camera-daemon/` | Track A Android clients (`raw-usb-ref/` moved from `android-client-ref/`) and Track B camera daemon |
+| `firmware/`, `backups/`, `artifacts/`, `reports/`, `scratch/` | Local preserved inputs, hardware dumps (`reports/a6400_hw_dump.txt`), and generated results |
 
 ## Where things live
 
@@ -40,6 +42,9 @@ The root now holds only standard project files and core directories:
 | `ARCHITECTURE_UVC_MONITOR.md` | `docs/ARCHITECTURE_UVC_MONITOR.md` | documentation (hash-pinned by E0348) |
 | Root PNG files and `temp_crops/` | `artifacts/legacy/` with original names | generated output |
 | `20261015-_DSC0799 copy.jpg` | `assets/reference/20261015-_DSC0799 copy.jpg` | reference input |
+| `.mcp.json` | `.mcp.json.example` | template (copy locally if needed) |
+| `android-client-ref/` | `android/raw-usb-ref/` | raw-USB Android reference client |
+| `reports/a6100-picture-profiles.md`, `reports/l3-osd-progress-2026-11-21.md` | `docs/a6100-picture-profiles.md`, `docs/l3-osd-progress-2026-11-21.md` | documentation (`reports/a6400_hw_dump.txt` stays in `reports/`) |
 
 The nine former root Python shims were deleted: their implementations had already been moved,
 they were only forwarding stubs, and their documented launch paths are the module paths above.

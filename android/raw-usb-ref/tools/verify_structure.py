@@ -29,7 +29,7 @@ Checks
     vendor-libs note for libjpeg-turbo and the honest "not compiled" record.
 
 Usage:
-    python android-client-ref/tools/verify_structure.py [-v]
+    python android/raw-usb-ref/tools/verify_structure.py [-v]
 """
 
 from __future__ import annotations

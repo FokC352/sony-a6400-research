@@ -4,7 +4,7 @@ This file is the honest record of what was proven about this client, what was no
 exactly how to bring it up on hardware. It is written after the fact, from the commands
 that were actually run.
 
-**Nothing in `android-client-ref/` has been compiled or executed on a device.** The
+**Nothing in `android/raw-usb-ref/` has been compiled or executed on a device.** The
 environment has no Android SDK, no Gradle, no JDK 17 and no Kotlin compiler (evidence in
 §1): the Kotlin was **not compiled** and the APK was never built. Everything claimed as
 "verified" below is either (a) a static check over the source tree, or (b) a protocol fact
@@ -37,7 +37,7 @@ Consequences, stated plainly:
   AndroidX, no third-party libraries, platform APIs only, explicit nullability) to keep the
   first compile boring, but the first compile is still a real step.
 * `app/src/main/cpp/**` (the native renderer, its `CMakeLists.txt`, and the vendored
-  libjpeg-turbo hooks) and `android-client-ref/tests/**` are owned by the native-pipeline
+  libjpeg-turbo hooks) and `android/raw-usb-ref/tests/**` are owned by the native-pipeline
   workstream. They appeared in the tree *during* this session and were **not** authored,
   modified or executed by this workstream; the Kotlin side was cross-checked read-only
   against them (see §2.4). A build still needs the native tree's own `turbojpeg` source,
@@ -52,7 +52,7 @@ Consequences, stated plainly:
 ### 2.1 The static gate: `tools/verify_structure.py`
 
 ```powershell
-.\venv\Scripts\python.exe android-client-ref\tools\verify_structure.py
+.\venv\Scripts\python.exe android\raw-usb-ref\tools\verify_structure.py
 ```
 
 Result on the final tree: **PASS: all 112 checks** (exit code 0). The gate fails loudly on:
@@ -102,7 +102,7 @@ OK
 
 The 1181 → 1196 drift is **not** from this tree: `git diff --stat tests` shows 7 test files
 and ≈1400 inserted lines written concurrently by other workstreams, and no file under
-`tests/` references `android-client-ref` (verified by search). This client adds no file under
+`tests/` references `android/raw-usb-ref` (verified by search). This client adds no file under
 `tests/` and no import into the Python package, so it cannot move that number in either
 direction.
 
@@ -305,7 +305,7 @@ the path is selectable, labelled UNVERIFIED, and never presents a black surface 
 After any change to this tree, run both:
 
 ```powershell
-.\venv\Scripts\python.exe android-client-ref\tools\verify_structure.py
+.\venv\Scripts\python.exe android\raw-usb-ref\tools\verify_structure.py
 .\venv\Scripts\python.exe -m unittest discover -s tests -q
 ```
 

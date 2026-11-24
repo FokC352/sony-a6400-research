@@ -39,7 +39,7 @@ Both manifests confirm completed queries and unchanged `osal_ulogio.ko`, SHA-256
 Example from PowerShell:
 
 ```powershell
-wsl.exe --cd "/mnt/c/Users/Administrator/Desktop/a6400 project" --exec python3 -u -m tools.research.rea_wsl_batch --target firmware/extracted_a6400/firmware.tar_unpacked/0700_part_image/dev/nflasha15_unpacked/kmod/osal_ulogio.ko --procedure ulogio_get_logaddr --report-dir artifacts/tools/rea/NEW_REPORT_DIRECTORY
+wsl.exe --cd "<repo-root>" --exec python3 -u -m tools.research.rea_wsl_batch --target firmware/extracted_a6400/firmware.tar_unpacked/0700_part_image/dev/nflasha15_unpacked/kmod/osal_ulogio.ko --procedure ulogio_get_logaddr --report-dir artifacts/tools/rea/NEW_REPORT_DIRECTORY
 .\venv\Scripts\python.exe -m tools.research.dmm_timer_setup
 .\venv\Scripts\python.exe -m tools.research.ulogio_input_scan
 ```

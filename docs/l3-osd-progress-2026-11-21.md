@@ -57,7 +57,7 @@ a 20 ms loop, so no visible UI is drawn yet.
 
 ## Evidence and commits
 
-- Evidence 9001 to 9006 under ../docs/evidence/
+- Evidence 9001 to 9006 under `docs/evidence/`
 - Commits on gemini/l3-heap-overrun: b932732, f8f79bd, 7729b2f, f2b7021,
   6e84aea, c993076.
 

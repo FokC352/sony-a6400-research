@@ -10,7 +10,7 @@
 # are compile-only fakes), then runs the host assertions. No GPU, no camera, no
 # Android SDK is involved.
 #
-#   .\android-client-ref\tests\host_compile.ps1
+#   .\android\raw-usb-ref\tests\host_compile.ps1
 #
 # Exit code: 0 = compile clean (no warnings, -Werror) and all assertions passed.
 
