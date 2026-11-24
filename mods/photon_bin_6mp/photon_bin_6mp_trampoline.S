@@ -4,6 +4,7 @@
 
 /* 12-byte prologue replay of ImageBuilder::MakeRawInfoArea in libObj.so:
  *   ILCE-6400A 1.01: 0x05fc2000 + 0x00d7861c = 0x06d3a61c (continues at 0x06d3a629).
+ *   ILCE-6100  1.00: 0x05d18000 + 0x00decbcc = 0x06b04bcc (continues at 0x06b04bd9).
  * Relocated automatically by Mod Loader v2 via RLC1 /proc/self/maps. */
 .balign 4
 .global pb_orig_make_raw_info_area
@@ -16,6 +17,10 @@ pb_orig_make_raw_info_area:
     mov r4, r0
     mov r6, r1
     ldr.w pc, [pc, #0]
+#if defined(TARGET_A6100) || defined(TARGET_ILCE6100)
+    .word 0x06b04bd9
+#else
     .word 0x06d3a629
+#endif
 
 .section .note.GNU-stack,"",%progbits
