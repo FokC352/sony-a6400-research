@@ -756,6 +756,164 @@ static bool sony_get_work_dma(Object *obj, Error **errp)
 }
 
 /*
+ * Opt-in 0xF30A memory-fill engine (E0642 section 1). The routine is av-cam's
+ * entry_pre hardware path: the packaged image (90d515cf) calls 0x635DC810 via
+ * the 0x635C6044 stub, the captured ORIL image (dd8f8d0c) 0x635DC898. Both
+ * program the same registers:
+ *   +0x1280 CTRL: 0x20 prepare, then 0x21 start
+ *   +0x1284 STATUS: bit 31 busy, clear once the fill has completed
+ *   +0x128C written 0 once (role not established), read back
+ *   +0x12A0 DST_PA, +0x12A4 BYTE_LEN
+ *   +0x12AC..+0x12C4 four 32-bit fill words (0 in the only observation)
+ * The routine zeroes LIRO's bss (package 0x0403A000 + 0x497A26, captured
+ * 0x04052000 + 0x49D625) and then runs the work DMA copy of av-cam's
+ * initialised RW data.  A cold QEMU boot already has that region zero (it is
+ * part of the preloaded av-cam image), so the unmodelled engine is harmless
+ * there.  A RAM-to-RAM handover from the stock OS starts with av-cam's previous
+ * bss and needs the fill, otherwise the 1,878 captured references read stale
+ * data (E0644, E0681).
+ *
+ * Only the observed zero fill is executed.  A non-zero fill word, a zero or
+ * oversized length, or an unaligned destination is refused and logged under
+ * -d unimp: E0642 records no non-zero fill, alignment or interrupt semantics,
+ * so no invented behaviour is reported as done with data.  The fill completes
+ * synchronously, so busy reads 0 (timing is not modelled).
+ *
+ * The engine's registers sit inside the 0xF30A1000 AIF group's second 0x80-byte
+ * channel block.  The model is a 0x2000 container at 0xF30A0000 whose only
+ * leaf is the 0x80-byte fill window at +0x1280, at a priority above the AIF
+ * groups, so every other register in that group (and the rest of 0xF30A0000)
+ * still reaches its own model.
+ */
+#define CXD90045_F30A_BASE       0xF30A0000ULL
+#define CXD90045_F30A_SIZE       0x2000ULL
+#define CXD90045_F30A_WIN_OFF    0x1280ULL
+#define CXD90045_F30A_WIN_SIZE   0x80ULL
+/* Window-relative offsets: the leaf MemoryRegion starts at container +0x1280, so
+ * E0642's absolute +0x1280 CTRL is offset 0 here. */
+#define F30A_CTRL                0x00
+#define F30A_STATUS              0x04
+#define F30A_DST                 0x20
+#define F30A_LEN                 0x24
+#define F30A_FILL0               0x2C
+#define F30A_FILL1               0x34
+#define F30A_FILL2               0x3C
+#define F30A_FILL3               0x44
+#define F30A_MAX_LEN             (64u << 20)
+#define F30A_REG(off)            ((off) >> 2)
+
+static bool sony_a6400_f30a_fill;
+
+typedef struct CxdF30aFill {
+    MemoryRegion container;
+    MemoryRegion window;
+    uint32_t regs[CXD90045_F30A_WIN_SIZE >> 2];
+    uint64_t fills, bytes, refused;
+} CxdF30aFill;
+
+static uint64_t cxd90045_f30a_read(void *opaque, hwaddr offset, unsigned size)
+{
+    CxdF30aFill *s = opaque;
+    uint32_t v = s->regs[F30A_REG(offset)];
+
+    qemu_log_mask(LOG_UNIMP, "cxd90045.f30a-fill: read +0x%" HWADDR_PRIx
+                  " size %u -> 0x%x\n", offset, size, v);
+    if (offset == F30A_STATUS) {
+        v &= ~0x80000000u;              /* the fill already finished */
+    }
+    return size == 4 ? v : (v >> ((offset & 3) * 8)) & ((1u << (size * 8)) - 1);
+}
+
+static void cxd90045_f30a_run(CxdF30aFill *s)
+{
+    uint32_t dst = s->regs[F30A_REG(F30A_DST)];
+    uint32_t len = s->regs[F30A_REG(F30A_LEN)];
+    uint32_t fill[4] = {
+        s->regs[F30A_REG(F30A_FILL0)], s->regs[F30A_REG(F30A_FILL1)],
+        s->regs[F30A_REG(F30A_FILL2)], s->regs[F30A_REG(F30A_FILL3)],
+    };
+    uint8_t zeros[4096] = { 0 };
+
+    if (fill[0] || fill[1] || fill[2] || fill[3] || !len ||
+        len > F30A_MAX_LEN || (dst & 3)) {
+        s->refused++;
+        qemu_log_mask(LOG_UNIMP, "cxd90045.f30a-fill: refused fill dst=0x%08x "
+                      "len=0x%x words=%08x,%08x,%08x,%08x (not modelled, "
+                      "no fill)\n", dst, len, fill[0], fill[1], fill[2],
+                      fill[3]);
+        return;
+    }
+    for (uint32_t off = 0; off < len; ) {
+        uint32_t chunk = MIN(len - off, (uint32_t)sizeof(zeros));
+
+        address_space_write(&address_space_memory, dst + off,
+                            MEMTXATTRS_UNSPECIFIED, zeros, chunk);
+        off += chunk;
+    }
+    s->fills++;
+    s->bytes += len;
+    qemu_log_mask(LOG_UNIMP, "cxd90045.f30a-fill: fill #%" PRIu64
+                  " 0x%08x + 0x%x bytes zero (total %" PRIu64 ")\n",
+                  s->fills, dst, len, s->bytes);
+}
+
+static void cxd90045_f30a_write(void *opaque, hwaddr offset, uint64_t value,
+                                unsigned size)
+{
+    CxdF30aFill *s = opaque;
+    uint32_t v = (uint32_t)value;
+
+    qemu_log_mask(LOG_UNIMP, "cxd90045.f30a-fill: write +0x%" HWADDR_PRIx
+                  " size %u <- 0x%x\n", offset, size, v);
+    s->regs[F30A_REG(offset)] = v;
+    if (offset == F30A_CTRL && v == 0x20) {
+        qemu_log_mask(LOG_UNIMP, "cxd90045.f30a-fill: prepare (CTRL=0x20)\n");
+    } else if (offset == F30A_CTRL && v == 0x21) {
+        cxd90045_f30a_run(s);
+    } else if (offset == F30A_CTRL) {
+        qemu_log_mask(LOG_UNIMP, "cxd90045.f30a-fill: CTRL=0x%x not modelled\n",
+                      v);
+    }
+}
+
+static const MemoryRegionOps cxd90045_f30a_ops = {
+    .read = cxd90045_f30a_read,
+    .write = cxd90045_f30a_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static void cxd90045_create_f30a_fill(MemoryRegion *sysmem)
+{
+    CxdF30aFill *s = g_new0(CxdF30aFill, 1);
+
+    memory_region_init(&s->container, NULL, "cxd90045.f30a-fill",
+                       CXD90045_F30A_SIZE);
+    memory_region_init_io(&s->window, NULL, &cxd90045_f30a_ops, s,
+                          "cxd90045.f30a-fill-window", CXD90045_F30A_WIN_SIZE);
+    memory_region_add_subregion(&s->container, CXD90045_F30A_WIN_OFF,
+                                &s->window);
+    /* Above the AIF groups (-300) and the unmodelled catch-all (-1000); the
+     * container's other addresses have no leaf and stay transparent. */
+    memory_region_add_subregion_overlap(sysmem, CXD90045_F30A_BASE,
+                                        &s->container, -100);
+}
+
+static bool sony_get_f30a_fill(Object *obj, Error **errp)
+{
+    return sony_a6400_f30a_fill;
+}
+
+static void sony_set_f30a_fill(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "f30a-fill is a startup option");
+        return;
+    }
+    sony_a6400_f30a_fill = enabled;
+}
+
+/*
  * Opt-in bus error inside the reserved first megabyte (E0647).  On a physical
  * ILCE-6400 a user-space /dev/mem read of PA 0x000F8000 returned an external
  * abort ("external abort on non-linefetch (0x008)") and Sony's exception
@@ -2445,6 +2603,9 @@ static void sony_a6400_init(MachineState *machine)
     if (sony_a6400_work_dma) {
         cxd90045_create_work_dma(get_system_memory());
     }
+    if (sony_a6400_f30a_fill) {
+        cxd90045_create_f30a_fill(get_system_memory());
+    }
     if (sony_a6400_ddrb_control) {
         cxd90045_create_ddrb(sysmem);
     }
@@ -3101,6 +3262,11 @@ static void sony_a6400_machine_init(MachineClass *mc)
     object_class_property_set_description(OBJECT_CLASS(mc), "work-dma",
         "Model the work DMA copy channel at 0xF0102000 (+0x1C0, mode "
         "0x1C491000 only; E0641)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "f30a-fill",
+                                   sony_get_f30a_fill, sony_set_f30a_fill);
+    object_class_property_set_description(OBJECT_CLASS(mc), "f30a-fill",
+        "Model the 0xF30A memory-fill engine at +0x1280 (zero fill only; "
+        "E0642)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "zve10-menu-boot",
                                    sony_get_zve10_menu_boot,
                                    sony_set_zve10_menu_boot);

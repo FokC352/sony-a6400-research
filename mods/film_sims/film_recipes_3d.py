@@ -28,7 +28,8 @@ class FilmRecipe3D:
     shadow_toe: float = 0.0         # negative crushes shadows, positive lifts
     mid_contrast: float = 1.0       # S-curve slope around crossover
     crossover: float = 0.28         # anchor point
-    highlight_rolloff: float = 0.0  # 0..1 soft shoulder compression
+    highlight_rolloff: float = 0.0  # 0..1 Hermite shoulder slope reduction
+    shoulder: float = 0.0           # 0..1 extra ARRI-style highlight knee (0 = off)
     black_fade: float = 0.0         # 0..0.05 lifted black floor
     white_ceiling: float = 1.0      # 0.90..1.0 peak white
     # Global color & crosstalk
@@ -58,188 +59,298 @@ class FilmRecipe3D:
 RECIPES_3D: dict[str, FilmRecipe3D] = {
     "Classic Chrome": FilmRecipe3D(
         name="Classic Chrome",
-        shadow_toe=-0.24,
-        mid_contrast=1.32,
+        shadow_toe=-0.15,
+        mid_contrast=1.18,
         crossover=0.28,
-        highlight_rolloff=0.55,
-        black_fade=0.008,
-        white_ceiling=0.985,
-        saturation=0.72,
-        warmth=0.025,
-        red_amber=0.18,
-        green_olive=0.16,
-        blue_cyan=0.20,
-        highlight_desat=0.40,
-        sky_luma=-0.20,
-        sky_sat=-0.22,
-        foliage_luma=-0.06,
-        foliage_sat=-0.24,
-        red_luma=-0.05,
-        red_highlight_hue=0.08,
-        skin_protect=0.75,
-        shadow_warmth=-0.025,
-        highlight_warmth=0.015,
+        highlight_rolloff=0.44,
+        shoulder=0.40,
+        black_fade=0.004,
+        white_ceiling=0.990,
+        saturation=0.78,
+        warmth=0.012,
+        red_amber=0.10,
+        green_olive=0.14,
+        blue_cyan=0.16,
+        highlight_desat=0.32,
+        sky_luma=-0.16,
+        sky_sat=-0.18,
+        foliage_luma=-0.04,
+        foliage_sat=-0.20,
+        red_luma=-0.03,
+        red_highlight_hue=0.05,
+        skin_protect=0.82,
+        shadow_warmth=-0.012,
+        highlight_warmth=0.010,
     ),
     "Classic Neg": FilmRecipe3D(
         name="Classic Neg",
-        shadow_toe=-0.30,
-        mid_contrast=1.42,
+        shadow_toe=-0.18,
+        mid_contrast=1.24,
         crossover=0.30,
-        highlight_rolloff=0.55,
-        black_fade=0.016,
-        white_ceiling=0.980,
+        highlight_rolloff=0.48,
+        shoulder=0.35,
+        black_fade=0.008,
+        white_ceiling=0.985,
         saturation=0.88,
-        warmth=-0.035,
-        red_amber=0.24,
-        green_olive=0.20,
-        blue_cyan=0.22,
-        highlight_desat=0.32,
-        sky_luma=-0.16,
-        sky_sat=-0.14,
-        foliage_luma=-0.10,
-        foliage_sat=-0.16,
-        red_luma=0.04,
-        red_highlight_hue=0.24,
-        skin_protect=0.70,
-        shadow_warmth=-0.055,
-        shadow_tint=-0.045,
-        highlight_warmth=0.055,
-        highlight_tint=0.025,
+        warmth=-0.015,
+        red_amber=0.16,
+        green_olive=0.12,
+        blue_cyan=0.16,
+        highlight_desat=0.28,
+        sky_luma=-0.12,
+        sky_sat=-0.12,
+        foliage_luma=-0.06,
+        foliage_sat=-0.12,
+        red_luma=0.03,
+        red_highlight_hue=0.18,
+        skin_protect=0.80,
+        shadow_warmth=-0.035,
+        shadow_tint=-0.025,
+        highlight_warmth=0.038,
+        highlight_tint=0.015,
     ),
     "Portra 400": FilmRecipe3D(
         name="Portra 400",
-        shadow_toe=0.14,
-        mid_contrast=0.94,
+        shadow_toe=0.05,
+        mid_contrast=0.98,
         crossover=0.26,
-        highlight_rolloff=0.70,
-        black_fade=0.016,
-        white_ceiling=0.990,
-        saturation=0.90,
-        warmth=0.070,
-        red_amber=0.10,
-        green_olive=0.16,
-        blue_cyan=0.10,
-        highlight_desat=0.45,
-        sky_luma=-0.05,
-        sky_sat=-0.10,
-        foliage_luma=0.03,
-        foliage_sat=-0.18,
-        red_luma=0.03,
-        red_highlight_hue=0.06,
-        skin_protect=0.90,
-        shadow_warmth=0.020,
-        highlight_warmth=0.045,
+        highlight_rolloff=0.52,
+        shoulder=0.50,
+        black_fade=0.006,
+        white_ceiling=0.995,
+        saturation=0.95,
+        warmth=0.030,
+        red_amber=0.08,
+        green_olive=0.09,
+        blue_cyan=0.07,
+        highlight_desat=0.30,
+        sky_luma=-0.03,
+        sky_sat=-0.08,
+        foliage_luma=0.02,
+        foliage_sat=-0.10,
+        red_luma=0.02,
+        red_highlight_hue=0.05,
+        skin_protect=0.92,
+        shadow_warmth=0.010,
+        highlight_warmth=0.025,
     ),
     "Gold 200": FilmRecipe3D(
         name="Gold 200",
-        shadow_toe=-0.10,
-        mid_contrast=1.20,
+        shadow_toe=-0.06,
+        mid_contrast=1.10,
         crossover=0.27,
-        highlight_rolloff=0.45,
-        black_fade=0.022,
-        white_ceiling=0.990,
-        saturation=1.12,
-        warmth=0.115,
-        red_amber=0.22,
-        green_olive=0.12,
+        highlight_rolloff=0.36,
+        shoulder=0.35,
+        black_fade=0.006,
+        white_ceiling=0.995,
+        saturation=1.08,
+        warmth=0.045,
+        red_amber=0.14,
+        green_olive=0.05,
         blue_cyan=0.08,
-        highlight_desat=0.25,
-        sky_luma=-0.08,
+        highlight_desat=0.20,
+        sky_luma=-0.07,
         sky_sat=-0.06,
         foliage_luma=0.04,
-        foliage_sat=0.05,
-        red_luma=0.05,
-        red_highlight_hue=0.15,
-        skin_protect=0.80,
-        shadow_warmth=0.035,
-        highlight_warmth=0.070,
+        foliage_sat=0.03,
+        red_luma=0.04,
+        red_highlight_hue=0.10,
+        skin_protect=0.88,
+        shadow_warmth=0.015,
+        highlight_warmth=0.038,
     ),
     "Vision3 800T": FilmRecipe3D(
         name="Vision3 800T",
-        shadow_toe=-0.18,
-        mid_contrast=1.28,
+        shadow_toe=-0.12,
+        mid_contrast=1.15,
         crossover=0.28,
-        highlight_rolloff=0.60,
-        black_fade=0.024,
-        white_ceiling=0.978,
-        saturation=0.92,
-        warmth=-0.105,
-        red_amber=0.20,
-        green_olive=0.10,
-        blue_cyan=0.24,
-        highlight_desat=0.36,
-        sky_luma=-0.12,
-        sky_sat=0.10,
-        foliage_luma=-0.08,
-        foliage_sat=-0.20,
-        red_luma=0.05,
-        red_highlight_hue=0.18,
-        skin_protect=0.72,
-        shadow_warmth=-0.070,
-        shadow_tint=-0.020,
-        highlight_warmth=0.070,
-        highlight_tint=0.020,
+        highlight_rolloff=0.52,
+        shoulder=0.55,
+        black_fade=0.012,
+        white_ceiling=0.985,
+        saturation=0.90,
+        warmth=-0.055,
+        red_amber=0.14,
+        green_olive=0.08,
+        blue_cyan=0.20,
+        highlight_desat=0.32,
+        sky_luma=-0.10,
+        sky_sat=0.06,
+        foliage_luma=-0.06,
+        foliage_sat=-0.14,
+        red_luma=0.03,
+        red_highlight_hue=0.16,
+        skin_protect=0.80,
+        shadow_warmth=-0.045,
+        shadow_tint=-0.010,
+        highlight_warmth=0.045,
+        highlight_tint=0.012,
     ),
     "ETERNA": FilmRecipe3D(
         name="ETERNA",
-        shadow_toe=0.24,
-        mid_contrast=0.74,
+        shadow_toe=0.12,
+        mid_contrast=0.85,
         crossover=0.28,
-        highlight_rolloff=0.80,
-        black_fade=0.028,
-        white_ceiling=0.955,
-        saturation=0.64,
-        warmth=-0.02,
-        red_amber=0.10,
-        green_olive=0.12,
-        blue_cyan=0.14,
-        highlight_desat=0.50,
-        sky_luma=-0.08,
-        sky_sat=-0.16,
+        highlight_rolloff=0.65,
+        shoulder=0.55,
+        black_fade=0.014,
+        white_ceiling=0.965,
+        saturation=0.70,
+        warmth=-0.010,
+        red_amber=0.06,
+        green_olive=0.10,
+        blue_cyan=0.12,
+        highlight_desat=0.42,
+        sky_luma=-0.06,
+        sky_sat=-0.12,
         foliage_luma=0.0,
-        foliage_sat=-0.18,
+        foliage_sat=-0.12,
         red_luma=0.0,
-        red_highlight_hue=0.05,
-        skin_protect=0.85,
-        shadow_warmth=-0.020,
-        highlight_warmth=0.020,
+        red_highlight_hue=0.03,
+        skin_protect=0.88,
+        shadow_warmth=-0.015,
+        highlight_warmth=0.015,
     ),
-    "ACROS B&W": FilmRecipe3D(
-        name="ACROS B&W",
-        shadow_toe=-0.26,
-        mid_contrast=1.38,
+    "Eterna Bleach Bypass": FilmRecipe3D(
+        name="Eterna Bleach Bypass",
+        shadow_toe=-0.20,
+        mid_contrast=1.30,
+        crossover=0.30,
+        highlight_rolloff=0.30,
+        shoulder=0.30,
+        black_fade=0.014,
+        white_ceiling=0.990,
+        saturation=0.40,
+        warmth=-0.020,
+        red_amber=0.02,
+        green_olive=0.02,
+        blue_cyan=0.08,
+        highlight_desat=0.30,
+        sky_luma=-0.10,
+        sky_sat=-0.06,
+        foliage_luma=-0.04,
+        foliage_sat=-0.10,
+        red_luma=0.02,
+        red_highlight_hue=0.02,
+        skin_protect=0.55,
+        shadow_warmth=-0.010,
+        shadow_tint=-0.020,
+        highlight_warmth=0.0,
+        highlight_tint=0.015,
+    ),
+    "Pro Negative": FilmRecipe3D(
+        name="Pro Negative",
+        shadow_toe=0.10,
+        mid_contrast=0.92,
+        crossover=0.26,
+        highlight_rolloff=0.50,
+        shoulder=0.55,
+        black_fade=0.004,
+        white_ceiling=0.995,
+        saturation=0.94,
+        warmth=0.018,
+        red_amber=0.05,
+        green_olive=0.06,
+        blue_cyan=0.05,
+        highlight_desat=0.20,
+        sky_luma=-0.02,
+        sky_sat=-0.04,
+        foliage_luma=0.02,
+        foliage_sat=-0.06,
+        red_luma=0.01,
+        red_highlight_hue=0.03,
+        skin_protect=0.95,
+        shadow_warmth=0.008,
+        highlight_warmth=0.015,
+    ),
+    "Reala Ace": FilmRecipe3D(
+        name="Reala Ace",
+        shadow_toe=-0.08,
+        mid_contrast=1.14,
         crossover=0.27,
         highlight_rolloff=0.42,
+        shoulder=0.40,
+        black_fade=0.004,
+        white_ceiling=0.995,
+        saturation=1.02,
+        warmth=0.012,
+        red_amber=0.06,
+        green_olive=0.05,
+        blue_cyan=0.08,
+        highlight_desat=0.18,
+        sky_luma=-0.06,
+        sky_sat=0.02,
+        foliage_luma=0.01,
+        foliage_sat=0.02,
+        red_luma=0.01,
+        red_highlight_hue=0.04,
+        skin_protect=0.90,
+        shadow_warmth=0.004,
+        highlight_warmth=0.012,
+    ),
+    "Astia": FilmRecipe3D(
+        name="Astia",
+        shadow_toe=0.06,
+        mid_contrast=0.96,
+        crossover=0.26,
+        highlight_rolloff=0.48,
+        shoulder=0.50,
+        black_fade=0.004,
+        white_ceiling=0.995,
+        saturation=1.02,
+        warmth=0.010,
+        red_amber=0.06,
+        green_olive=0.04,
+        blue_cyan=0.04,
+        highlight_desat=0.22,
+        sky_luma=-0.02,
+        sky_sat=0.06,
+        foliage_luma=0.01,
+        foliage_sat=0.04,
+        red_luma=0.01,
+        red_highlight_hue=0.03,
+        skin_protect=0.94,
+        shadow_warmth=0.006,
+        highlight_warmth=0.012,
+    ),
+    "Acros": FilmRecipe3D(
+        name="Acros",
+        shadow_toe=-0.08,
+        mid_contrast=1.08,
+        crossover=0.27,
+        highlight_rolloff=0.36,
+        shoulder=0.45,
         black_fade=0.0,
-        white_ceiling=0.996,
+        white_ceiling=0.994,
         saturation=0.0,
-        sky_luma=-0.24,
-        foliage_luma=-0.08,
-        red_luma=0.16,
+        sky_luma=-0.12,
+        foliage_luma=-0.03,
+        red_luma=0.06,
         skin_protect=0.0,
         monochrome=True,
-        bw_weights=(0.38, 0.52, 0.10),
+        bw_weights=(0.34, 0.55, 0.11),
     ),
     "Velvia": FilmRecipe3D(
         name="Velvia",
-        shadow_toe=-0.18,
-        mid_contrast=1.24,
-        crossover=0.24,
-        highlight_rolloff=0.22,
+        shadow_toe=-0.16,
+        mid_contrast=1.26,
+        crossover=0.25,
+        highlight_rolloff=0.28,
+        shoulder=0.25,
         black_fade=0.0,
         white_ceiling=1.0,
-        saturation=1.28,
-        warmth=0.02,
+        saturation=1.30,
+        warmth=0.018,
         red_amber=-0.04,
         green_olive=-0.06,
         blue_cyan=-0.04,
-        highlight_desat=0.15,
+        highlight_desat=0.12,
         sky_luma=-0.12,
-        sky_sat=0.12,
+        sky_sat=0.14,
         foliage_luma=-0.04,
         foliage_sat=0.10,
         red_luma=-0.02,
-        skin_protect=0.70,
+        skin_protect=0.72,
     ),
     "Nostalgic Neg": FilmRecipe3D(
         name="Nostalgic Neg",
@@ -269,24 +380,50 @@ RECIPES_3D: dict[str, FilmRecipe3D] = {
 }
 
 
+def _shoulder_vec(y: np.ndarray, strength: float, knee: float = 0.55) -> np.ndarray:
+    """ARRI-style highlight knee: identity below `knee`, then a C1 cubic that starts with slope 1
+    and ends with slope `1 - strength` at white. No clipping, no plateau: the top of the range is
+    compressed but every step keeps a positive slope, like the soft shoulder of a film print.
+    """
+    s = float(np.clip(strength, 0.0, 1.0))
+    if s <= 1e-9:
+        return y
+    k = float(knee)
+    u = np.clip((y - k) / max(1.0 - k, 1e-9), 0.0, 1.0)
+    g = u + s * u * u * (1.0 - u)
+    return np.where(y <= k, y, k + (1.0 - k) * g)
+
+
 def _filmic_tone_vec(x: np.ndarray, r: FilmRecipe3D) -> np.ndarray:
-    """Apply smooth parametric toe/contrast/shoulder curve elementwise on [0, 1]."""
-    xc = np.clip(r.crossover, 0.08, 0.80)
+    """C1-continuous filmic curve: two cubic Hermite segments with a matched slope at `crossover`.
+
+    Segment slopes: `m0` at black (shadow_toe), `m1` at the anchor (mid_contrast), `m2` at white
+    (highlight_rolloff). The anchor height is the average of the two slopes, which keeps every
+    Hermite segment monotone (Fritsch-Carlson bounded) and removes the flat kink the old power
+    curve had at `crossover`.
+    """
     x = np.clip(x, 0.0, 1.0)
-    gamma_toe = max(0.45, 1.0 - r.shadow_toe * 1.45)
-    y_shad = xc * np.power(np.clip(x / xc, 1e-6, 1.0), gamma_toe)
+    xc = float(np.clip(r.crossover, 0.08, 0.80))
+    m0 = float(np.clip(1.0 + 1.30 * r.shadow_toe, 0.35, 2.0))
+    m1 = float(np.clip(r.mid_contrast, 0.50, 1.70))
+    m2 = float(np.clip(1.0 - 0.85 * r.highlight_rolloff, 0.08, 1.0))
+    yc = float(np.clip(xc * 0.5 * (m0 + m1), 0.02, 0.95))
+    span = 1.0 - xc
 
-    t = np.clip((x - xc) / (1.0 - xc), 0.0, 1.0)
-    k = max(0.55, r.mid_contrast)
-    denom = np.power(t, k) + np.power(1.0 - t, k)
-    s_t = np.where(denom > 1e-9, np.power(t, k) / denom, t)
-    if r.highlight_rolloff > 0.0:
-        sh = r.highlight_rolloff
-        s_t = s_t / (1.0 + sh * 0.55 * np.square(s_t)) * (1.0 + sh * 0.55)
-    y_hi = xc + (1.0 - xc) * np.clip(s_t, 0.0, 1.0)
+    def hermite(t: np.ndarray, y1: float, slope1: float, y2: float, slope2: float, h: float) -> np.ndarray:
+        h00 = 2.0 * t**3 - 3.0 * t**2 + 1.0
+        h10 = t**3 - 2.0 * t**2 + t
+        h01 = -2.0 * t**3 + 3.0 * t**2
+        h11 = t**3 - t**2
+        return h00 * y1 + h10 * h * slope1 + h01 * y2 + h11 * h * slope2
 
+    t_shad = np.clip(x / max(xc, 1e-9), 0.0, 1.0)
+    y_shad = hermite(t_shad, 0.0, m0, yc, m1, xc)
+    t_hi = np.clip((x - xc) / max(span, 1e-9), 0.0, 1.0)
+    y_hi = hermite(t_hi, yc, m1, 1.0, m2, span)
     y = np.where(x <= xc, y_shad, y_hi)
-    return np.clip(r.black_fade + (r.white_ceiling - r.black_fade) * y, 0.0, 1.0)
+    y = _shoulder_vec(np.clip(y, 0.0, 1.0), r.shoulder)
+    return np.clip(r.black_fade + (r.white_ceiling - r.black_fade) * np.clip(y, 0.0, 1.0), 0.0, 1.0)
 
 
 def _hue_weight(hue_deg: np.ndarray, center_deg: float, half_width: float) -> np.ndarray:
@@ -297,21 +434,27 @@ def _hue_weight(hue_deg: np.ndarray, center_deg: float, half_width: float) -> np
 
 
 def _look_matrix(r: FilmRecipe3D) -> np.ndarray:
+    """White-point-preserving matrix: saturation plus primary hue rotation, each row sums to 1.
+
+    Warmth is *not* folded into this matrix (the old row-normalization cancelled it on neutrals and
+    distorted cross-channel ratios); it is applied later as a luminance-tapered tint.
+    """
     sat = r.saturation
     lr, lg, lb = 0.2126, 0.7152, 0.0722
-    m = np.array([
+    m_sat = np.array([
         [lr + (1.0 - lr) * sat, lg * (1.0 - sat), lb * (1.0 - sat)],
         [lr * (1.0 - sat), lg + (1.0 - lg) * sat, lb * (1.0 - sat)],
         [lr * (1.0 - sat), lg * (1.0 - sat), lb + (1.0 - lb) * sat],
     ], dtype=np.float64)
-    shift = np.array([
-        [1.0 + r.warmth, r.red_amber * 0.45, -r.red_amber * 0.20],
-        [r.green_olive * 0.35, 1.0, -r.green_olive * 0.20],
-        [-r.blue_cyan * 0.15, r.blue_cyan * 0.40, 1.0 - r.warmth],
+    ra = float(np.clip(r.red_amber, -0.35, 0.35))
+    go = float(np.clip(r.green_olive, -0.35, 0.35))
+    bc = float(np.clip(r.blue_cyan, -0.35, 0.35))
+    m_hue = np.array([
+        [1.0 - ra, ra, 0.0],
+        [go * 0.5, 1.0 - go, go * 0.5],
+        [0.0, bc, 1.0 - bc],
     ], dtype=np.float64)
-    m = shift @ m
-    m /= m.sum(axis=1, keepdims=True)
-    return m
+    return m_hue @ m_sat
 
 
 def evaluate_recipe_3d(rgb: np.ndarray, r: FilmRecipe3D) -> np.ndarray:
@@ -353,6 +496,15 @@ def evaluate_recipe_3d(rgb: np.ndarray, r: FilmRecipe3D) -> np.ndarray:
     if r.highlight_desat > 0.0:
         hi_desat = r.highlight_desat * np.clip((y_out - 0.62) / 0.35, 0.0, 1.0)
         out = y_out[..., None] + (1.0 - hi_desat[..., None]) * (out - y_out[..., None])
+
+    # 2b. Chromatic warmth: luminance-tapered tint that peaks in the midtones and is zero at the
+    # black and white anchors. Coefficients keep Rec.709 luma unchanged; skin protection scales it.
+    if abs(r.warmth) > 1e-9:
+        mid = 4.0 * np.clip(y_out, 0.0, 1.0) * (1.0 - np.clip(y_out, 0.0, 1.0))
+        w = r.warmth * mid * (1.0 - 0.35 * skin_w)
+        out[..., 0] = np.clip(out[..., 0] + 0.5 * w, 0.0, 1.0)
+        out[..., 1] = np.clip(out[..., 1] - 0.098 * w, 0.0, 1.0)
+        out[..., 2] = np.clip(out[..., 2] - 0.5 * w, 0.0, 1.0)
 
     # 3. Selective hue-vs-luma (dY) & hue-vs-sat
     dy = (r.sky_luma * w_sky + r.foliage_luma * w_foliage + r.red_luma * w_red) * (0.25 + 0.75 * np.sin(np.pi * np.clip(y_out, 0.0, 1.0)))

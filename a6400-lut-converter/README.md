@@ -1,5 +1,8 @@
 # a6400 LUT converter
 
+The Tk GUI in `lut_gui` is deprecated. Use `isp-studio` (`bionz-look-lab`) for preview
+and fitting. `lut_core` remains the numeric oracle for the Rust port.
+
 Fit Sony BIONZ X ISP tables from a 3D .cube or one of two ARRI references. The converter exports
 an A6LT container plus optional EC_Gamma, Q10 matrix, RefAdr and direct eSRAM buffers.
 

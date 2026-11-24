@@ -311,15 +311,18 @@ PRESETS: dict[str, FilmSimParams] = {
 }
 
 LIVE_PICKER_ORDER: tuple[str, ...] = (
-    "Velvia",
     "Classic Chrome",
     "Classic Neg",
-    "Nostalgic Neg",
     "Portra 400",
     "Gold 200",
     "Vision3 800T",
     "ETERNA",
-    "ACROS B&W",
+    "Eterna Bleach Bypass",
+    "Pro Negative",
+    "Reala Ace",
+    "Velvia",
+    "Astia",
+    "Acros",
 )
 
 
@@ -748,6 +751,11 @@ def _to_wsl_path(win_or_posix: Path) -> str:
 def build_mod(p: FilmSimParams, out_dir: Path | None = None,
               target: str = "a6100", stock: dict[str, list[int]] | None = None,
               pipeline: str = "full", cube: Any = None) -> dict[str, Any]:
+    """Build an SMOD v2. Header generation stays in Python unless ``BIONZ_CLI`` is set.
+
+    When ``BIONZ_CLI`` names ``bionz-cli`` and ``BIONZ_BZLOOK`` names one preset,
+    that CLI writes ``film_sim_data.h`` and this function still compiles it.
+    """
     prof = get_target(target)
     if stock is None:
         stock = load_stock_tables(target=target)
@@ -756,7 +764,17 @@ def build_mod(p: FilmSimParams, out_dir: Path | None = None,
     if out_dir is None:
         out_dir = prof.default_out_root / slug
     out_dir.mkdir(parents=True, exist_ok=True)
-    fit_report = emit_header(out_dir / "film_sim_data.h", stock, p, target=target, pipeline=pipeline, cube=cube)
+    cli = os.environ.get("BIONZ_CLI")
+    bzlook = os.environ.get("BIONZ_BZLOOK")
+    if cli and bzlook:
+        header_path = out_dir / "film_sim_data.h"
+        subprocess.run(
+            [cli, "pack", "--target", target, "-o", str(header_path), bzlook],
+            check=True,
+        )
+        fit_report = {"source": "bionz-cli", "bzlook": bzlook}
+    else:
+        fit_report = emit_header(out_dir / "film_sim_data.h", stock, p, target=target, pipeline=pipeline, cube=cube)
     recipe = {**p.to_dict(), "target": prof.key, "pipeline": "cube" if cube is not None else pipeline}
     if fit_report is not None:
         recipe["fit_report"] = fit_report
@@ -963,7 +981,7 @@ def emit_live_picker_header(out_header: Path, stock: dict[str, list[int]] | None
     if stock is None:
         stock = load_stock_tables(target=target)
     if presets is None:
-        presets = [PRESETS[n] for n in LIVE_PICKER_ORDER]
+        presets = [FilmSimParams(name=name) for name in LIVE_PICKER_ORDER]
 
     names = ["Stock (Off)"] + [p.name[:15] for p in presets]
     ecs, fcs, a0s, a1s, b2s, luts, lut_idxs = [], [], [], [], [], [], [-1]
