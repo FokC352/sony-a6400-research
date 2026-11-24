@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "default_rea_profile": "current",
-  "rea_tools_root": "~/a6400-rea-tools",
+  "rea_tools_root": "/home/administrator/a6400-rea-tools",
   "rea_profiles": {
     "legacy": {
       "rea_version": "6.7.0",
