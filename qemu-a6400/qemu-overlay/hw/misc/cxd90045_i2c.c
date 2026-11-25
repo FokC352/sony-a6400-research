@@ -55,16 +55,18 @@
 
 #include "qemu/osdep.h"
 #include "hw/core/sysbus.h"
+#include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
+#include "hw/misc/cxd90045_i2c.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "qom/object.h"
 
-#define TYPE_CXD90045_I2C "cxd90045-i2c"
 OBJECT_DECLARE_SIMPLE_TYPE(Cxd90045I2cState, CXD90045_I2C)
 
 #define I2C_PAGE_BASE   0xF2401000ULL
 #define I2C_REG_SIZE    0x1000
+#define I2C_MAX_SLAVES  128
 /* Same base as the board catch-all: log offset = physical - 0xF0000000. */
 #define I2C_UNMODELLED_BASE 0xF0000000ULL
 
@@ -84,9 +86,19 @@ enum {
     I2C_XFER   = 0x38,  /* +0x1038 transfer status (read 0x5f0921b0/0x5f0929d4) */
 };
 
+typedef struct CxdI2cSlaveEntry {
+    bool present;
+    CxdI2cSlaveWriteFn write_fn;
+    CxdI2cSlaveReadFn read_fn;
+    void *opaque;
+} CxdI2cSlaveEntry;
+
 struct Cxd90045I2cState {
     SysBusDevice parent_obj;
     MemoryRegion mr;
+    qemu_irq irq;
+    uint64_t page_base;
+    uint64_t reg_size;
     uint8_t reg[I2C_REG_SIZE];
     uint8_t wmask[I2C_REG_SIZE];   /* byte was written by the guest */
     bool started;                  /* +0x101c start accepted (bit 0 reads 1) */
@@ -97,10 +109,35 @@ struct Cxd90045I2cState {
     bool msg_phase;                /* +0x1038 no longer reads 3 once set */
     uint8_t tx[16];
     unsigned tx_count;
+    uint8_t rx[16];
+    unsigned rx_pos;
+    unsigned rx_len;
     uint16_t len_field;
     uint16_t addr;
     bool trace;
+    bool complete_transfers;       /* opt-in slave ACK/NACK + IRQ completion */
+    bool irq_pending;
+    bool nack_err;
+    uint8_t xfer_done_nibble;
+    bool have_xfer_done;
+    uint8_t cur_addr7;
+    CxdI2cSlaveEntry slaves[I2C_MAX_SLAVES];
 };
+
+void cxd90045_i2c_register_slave(DeviceState *dev, uint8_t addr7,
+                                 CxdI2cSlaveWriteFn write_fn,
+                                 CxdI2cSlaveReadFn read_fn,
+                                 void *opaque)
+{
+    Cxd90045I2cState *s = CXD90045_I2C(dev);
+
+    if (addr7 < I2C_MAX_SLAVES) {
+        s->slaves[addr7].present = true;
+        s->slaves[addr7].write_fn = write_fn;
+        s->slaves[addr7].read_fn = read_fn;
+        s->slaves[addr7].opaque = opaque;
+    }
+}
 
 /* True for every offset the i2c-sony driver uses (see rules.txt). */
 static bool i2c_driver_offset(hwaddr off)
@@ -132,10 +169,10 @@ static bool i2c_message_offset(hwaddr off)
            off == I2C_MSG || off == I2C_IRQ;
 }
 
-static void i2c_log_unmodelled(hwaddr off, bool write, unsigned size,
-                               uint64_t v)
+static void i2c_log_unmodelled(Cxd90045I2cState *s, hwaddr off, bool write,
+                               unsigned size, uint64_t v)
 {
-    uint64_t pa = I2C_PAGE_BASE + off - I2C_UNMODELLED_BASE;
+    uint64_t pa = s->page_base + off - I2C_UNMODELLED_BASE;
 
     if (write) {
         qemu_log_mask(LOG_UNIMP, "cxd90045.i2c.unmodelled: unimplemented "
@@ -191,11 +228,28 @@ static uint64_t i2c_read(void *opaque, hwaddr off, unsigned size)
                     !s->msg_phase;
         v = i2c_store_read(s, off, size);
         v = (v & ~0xffffULL) | (done ? 3ULL : 0ULL);
+    } else if (s->complete_transfers && off == I2C_STATUS) {
+        v = i2c_store_read(s, off, size) & ~0x20ULL;
+        if (s->nack_err) {
+            v |= 0x20ULL;
+        }
+    } else if (s->complete_transfers && off == I2C_LEN) {
+        v = i2c_store_read(s, off, size);
+        if (s->have_xfer_done) {
+            v = (v & ~0xf0ULL) | ((uint64_t)(s->xfer_done_nibble & 0xf) << 4);
+        }
+    } else if (s->complete_transfers && off == I2C_FIFO) {
+        v = (s->rx_pos < s->rx_len) ? s->rx[s->rx_pos++] : 0;
+    } else if (s->complete_transfers && off == I2C_IRQ) {
+        v = i2c_store_read(s, off, size) & ~1ULL;
+        if (s->irq_pending) {
+            v |= 1ULL;
+        }
     } else {
         if (!i2c_any_written(s, off, size) &&
             !i2c_message_offset(off)) {
             /* No R2-R4 rule and never written: R5 unmodelled read. */
-            i2c_log_unmodelled(off, false, size, 0);
+            i2c_log_unmodelled(s, off, false, size, 0);
         }
         v = i2c_store_read(s, off, size);
     }
@@ -224,6 +278,64 @@ static void i2c_log_transfer(Cxd90045I2cState *s)
              s->tx_count, tx);
 }
 
+static void i2c_complete_message(Cxd90045I2cState *s, uint16_t cmd)
+{
+    /*
+     * i2c.ko message-phase completion (i2c.ko +0x0d44, +0x1380, +0x15ac):
+     *   - TX/address phase (!(cmd & 0x08)): tx[0] holds (addr7 << 1) | rw,
+     *     followed by optional payload bytes tx[1..tx_count-1].
+     *   - RX data phase ((cmd & 0x08) != 0): reads (len_field & 0x0f) + 1
+     *     bytes from the slave selected in the preceding address phase.
+     *   - Completion sets I2C_LEN[7:4] = transferred - 1 and raises I2C_IRQ
+     *     bit 0 (write-1-to-clear); missing slaves set I2C_STATUS bit 5.
+     */
+    if (cmd & 0x08) {
+        unsigned want = (s->len_field & 0x0f) + 1;
+        if (want > ARRAY_SIZE(s->rx)) {
+            want = ARRAY_SIZE(s->rx);
+        }
+        memset(s->rx, 0, sizeof(s->rx));
+        s->rx_pos = 0;
+        s->rx_len = want;
+        if (s->cur_addr7 < I2C_MAX_SLAVES && s->slaves[s->cur_addr7].present) {
+            s->nack_err = false;
+            if (s->slaves[s->cur_addr7].read_fn) {
+                s->slaves[s->cur_addr7].read_fn(
+                    s->slaves[s->cur_addr7].opaque, s->rx, want);
+            }
+            s->xfer_done_nibble = (want - 1) & 0x0f;
+            s->have_xfer_done = true;
+        } else {
+            s->nack_err = true;
+            s->have_xfer_done = false;
+        }
+    } else if (s->tx_count >= 1) {
+        uint8_t addr7 = s->tx[0] >> 1;
+        bool is_rd = (s->tx[0] & 1) != 0;
+
+        s->cur_addr7 = addr7;
+        if (addr7 < I2C_MAX_SLAVES && s->slaves[addr7].present) {
+            s->nack_err = false;
+            if (!is_rd && s->tx_count > 1 && s->slaves[addr7].write_fn) {
+                s->slaves[addr7].write_fn(s->slaves[addr7].opaque,
+                                          &s->tx[1], s->tx_count - 1);
+            }
+            s->xfer_done_nibble = (s->tx_count - 1) & 0x0f;
+            s->have_xfer_done = true;
+        } else {
+            s->nack_err = true;
+            s->have_xfer_done = false;
+        }
+    } else {
+        s->nack_err = true;
+        s->have_xfer_done = false;
+    }
+
+    s->msg_active = false;
+    s->irq_pending = true;
+    qemu_set_irq(s->irq, 1);
+}
+
 static void i2c_write(void *opaque, hwaddr off, uint64_t v, unsigned size)
 {
     Cxd90045I2cState *s = opaque;
@@ -235,6 +347,12 @@ static void i2c_write(void *opaque, hwaddr off, uint64_t v, unsigned size)
     }
 
     switch (off) {
+    case I2C_STATUS:
+        if (s->complete_transfers && (v & 0x20)) {
+            s->nack_err = false;
+            s->reg[I2C_STATUS] &= ~0x20;
+        }
+        break;
     case I2C_CMD:
         /* R2: 1 starts a transaction, 0 stops/aborts; both reset the set. */
         s->started = (v & 1) != 0;
@@ -242,6 +360,15 @@ static void i2c_write(void *opaque, hwaddr off, uint64_t v, unsigned size)
         s->cfg_t10 = false;
         s->cfg_t14 = false;
         s->msg_phase = false;
+        s->have_xfer_done = false;
+        break;
+    case I2C_ABORT:
+        if (s->complete_transfers && (v & 1)) {
+            s->msg_active = false;
+            s->nack_err = false;
+            s->irq_pending = false;
+            qemu_set_irq(s->irq, 0);
+        }
         break;
     case I2C_AUX:
         s->cfg_aux = (v & 1) != 0;
@@ -258,6 +385,7 @@ static void i2c_write(void *opaque, hwaddr off, uint64_t v, unsigned size)
         s->tx_count = 0;
         s->len_field = 0;
         s->addr = 0;
+        s->have_xfer_done = false;
         break;
     case I2C_FIFO:
         if (s->msg_active && s->tx_count < ARRAY_SIZE(s->tx)) {
@@ -266,18 +394,29 @@ static void i2c_write(void *opaque, hwaddr off, uint64_t v, unsigned size)
         break;
     case I2C_LEN:
         s->len_field = (uint16_t)v;
+        s->have_xfer_done = false;
+        break;
+    case I2C_IRQ:
+        if (s->complete_transfers && (v & 1)) {
+            s->irq_pending = false;
+            s->reg[I2C_IRQ] &= ~1;
+            qemu_set_irq(s->irq, 0);
+        }
         break;
     case I2C_ADDR:
         s->msg_phase = true;
         s->addr = (uint16_t)v;
         i2c_log_transfer(s);
+        if (s->complete_transfers) {
+            i2c_complete_message(s, (uint16_t)v);
+        }
         break;
     default:
         break;
     }
 
     if (!i2c_driver_offset(off)) {
-        i2c_log_unmodelled(off, true, size, v);
+        i2c_log_unmodelled(s, off, true, size, v);
     }
     if (s->trace) {
         qemu_log("i2c-trace: write off 0x%03x size %u value 0x%08x\n",
@@ -306,21 +445,40 @@ static void i2c_reset(DeviceState *dev)
     s->msg_active = false;
     s->msg_phase = false;
     s->tx_count = 0;
+    s->rx_pos = 0;
+    s->rx_len = 0;
     s->len_field = 0;
     s->addr = 0;
+    s->irq_pending = false;
+    s->nack_err = false;
+    s->xfer_done_nibble = 0;
+    s->have_xfer_done = false;
+    s->cur_addr7 = 0;
+    if (s->complete_transfers) {
+        qemu_set_irq(s->irq, 0);
+    }
 }
 
 static void i2c_realize(DeviceState *dev, Error **errp)
 {
     Cxd90045I2cState *s = CXD90045_I2C(dev);
+    uint64_t sz = s->reg_size ? s->reg_size : I2C_REG_SIZE;
 
+    if (sz > I2C_REG_SIZE) {
+        sz = I2C_REG_SIZE;
+    }
     memory_region_init_io(&s->mr, OBJECT(dev), &i2c_ops, s,
-                          "cxd90045-i2c", I2C_REG_SIZE);
+                          "cxd90045-i2c", sz);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr);
+    sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
 }
 
 static const Property i2c_props[] = {
     DEFINE_PROP_BOOL("trace", Cxd90045I2cState, trace, false),
+    DEFINE_PROP_BOOL("complete-transfers", Cxd90045I2cState,
+                     complete_transfers, false),
+    DEFINE_PROP_UINT64("base", Cxd90045I2cState, page_base, I2C_PAGE_BASE),
+    DEFINE_PROP_UINT64("size", Cxd90045I2cState, reg_size, I2C_REG_SIZE),
 };
 
 static void i2c_class_init(ObjectClass *klass, const void *data)

@@ -55,14 +55,13 @@ All listed cameras share Sony's **BIONZ X (`CXD90045`)** processor ([platform ov
 
 Roughly 90% of development happens completely offline in Python and C using two complementary emulators:
 
-- **QEMU (`qemu-a6400/`) — Full Virtual Camera:** Boots all 4 CPU cores, eMMC partitions, 40 Linux kernel modules, `av-cam.bin`, and the real camera menu (`im.elf`) with a live browser rear screen (`rear_panel.py`) and instant mod hot-reload. See [`qemu-a6400/README.md`](qemu-a6400/README.md) and [`qemu-a6400/MOD_DEVELOPMENT.md`](qemu-a6400/MOD_DEVELOPMENT.md).
+- **QEMU (`qemu-a6400/`) — Full Virtual Camera:** Boots all 4 CPU cores, eMMC partitions, 40 Linux kernel modules, `av-cam.bin`, and the real camera menu (`im.elf`) across all 8 modeled `CXD90045` bodies (`sony-a6400`, `sony-a6400a`, `sony-zve10`, `sony-a6100`, `sony-a6600`, `sony-a7c`, `sony-a7m3`, `sony-a7rm4a`) with a live browser rear screen (`rear_panel.py`), clickable virtual touchscreen (`MenuTouchFull` taps & swipes), opt-in `BCM4339` Wi-Fi/Bluetooth, HDMI/CEC output, `AudioIp` DMA I/O, E-mount lens motors, and instant mod hot-reload ([E0699](docs/evidence/0699-qemu-touchscreen-peripherals-and-multimodel.md)). See [`qemu-a6400/README.md`](qemu-a6400/README.md) and [`qemu-a6400/MOD_DEVELOPMENT.md`](qemu-a6400/MOD_DEVELOPMENT.md).
 - **Unicorn (`src/a6400/`) — Fast ARM Engine:** Runs isolated kernel (`L2`) and app (`L3`) slices in Python to verify mods, memory safety, and OS contracts automatically in CI without booting a full machine.
 
 ### What Does Not Work in the Emulator Yet
-- **Real sensor & SD photo/video capture:** QEMU renders a synthetic test pattern, not live lens/sensor RAW frames or saved AVCHD/JPEG files ([QEMU status](qemu-a6400/STATUS.md)).
-- **Touchscreen hardware in QEMU:** No virtual touch controller is wired yet, so touch clicks cannot be tested inside QEMU.
+- **Real sensor & SD photo/video capture:** QEMU renders a synthetic test pattern and models E-mount `BL` focus/iris/zoom/OSS actuator positions without optical defocus or saved RAW/AVCHD/JPEG files ([QEMU status](qemu-a6400/STATUS.md)).
 - **Live USB webcam (UVC) stream:** EP0 control enumeration works, while real USB video streaming endpoints remain unfinished ([CONTRIBUTING_UVC_PTP.md](docs/CONTRIBUTING_UVC_PTP.md)).
-- **Radios, HDMI, Audio & Lens hardware:** Wi-Fi/Bluetooth (`BCM4339`), HDMI output, audio I/O, and E-mount lens motors are not emulated.
+- **Over-the-air RF & BLE links:** `BCM4339` emulates SDIO enumeration, Silicon Backplane/TCM upload, `BCDC` control `ioctl`s, and Bluetooth H4 HCI + `.hcd` firmware loading, not live 802.11 WPA2/TCP traffic or BLE peer connections ([E0699](docs/evidence/0699-qemu-touchscreen-peripherals-and-multimodel.md)).
 
 ### Quick Start & Repository Map
 
@@ -88,7 +87,7 @@ python -m unittest discover -s tests -q
 
 This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)**.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=ad15e3f73ec8)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=75ebd948ce37)
 
 [Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 

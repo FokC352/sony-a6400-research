@@ -177,12 +177,7 @@ Do not treat that as Sony gadget compatibility. Require the original
 Sony gadget to enumerate and complete a basic MSC or PTP read before
 testing streaming.
 
-- There is no QMP absolute-pointer handler for a physical touchscreen.
-  An explicit [native touch report replay](../docs/evidence/mods/2026-11-19-firmware-qualification.md#native-touch-follow-up)
-  supplies down/move/up below `InputService::callback_tp` instead. The
-  matched v2 ON/OFF controls cover tab taps, horizontal swipes, page dots,
-  row selection/opening, and popup highlighting/dismissal. They do not
-  qualify controller hardware, popup setting commits, or vertical scrolling.
+- Virtual touchscreen input is enabled by default in `rear_panel.py` (`touchscreen=on` -> FocalTech `0x20` on `i2c0` IRQ 199 + `P0.12` IRQ 133 + VPH Console 0 `abs`/`btn` handler, [E0699](../docs/evidence/0699-qemu-touchscreen-peripherals-and-multimodel.md)): clicking and swiping `#lcd` drives `MenuTouchFull` through Sony's unmodified `i2c.ko` -> `av-cam.bin` -> `0x007b0026` -> `libObj.so` `I-TpMain` path. Earlier queue-level replays remain documented in [2026-11-19 firmware qualification](../docs/evidence/mods/2026-11-19-firmware-qualification.md#native-touch-follow-up). Popup setting commits and physical glass timing still require camera verification.
 - The guest tmpfs at `/tmp_bt` and the `/setting` staging exist only in the disposable overlay.
 - A QEMU pass covers the tested contract. Camera use still needs an explicit go-ahead and a
   RAM-only verification for physical peripherals and timing.

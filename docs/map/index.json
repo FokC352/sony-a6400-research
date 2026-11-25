@@ -58,7 +58,7 @@
     "qemu-a6400": {
       "title": "QEMU sony-a6400 machine",
       "doc": "docs/map/qemu-a6400.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-25",
       "evidence_span": "see record index"
     },
     "storage-sd-backup": {
@@ -1017,7 +1017,8 @@
         "C11",
         "C14",
         "C16",
-        "C21"
+        "C21",
+        "C22"
       ],
       "inactive_claims": []
     },
@@ -1082,7 +1083,8 @@
         "C10",
         "C15",
         "C19",
-        "C20"
+        "C20",
+        "C22"
       ],
       "inactive_claims": []
     },
@@ -9912,6 +9914,15 @@
         "status": "open"
       }
     ],
+    "E0699": [
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C22",
+        "file": "0699-qemu-touchscreen-peripherals-and-multimodel.md",
+        "status": "verified-offline"
+      }
+    ],
     "E9001": [
       {
         "area": "l3-userspace",
@@ -12236,6 +12247,9 @@
     ],
     "0698-wifisync-camera-side-mod.md": [
       "mods"
+    ],
+    "0699-qemu-touchscreen-peripherals-and-multimodel.md": [
+      "qemu-a6400"
     ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"
