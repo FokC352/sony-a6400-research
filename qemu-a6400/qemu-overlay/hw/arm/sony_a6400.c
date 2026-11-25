@@ -2905,6 +2905,25 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     /*
+     * TPU / jog-dial counter block at 0xF2404000 (4 KiB, E0573: the JogTpu
+     * accessor reads the 16-bit counter at 0xF2404014 + (channel << 8)).
+     * Three channels at 0x100 stride; driver-defined 16-bit registers at
+     * +0x00..+0x34 store and read back, the counter holds the last write,
+     * and +0x2c bit 0 is the run bit (L0038, cxd90045_tpu.c).  No IRQ is
+     * connected: the driver polls +0x2c bit 0 / +0x10 bit 7 and names no
+     * completion interrupt.  The opt-in rear-wheel counter (rear-controls=on)
+     * maps its 2 bytes at 0xF2404014 with priority -500, so it overlays this
+     * page's counter when enabled; this model is at -600, above the
+     * cxd90045.unmodelled catch-all (-1000).  Nothing else maps this page.
+     */
+    {
+        DeviceState *tpu = qdev_new("cxd90045-tpu");
+
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(tpu), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(tpu), 0, 0xF2404000ULL, -600);
+    }
+
+    /*
      * Imager / ComboPHY window (E0534).  av-cam keeps absolute pointers
      * here (Leo clk 0xFC021000, MIPI D-PHY register blocks, sensor tables
      * under 0xFC0Axxxx).  Reads of unassigned space are 0, so a
