@@ -3440,6 +3440,38 @@ static const Cxd90045F292Rule cxd90045_f022_rules[] = {
       "write-only; the value is stored but never read back (L0114)" },
 };
 
+/*
+ * clkrst3 clock/reset bank at PA 0xF2900000, size 0x1000 (F-0104, L0116).
+ * The kernel clk-init and av-cam clock code write these offsets; the reads
+ * the catch-all used to answer are 0, and the rows below keep that value.
+ * Every row is ZERO (read 0, writes stored and never read back), so the
+ * guest sees no change.  +0x030 gets NO row on purpose: its read is
+ * branched on (F-0104), so a constant would be a guess, and it must still
+ * log as cxd90045.f290.unmodelled.  The 4 KiB page is the only range this
+ * window covers; the LDEC page at 0xF2903000 and the 0xF2800000 regfile are
+ * separate.  Unruled offsets still log, so the window is not a blanket zero.
+ */
+static const Cxd90045F292Rule cxd90045_f290_rules[] = {
+    { 0x004, CXD90045_F292_ZERO,
+      "write/read pair; read returns 0, the catch-all value (F-0104) (L0116)" },
+    { 0x008, CXD90045_F292_ZERO,
+      "write/read pair; read returns 0, the catch-all value (F-0104) (L0116)" },
+    { 0x028, CXD90045_F292_ZERO,
+      "kernel clk-init write 0x60122F60..0x60123044; no read (F-0104) (L0116)" },
+    { 0x034, CXD90045_F292_ZERO,
+      "kernel clk-init write; no read (F-0104) (L0116)" },
+    { 0x038, CXD90045_F292_ZERO,
+      "kernel clk-init write; no read (F-0104) (L0116)" },
+    { 0x044, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0A4, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0A8, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0C4, CXD90045_F292_ZERO,
+      "kernel clk-init write/read pair; read returns 0 (F-0104) (L0116)" },
+};
+
 typedef struct Cxd90045F292 {
     MemoryRegion mmio;
     const Cxd90045F292Rule *rules;
@@ -4579,6 +4611,14 @@ static void sony_a6400_init(MachineState *machine)
     cxd90045_f292_create(sysmem, 0xF0220000ULL, 0x20000ULL,
                          "cxd90045.f022", cxd90045_f022_rules,
                          ARRAY_SIZE(cxd90045_f022_rules));
+
+    /*
+     * L0116: clkrst3 clock/reset bank at 0xF2900000 (F-0104), priority -600
+     * as in L0108.  Rules above; +0x030 has no rule and still logs.
+     */
+    cxd90045_f292_create(sysmem, 0xF2900000ULL, 0x1000ULL,
+                         "cxd90045.f290", cxd90045_f290_rules,
+                         ARRAY_SIZE(cxd90045_f290_rules));
 
     /*
      * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
