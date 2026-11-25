@@ -38,6 +38,66 @@ offset), and the final sequencer state is identical (index 42, step
 `0x897F`, status/mirror `0x0102`, top/b5_top/b5_opd 1, 43 steps). Console and
 all other devices are untouched.
 
+## 0xF2920000 OTG and av-cam A/E rule windows (2026-11-21 / L0100)
+
+The F-0099 contract splits the `0xF2920000` 64 KiB block across three owners:
+the kernel FUSB/OTG driver (`0x0000..0x2FFF`, udif "otg" size `0x3000`),
+av-cam sub-block A (`0xA000`) and av-cam sub-block E (`0xE000`). A fresh
+120 s certified-env baseline boot of `loop/builds/L0098` (qemu sha256
+`5708b5f9…f43d9`, log sha256 `8a2ddf22…2837e`) logs the same 26 catch-all
+pairs as F-0099: 15 in these three windows (11 distinct offsets) and 11 in
+the unresolved `0x292C000` page.
+
+`sony_a6400.c` now maps a local per-offset rule block at priority -600 in
+three windows: `0xF2920000` (`0x3000`), `0xF292A000` (`0x1000`) and
+`0xF292E000` (`0x1000`). RF (read back the last write) is used only where
+F-0099 shows a read-after-write: OTG `+0x40/+0x50/+0x100`
+(`0x602AD5BC/5E4`, `0x602AD5EC/694`, `0x602AD748/76C`) and A `+0x10`
+(`0x63CEEF86..AE`). Z0 (read 0) covers OTG `+0x10` (VBUS/CID status,
+`0x602AD2AC..`), A `+0x44/+0x70/+0x74/+0x80` (write-only config and
+`0x63CEF038/054` status getters) and E `+0x08/+0x18` (write-only, stored via
+`0x63D99230`). Writes are stored for every offset. An offset without a rule
+inside a mapped window still logs both ways in the `cxd90045.*.unmodelled`
+format with the `0xF0000000` base, so the windows are not blanket zeroes.
+The unresolved `0xF292C000` page was not mapped by L0100; L0102 maps it
+after F-0101 showed it live (next section).
+
+A fresh 120 s post-change boot (qemu sha256 `b1bd997d…3f3702`, log sha256
+`de8a3e15…c85e4`) has 0 catch-all pairs in all three windows and the
+identical unresolved C-page 11 pairs. Distinct catch-all pairs fall
+730 -> 715 (-15) and the out-of-block set is unchanged at 704 pairs; the
+`stub_regs` count is unchanged (4736). The final sequencer state is identical
+(index 42, step `0x897F`, 0 mismatches, identity and step-table controls
+true). The oracle's own scorer returns admissible with
+`unmodelled_distinct 715`. qtest (`tests/test_qemu_f292.py`) passes 18/18:
+all four RF words read back, all seven Z0 words read 0 after a write, ruled
+offsets are silent, and one unruled offset in each window
+(`+0x44`, `+0xA100`, `+0xE100`) plus the out-of-scope C page still log.
+
+## 0xF292C000 HDMI TX rule window (2026-11-21 / L0102)
+
+F-0101 showed the `0x292C000` page is live: 11 distinct `(read|write, offset)`
+pairs / 41 accesses in a certified boot. `sony_a6400.c` now maps a fourth
+local per-offset rule window `0xF292C000..0xF292CFFF` at priority -600
+(`cxd90045.f292-c`) with one Z0 rule per observed offset and no RF rule,
+because the page has no read-follows-write: the ten write offsets run at PC
+`0x5F519BEC` / LR `0x5F519BE8` and are never read; `+0x160` is a 21-read
+poll at PC `0x5F519B34` / LR `0x5F519F94`, never written, so 0 is the
+observed catch-all value (F-0101). Writes are stored for every offset; an
+unruled offset in the page still logs both ways as
+`cxd90045.f292-c.unmodelled` with the `0xF0000000` base.
+
+A fresh 120 s certified-env boot of `loop/builds/L0102` (qemu sha256
+`59eaf180…79c82`, model sha256 `11929b07…bd148`, log sha256
+`9a210aea…a3511`) has 0 catch-all pairs in the page and 704 distinct
+catch-all pairs (715 -> 704: exactly the 11 page pairs, nothing added).
+The final sequencer state is identical (index 42, step `0x897F`, status and
+mirror `0x0102`, top/b5_top/b5_opd 1, 43 steps, 0 mismatches, identity and
+step-table controls true). qtest (`tests/test_qemu_f292c.py`) passes 16/16:
+all 11 page offsets read 0 after a write, the shared rule block's RF path
+still reads back the last write at OTG `+0x40` (code-path control; no page
+offset is RF), and an unruled `+0x200` still logs read and write.
+
 ## Opt-in bus error in the reserved first MiB (2026-11-19 / E0647)
 
 What the option does:
