@@ -4,7 +4,7 @@
 
 - **Scope:** The QEMU sony-a6400 board: captured four-core boot, av-cam and CamCore sequencing, SIO/sub-micro, display/rear panel, Ydet/CamPig, live-view frame, contributor scores, Custom OS handover guards and DMA engines.
 - **Evidence span:** see record index; last reviewed 2026-11-25.
-- **Deep review:** 60 of 69 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 60 of 70 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -115,7 +115,7 @@ Do not rely on:
 
 - ~~The LIRO ram section filled through 0xF30A is a separate sub-core firmware image.~~ **R01** `RETRACTED` ([E0642](../evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md)); see C13: The LIRO ram section copied by the work DMA is av-cam's own initialised RW data (1,878 references from av-cam code), not a sub-core image.
 
-## Record index (69 files)
+## Record index (70 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -190,3 +190,4 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0700](../evidence/0700-qemu-touchscreen-peripherals-and-multimodel.md) | 2026-11-25 | QEMU Virtual Touchscreen, Peripherals (`BCM4339`, HDMI/CEC, AudioIp, E-Mount Lens Motors), and 8-Model `CXD90045` Compatibility | yes |  |
 | [E0701](../evidence/0701-qemu-f292-otg-avcam-hdmi-windows-boot-score.md) | 2026-11-25 | Boot score for per-offset windows on the `0xF2920000` OTG, av-cam and HDMI pages |  |  |
 | [E0702](../evidence/0702-qemu-rcraw-idt-page-windows-boot-score.md) | 2026-11-25 | Boot score for a per-offset window on the `0xF3030000` RCRAW/IDT page |  |  |
+| [E0703](../evidence/0703-qemu-f304-aif-page-windows-boot-score.md) | 2026-11-25 | Boot score for a per-offset window on the `0xF3040000` AIF page |  |  |

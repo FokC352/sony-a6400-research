@@ -153,6 +153,51 @@ all 12 RF words read back the exact write, all 25 sampled ZERO words read 0
 after a write, ruled offsets are silent, and an unruled `+0x1800` still
 logs read and write.
 
+## 0xF3040000 page rule window (2026-11-21 / L0108)
+
+A fresh 120 s certified-env boot of the baseline `loop/builds/L0105` (qemu
+sha256 `dea94742…517e5`, model `b91db92f…7dfd`, `qemu-d.log` sha256
+`1857c00b…7b3f`) logs **17** distinct `cxd90045.unmodelled` (read|write,
+offset) pairs / 67 accesses in PA `0xF3040000..0xF304FFFF`: 4 read offsets
+and 13 write offsets, 3 of which are both (`+0x108/110/120`).
+`loop/scratch/L0108/page-pairs.txt` lists every offset, count, size and write
+value. The AIF group at `0xF3041000` (2 channels, `0x800` bytes) belongs to
+the live-view pipeline and is not touched by the pairs.
+
+A gdbstub first-hit pass names the readers (Z3,
+`loop/runs/L0108/watch-120/watch.json` plus the late `+0x004` read in
+`readwatch-004/watch.json`) and the writers (Z2). Readers: `+0x004`
+(`0x637884F2`/LR `0x63788201`, never written), `+0x108`
+(`0x637883A6`/LR `0x63CE78FF`), `+0x110` (`0x637883C6`/LR `0x637882A5`) and
+`+0x120` (`0x637883F0`/LR `0x637885D3`, the repeated poll). Writers:
+`+0x100` (`0x6378839A`/LR `0x6378818B`), `+0x108` (`0x637883AC`/LR
+`0x63CE78FF`), `+0x110` (`0x637883CC`/LR `0x637882A5`), `+0x11C`
+(`0x637883E2`/LR `0x6378817F`), `+0x120` (`0x637883F6`/LR `0x637885D3`),
+`+0x124` (`0x63788422`/LR `0x63788279`), the address words
+`+0x128..+0x138` (`0x6378842E..0x6378845E`, LR `0x63CE79xx`), `+0x13C`
+(`0x6378846A`/LR `0x63CE7A1B`) and `+0x008` (`0x63788506`/LR `0x63788297`).
+
+`sony_a6400.c` maps one local per-offset rule window
+`0xF3040000..0xF304FFFF` at priority -600 (`cxd90045.f304`), above the
+`cxd90045.unmodelled` catch-all (-1000) and below the live-view AIF group at
+`0xF3041000` (-300), which keeps its register block. There is one rule for
+each of the 14 distinct offsets: 3 RF where a read follows a write
+(`+0x108/110/120`) and 11 ZERO (`+0x004` plus the 10 write-only words; 0 is
+the certified catch-all read reply). Writes are stored for every offset. An
+unruled offset inside the window still logs both ways as
+`cxd90045.f304.unmodelled` with the `0xF0000000` base, so the window is not a
+blanket zero.
+
+A fresh 120 s boot of `loop/builds/L0108` (qemu sha256 `e16e40ae…f3da`,
+model sha256 `c154be84…292a`, log sha256 `4b8dc7a1…4ead`) has **0**
+catch-all pairs in the page and **0 added** pairs anywhere: distinct catch-all
+pairs fall **157 -> 140** and every other page keeps its exact pair set. The
+final sequencer state is identical (index 42, step `0x897F`, status/mirror
+`0x0102`, top/b5_top/b5_opd 1, 43 steps; 0 mismatches). qtest
+(`tests/test_qemu_f304.py`) passes 18/18: all 3 RF words read back the exact
+write, all 11 ZERO words read 0 after a write, ruled offsets are silent, and
+the unruled `+0x1800` still logs read and write.
+
 ## Opt-in bus error in the reserved first MiB (2026-11-19 / E0647)
 
 What the option does:

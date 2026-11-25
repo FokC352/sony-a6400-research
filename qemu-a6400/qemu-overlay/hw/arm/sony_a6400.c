@@ -3350,6 +3350,68 @@ static const Cxd90045F292Rule cxd90045_f303_rules[] = {
 };
 #undef CXD90045_F303_BULK
 
+/*
+ * L0108: 0xF3040000 page (PA 0xF3040000..0xF304FFFF).  A 120 s certified
+ * boot of the L0105 baseline (loop/runs/L0108/base-120, qemu sha256
+ * dea94742...) logs 17 distinct catch-all (read|write, offset) pairs / 67
+ * accesses in the low page: 4 read offsets and 13 write offsets, of which
+ * 3 are both.  The AIF group at 0xF3041000 (2 channels, 0x800 bytes) stays
+ * with the live-view pipeline at -300; the window below is at -600, so it
+ * fills only around it.
+ *
+ * Reader PCs are gdbstub Z3 first hits (loop/runs/L0108/watch-120 and
+ * readwatch-004), writer PCs are Z2 first hits.  Kinds: RF for the 3 offsets
+ * where a read follows a write (0x108/0x110/0x120); ZERO for the read-only
+ * status word 0x004 and for the 10 write-only offsets, where 0 is the
+ * certified catch-all reply.  Writes are stored for every offset.  Unruled
+ * offsets inside the window still log as cxd90045.f304.unmodelled, so the
+ * window is not a blanket zero.
+ */
+static const Cxd90045F292Rule cxd90045_f304_rules[] = {
+    { 0x0004, CXD90045_F292_ZERO,
+      "read 0x637884F2/LR 0x63788201, never written; catch-all reply 0 "
+      "(F-0108)" },
+    { 0x0008, CXD90045_F292_ZERO,
+      "write-only 0x00000006/0x00000000 at 0x63788506/LR 0x63788297, no "
+      "read (F-0108)" },
+    { 0x0100, CXD90045_F292_ZERO,
+      "write-only 0x00000001/0x00000000 at 0x6378839A/LR 0x6378818B, no "
+      "read (F-0108)" },
+    { 0x0108, CXD90045_F292_RF,
+      "write 0x00000000/0x00000001 at 0x637883AC/LR 0x63CE78FF, read "
+      "0x637883A6/LR 0x63CE78FF (read-after-write, F-0108)" },
+    { 0x0110, CXD90045_F292_RF,
+      "write 0x00000001 at 0x637883CC/LR 0x637882A5, read 0x637883C6/LR "
+      "0x637882A5 (read-after-write, F-0108)" },
+    { 0x011C, CXD90045_F292_ZERO,
+      "write-only 0x00000000 at 0x637883E2/LR 0x6378817F, no read "
+      "(F-0108)" },
+    { 0x0120, CXD90045_F292_RF,
+      "write 0x00A00000/0x000001AA at 0x637883F6/LR 0x637885D3, read "
+      "0x637883F0/LR 0x637885D3 (read-after-write, F-0108)" },
+    { 0x0124, CXD90045_F292_ZERO,
+      "write-only 0x00000000 at 0x63788422/LR 0x63788279, no read "
+      "(F-0108)" },
+    { 0x0128, CXD90045_F292_ZERO,
+      "write-only 0x167C5200/0x16890A00/0x1695C200/0x16A27A00 at "
+      "0x6378842E/LR 0x63CE799F, no read (F-0108)" },
+    { 0x012C, CXD90045_F292_ZERO,
+      "write-only 0x1685B200/0x16926A00/0x169F2200/0x16ABDA00 at "
+      "0x6378843A/LR 0x63CE79BB, no read (F-0108)" },
+    { 0x0130, CXD90045_F292_ZERO,
+      "write-only 0x16880A00/0x1694C200/0x16A17A00/0x16AE3200 at "
+      "0x63788446/LR 0x63CE79D5, no read (F-0108)" },
+    { 0x0134, CXD90045_F292_ZERO,
+      "write-only 0x1688BE00/0x16957600/0x16A22E00/0x16AEE600 at "
+      "0x63788452/LR 0x63CE79EF, no read (F-0108)" },
+    { 0x0138, CXD90045_F292_ZERO,
+      "write-only 0x1688FA00/0x1695B200/0x16A26A00/0x16AF2200 at "
+      "0x6378845E/LR 0x63CE7A09, no read (F-0108)" },
+    { 0x013C, CXD90045_F292_ZERO,
+      "write-only 0x0000001F at 0x6378846A/LR 0x63CE7A1B, no read "
+      "(F-0108)" },
+};
+
 typedef struct Cxd90045F292 {
     MemoryRegion mmio;
     const Cxd90045F292Rule *rules;
@@ -4468,6 +4530,19 @@ static void sony_a6400_init(MachineState *machine)
     cxd90045_f292_create(sysmem, 0xF3030000ULL, 0x10000ULL,
                          "cxd90045.f303", cxd90045_f303_rules,
                          ARRAY_SIZE(cxd90045_f303_rules));
+
+    /*
+     * L0108: 0xF3040000 page.  The certified 120 s boot logs 17 distinct
+     * catch-all pairs (4 reads + 13 writes, 3 both); the table above rules
+     * every one.  One 64 KiB window at -600 sits above the
+     * cxd90045.unmodelled catch-all (-1000) and below the live-view AIF
+     * group at 0xF3041000 (-300), which therefore keeps its 0x800-byte
+     * register block.  Unruled offsets inside the window still log (see
+     * cxd90045_f292_* above), so the window is not a blanket zero.
+     */
+    cxd90045_f292_create(sysmem, 0xF3040000ULL, 0x10000ULL,
+                         "cxd90045.f304", cxd90045_f304_rules,
+                         ARRAY_SIZE(cxd90045_f304_rules));
 
     /*
      * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
