@@ -9,7 +9,10 @@ from tools.research.wifisync_contracts import build_manifest
 class WifiSyncContractsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.manifest = build_manifest()
+        try:
+            cls.manifest = build_manifest()
+        except FileNotFoundError as exc:
+            raise unittest.SkipTest(f"extracted firmware unavailable: {exc}") from exc
 
     def test_all_contract_checks_pass(self) -> None:
         self.assertEqual(self.manifest["failed"], [], self.manifest["failed"])
