@@ -154,6 +154,32 @@ def press_control(qmp, name):
         qmp.command("send-key", keys=[key], **{"hold-time": 180})
 
 
+def send_touch_event(qmp, action, x_norm, y_norm):
+    """Forward a normalized [0.0..1.0] LCD touch event to VPH head 0."""
+    if action not in ("down", "move", "up", "tap"):
+        raise ValueError(f"unsupported touch action: {action}")
+    x_abs = max(0, min(32767, round(float(x_norm) * 32767)))
+    y_abs = max(0, min(32767, round(float(y_norm) * 32767)))
+    coords = [
+        {"type": "abs", "data": {"axis": "x", "value": x_abs}},
+        {"type": "abs", "data": {"axis": "y", "value": y_abs}},
+    ]
+    if action == "tap":
+        qmp.command("input-send-event", device="vph", head=0, events=coords + [
+            {"type": "btn", "data": {"button": "left", "down": True}},
+        ])
+        time.sleep(0.035)
+        qmp.command("input-send-event", device="vph", head=0, events=coords + [
+            {"type": "btn", "data": {"button": "left", "down": False}},
+        ])
+    elif action == "move":
+        qmp.command("input-send-event", device="vph", head=0, events=coords)
+    else:
+        qmp.command("input-send-event", device="vph", head=0, events=coords + [
+            {"type": "btn", "data": {"button": "left", "down": action == "down"}},
+        ])
+
+
 class Qmp:
     def __init__(self, path, process):
         self.socket = socket.socket(socket.AF_UNIX)
@@ -227,12 +253,26 @@ def serve(args, scratch, server):
     directory = Path(__file__).resolve().parent
     monitor = scratch / "qmp"
     frame = scratch / "lcd.ppm"
+    hdmi_frame = scratch / "hdmi.ppm"
     origin = f"http://127.0.0.1:{server.server_port}"
     timing = os.environ.get("A6400_TIMING", "-icount shift=0,sleep=on")
     env = dict(os.environ, RUN_DIR=str(scratch / "run"), TIMEOUT="0",
                REAR_CONTROLS="1",
+               TOUCHSCREEN="0" if getattr(args, "no_touchscreen", False) else "1",
                REAR_LCD_DIAGNOSTIC=str(int(bool(getattr(args, "diagnostic_lcd", False)))),
                QEMU_EXTRA=f"{timing} -qmp unix:{monitor},server=on,wait=off")
+    if getattr(args, "camera_model", None):
+        env["CAMERA_MODEL"] = args.camera_model
+    if getattr(args, "peripherals", False):
+        env["PERIPHERALS"] = "1"
+    if getattr(args, "bcm4339", False):
+        env["BCM4339"] = "1"
+    if getattr(args, "hdmi_cec", False):
+        env["HDMI_CEC"] = "1"
+    if getattr(args, "audio_io", False):
+        env["AUDIO_IO"] = "1"
+    if getattr(args, "emount_lens", None):
+        env["EMOUNT_LENS"] = args.emount_lens
     if args.inputs:
         env["A6400_QEMU_DATA_DIR"] = str(moddev.ensure_linux_inputs(args.inputs))
         env["ULOGIO"] = ""                    # the captured /setting already has its ulogio.bin
@@ -375,6 +415,10 @@ def serve(args, scratch, server):
                     qmp.command("screendump", filename=str(frame), device="vph", head=0)
                     png, blank = png_from_ppm(frame.read_bytes())
                     handler.reply("image/png", png, lcd_state="blank" if blank else "visible")
+                elif handler.path == "/hdmi.png":
+                    qmp.command("screendump", filename=str(hdmi_frame), device="vph", head=1)
+                    png, blank = png_from_ppm(hdmi_frame.read_bytes())
+                    handler.reply("image/png", png, lcd_state="blank" if blank else "visible")
                 else:
                     handler.send_error(404)
 
@@ -382,6 +426,8 @@ def serve(args, scratch, server):
                 status = qmp.command("query-status")
                 return {"running": status.get("running"), "state": status.get("status"),
                         "uptime_s": int(time.time() - started), "moddev": bool(dev),
+                        "touchscreen": env.get("TOUCHSCREEN") == "1" or env.get("PERIPHERALS") == "1",
+                        "camera_model": env.get("CAMERA_MODEL", "ilce_6400"),
                         "log": str(args.log)}
 
             def body(handler, limit):
@@ -400,6 +446,15 @@ def serve(args, scratch, server):
                 if path == f"/press/{name}" and name in KEYS:
                     press_control(qmp, name)
                     handler.reply("text/plain", b"")
+                elif path == "/touch":
+                    try:
+                        payload = json.loads(body(handler, 1024) or b"{}")
+                        send_touch_event(qmp, payload.get("action", "tap"),
+                                         payload.get("x", 0.5), payload.get("y", 0.5))
+                        handler.reply("application/json", b'{"ok": true}')
+                    except (ValueError, TypeError) as error:
+                        handler.reply("application/json",
+                                      json.dumps({"error": str(error)}).encode(), code=400)
                 elif path in ("/emu/pause", "/emu/resume"):
                     qmp.command("stop" if path == "/emu/pause" else "cont")
                     handler.reply("application/json", json.dumps(emu_state()).encode())
@@ -544,6 +599,21 @@ def main():
     parser.add_argument("--stock", action="store_true", help="Use the stock firmware display selection (default)")
     parser.add_argument("--diagnostic-lcd", action="store_true",
                         help="Apply the E0572 diagnostic display-controller sector edit on the disposable overlay")
+    parser.add_argument("--no-touchscreen", action="store_true",
+                        help="Disable the virtual I2C touchscreen controller on the rear LCD")
+    parser.add_argument("--camera-model", default=None,
+                        help="Modeled CXD90045 camera body (e.g. ilce_6400, ilce_6400a, zv_e10, ilce_6100, "
+                             "ilce_6600, ilce_7c, ilce_7m3, ilce_7rm4a)")
+    parser.add_argument("--peripherals", action="store_true",
+                        help="Enable all modeled camera peripherals (touchscreen, BCM4339, HDMI/CEC, audio, lens)")
+    parser.add_argument("--bcm4339", action="store_true",
+                        help="Enable Broadcom BCM4339 Wi-Fi (SDIO mmc1) and Bluetooth (HCI uart3)")
+    parser.add_argument("--hdmi-cec", action="store_true",
+                        help="Enable CXD90045 HDMI TX + EDID/HPD + CEC output")
+    parser.add_argument("--audio-io", action="store_true",
+                        help="Enable CXD90045 AudioIp DMA capture/playback and synthetic PCM mic")
+    parser.add_argument("--emount-lens", default=None,
+                        help="Attach a modeled E-mount lens (selp1650, sigma1850, sel2470gm, fe50f18)")
     parser.add_argument("--inputs", type=Path, help="Prepared camera-captured inputs (qemu_boot_inputs prepare)")
     parser.add_argument("--loader", type=Path, help="Mod Loader v2 build directory to install and watch")
     parser.add_argument("--mod", type=Path, action="append", default=[], help="SMOD file to load and hot-reload")

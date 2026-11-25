@@ -3,6 +3,10 @@
 **Declared stimulus:** opt-in, default-off `gate-force-probe=on` (`GATE_FORCE_PROBE=1`) one-shot patches the exact av-cam step-26 producer cbz at PA `0x03874fd0` to a NOP (`cond. PROBE gate-force`), not a fix.
 **Declared stimulus:** opt-in, default-off `entry-force-probe=on` (`ENTRY_FORCE_PROBE=1`) makes the first av-cam entry take the r0 = 1 path while the camera-control state is 240 (`cond. PROBE entry-force`), not a fix.
 
+## Virtual Touchscreen, Peripherals & 8-Model Compatibility (2026-11-25 / E0700)
+
+Opt-in machine properties (`peripherals=on`, or individual `touchscreen=on`, `bcm4339=on`, `hdmi-cec=on`, `audio-io=on`, `emount-lens=selp1650|sigma1850|sel2470gm|fe50f18`) and 8 dedicated `CXD90045` machine definitions (`sony-a6400`, `sony-a6400a`, `sony-zve10`, `sony-a6100`, `sony-a6600`, `sony-a7c`, `sony-a7m3`, `sony-a7rm4a`, plus `camera-model=...`) are now implemented in `qemu-overlay/` while leaving default `-M sony-a6400` baselines unchanged. `rear_panel.py` enables `TOUCHSCREEN=1` by default and exposes `POST /touch` and `GET /hdmi.png`; paired `MenuTouchFull.mod` OFF vs ON pure-touch tab taps and horizontal swipes are verified on live `ILCE-6400` firmware. See [E0700](../docs/evidence/0700-qemu-touchscreen-peripherals-and-multimodel.md).
+
 ## PL011 UART3 at 0xF2003000 (2026-11-21 / L0098)
 
 The stock kernel's udif table (VA `0x604DB3D4`, name pointer `0x6044A054` =

@@ -8,12 +8,12 @@ title = "QEMU sony-a6400 machine"
 scope = """
 The QEMU sony-a6400 board: captured four-core boot, av-cam and CamCore sequencing, SIO/sub-micro, display/rear panel, Ydet/CamPig, live-view frame, contributor scores, Custom OS handover guards and DMA engines."""
 evidence_span = "see record index"
-reviewed = "2026-11-22"
+reviewed = "2026-11-25"
 # Reviewed from each record's short-answer / result sections.
 deep_reviewed = ["E0521", "E0522:qemu", "E0524:reproducible", "E0525:qemu", "E0526:qemu", "E0527:real", "E0527:task43",
   "E0528", "E0529", "E0530:qemu", "E0531", "E0532:qemu", "E0533:qemu", "E0534:qemu", "E0535-E0544",
   "E0549-E0551", "E0553", "E0557", "E0561", "E0563-E0569", "E0571-E0574", "E0591",
-  "E0614-E0618", "E0636", "E0637", "E0638-E0642", "E0644", "E0650", "E0651", "E0652", "E0665"]
+  "E0614-E0618", "E0636", "E0637", "E0638-E0642", "E0644", "E0650", "E0651", "E0652", "E0665", "E0700"]
 records = [
   "E0521",
   "E0522:qemu",
@@ -51,6 +51,7 @@ records = [
   "E0696",
   "E0697",
   "E0699",
+  "E0700",
 ]
 
 [[entity]]
@@ -252,6 +253,13 @@ entities = ["qemu.board"]
 status = "verified-offline"
 text = "QEMU reaches the a6400 shooting screen and the step-32 wait from two public Sony updaters alone (the a6400 2019 package plus ulogio.bin from the ZV-E10 package), without the author's eMMC capture or any guest patch."
 evidence = ["E0665"]
+
+[[claim]]
+id = "C22"
+entities = ["qemu.board", "qemu.display"]
+status = "verified-offline"
+text = "Opt-in CXD90045 peripherals (peripherals=on, or individual touchscreen=on, bcm4339=on, hdmi-cec=on, audio-io=on, emount-lens=...) wire the FocalTech 0x20 I2C0 capacitive touch IC + GPIO P0.12 IRQ 133 + VPH LCD pointer handler (delivering paired MenuTouchFull.mod tab taps and horizontal swipes through original i2c.ko, av-cam.bin, and libObj.so I-TpMain via rear_panel.py /touch), BCM4339 SDIO Wi-Fi at mmc1 (0xF0301000, IRQ 221) and Bluetooth H4 HCI/.hcd on uart3 (/dev/ttyBT), HDMI TX (0xF2A40000 EDID/HPD/TMDS -> VPH Console 1) and CEC (0xF3C10000 virtual TV), AudioIp (0xF3420000..0xF3428FFF DMA rings + synthetic PCM mic), and Sony E-mount BL lens motors (UART1 + PL080 + P1.4), parameterized across all 8 registered camera bodies (sony-a6400, sony-a6400a, sony-zve10, sony-a6100, sony-a6600, sony-a7c, sony-a7m3, sony-a7rm4a)."
+evidence = ["E0700"]
 
 [[claim]]
 id = "R03"

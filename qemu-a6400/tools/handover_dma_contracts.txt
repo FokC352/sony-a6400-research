@@ -58,3 +58,24 @@ run     work-dma-en  0xF0102030 0x1  # [C] E0640 av-cam enable/disable word
 region  work-dma-ch6 0xF01021C0 0xF0102200  0xF010201C 0x40 0x0  # [C] E0640 channel +0x1C0, busy +0x01C bit 6
 observe work-dma-chx 0xF0102040 0xF01021C0  # [?] other channel blocks: layout inferred, no stop contract
 observe work-dma-hi  0xF0102200 0xF0103000  # [?] rest of the page: never used by the stock boot
+
+# XDMAC0 (0xF0000000) and XDMAC1 (0xF0010000): channels 0..3 at +0x10 + 0x30*ch,
+# trigger +0x18, IRQ/completion status at +0x20 (bit 3 = 0x8, cleared by writing 0).
+region  xdmac0-ch0   0xF0000010 0xF0000040  0xF0000030 0x8 0x0  # [C] XDMAC0 ch0 status
+region  xdmac0-ch1   0xF0000040 0xF0000070  0xF0000060 0x8 0x0  # [C] XDMAC0 ch1 status
+region  xdmac0-ch2   0xF0000070 0xF00000A0  0xF0000090 0x8 0x0  # [C] XDMAC0 ch2 status
+region  xdmac0-ch3   0xF00000A0 0xF00000D0  0xF00000C0 0x8 0x0  # [C] XDMAC0 ch3 status
+region  xdmac1-ch0   0xF0010010 0xF0010040  0xF0010030 0x8 0x0  # [C] XDMAC1 ch0 status
+region  xdmac1-ch1   0xF0010040 0xF0010070  0xF0010060 0x8 0x0  # [C] XDMAC1 ch1 status
+region  xdmac1-ch2   0xF0010070 0xF00100A0  0xF0010090 0x8 0x0  # [C] XDMAC1 ch2 status
+region  xdmac1-ch3   0xF00100A0 0xF00100D0  0xF00100C0 0x8 0x0  # [C] XDMAC1 ch3 status
+
+# LDEC LZ77 decompressor at 0xF2903000: W1C clear at +0x30, IRQ status at +0x34 bits 0x7B.
+region  ldec-lz77    0xF2903000 0xF2903034  0xF2903034 0x7B 0x0  # [C] LDEC LZ77 IRQ status cleared
+
+# 0xF30A memory-fill accelerator window at 0xF30A1280..0xF30A1300 (E0642): status +0x04 bit 31 busy.
+region  f30a-fill    0xF30A1280 0xF30A1300  0xF30A1284 0x80000000 0x0  # [C] E0642 0xF30A fill busy bit31
+
+# SDHCI controllers: EMMC0 (0xF0304000) and MMC0 (0xF0300000), PRNSTS (+0x24) bits [1:0] CMD/DAT inhibit.
+region  emmc0-sdhci  0xF0304000 0xF0304100  0xF0304024 0x3 0x0  # [C] EMMC0 SDHCI PRNSTS CMD/DAT inhibit idle
+region  mmc0-sdhci   0xF0300000 0xF0300100  0xF0300024 0x3 0x0  # [C] MMC0 SDHCI PRNSTS CMD/DAT inhibit idle

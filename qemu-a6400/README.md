@@ -47,11 +47,14 @@ original-firmware frame evidence.
 
 ## Milestone 1: Initial Bring-Up
 
-Verify the machine registers cleanly:
+Verify all 8 modeled `CXD90045` camera machines register cleanly:
 
 ```bash
-"$HOME/sony-a6400-qemu-11.1.3/build/qemu-system-arm" -M help | grep sony-a6400
+"$HOME/sony-a6400-qemu-11.1.3/build/qemu-system-arm" -M help | grep sony-
 ```
+
+Registered machine types match `DEFAULT_REGISTRY` in `src/a6400/targets/catalog.py`:
+`sony-a6400` (`ilce_6400`), `sony-a6400a` (`ilce_6400a`), `sony-zve10` (`zv_e10`, EVF-less `P0.2` idle-high + 6-axis IMU), `sony-a6100` (`ilce_6100`), `sony-a6600` (`ilce_6600`, IBIS IMU), `sony-a7c` (`ilce_7c`, FF IBIS), `sony-a7m3` (`ilce_7m3`, FF IBIS + Dual-SD `mmc2`), and `sony-a7rm4a` (`ilce_7rm4a`, FF IBIS + Dual-SD `mmc2`). Pass `MACHINE_NAME=sony-zve10` (or `CAMERA_MODEL=zv_e10`) and `PERIPHERALS=1` (or individual `TOUCHSCREEN=1`, `BCM4339=1`, `HDMI_CEC=1`, `AUDIO_IO=1`, `EMOUNT_LENS=selp1650|sigma1850|sel2470gm|fe50f18`) to `qemu-a6400/run.sh`; see [E0700](../docs/evidence/0700-qemu-touchscreen-peripherals-and-multimodel.md).
 
 ## Interactive rear panel
 
@@ -72,7 +75,7 @@ EVSEL_LATE_US=500 python3 qemu-a6400/tools/rear_panel.py --log a6400-panel.log
 ```
 
 Open [the local rear panel](http://127.0.0.1:8640/). The image is QEMU's
-VPH output. The buttons drive the emulated ADC ladders, GPIO lines or
+VPH output (`GET /hdmi.png` also serves VPH HDMI Console 1 when `--hdmi-cec` or `--peripherals` is enabled). Clicking or dragging on the LCD forwards normalized pointer coordinates (`POST /touch` -> QMP `input-send-event` on `vph` head 0) into the virtual FocalTech `0x20` I2C0 touch IC and `P0.12` interrupt (`liro-133`), allowing touch mods such as `MenuTouchFull` to be clicked and swiped directly in the browser (`--no-touchscreen` disables). The side buttons drive the emulated ADC ladders, GPIO lines or
 sub-micro link. Hover over the control wheel and scroll to rotate it, or
 use `[` and `]`. Wheel turns and AF/MF–AEL selector toggles are immediate
 edges; MENU, directional presses and the AF/MF–AEL button still use a hold
@@ -86,10 +89,12 @@ overlay. An explicit empty `SUBMICRO_PAGE=` is useful for serial diagnostics,
 not for a powered menu test.
 
 For the captured boot, `SUBMICRO_LENS_POWER=1` opts in to the slot-B
-rail-status reply. The [matched replay](../docs/evidence/0591-qemu-a6400-first-live-view-frame.md#captured-step-26-sub-micro-lens-rail-acknowledgement)
+rail-status reply, while `EMOUNT_LENS=selp1650` (or `sigma1850`, `sel2470gm`,
+`fe50f18`, or `PERIPHERALS=1`) additionally attaches an emulated E-mount `BL`
+serial/DMA lens with focus, iris, zoom, and OSS motor kinematics ([E0700](../docs/evidence/0700-qemu-touchscreen-peripherals-and-multimodel.md)). The [matched replay](../docs/evidence/0591-qemu-a6400-first-live-view-frame.md#captured-step-26-sub-micro-lens-rail-acknowledgement)
 uses the explicitly qualified powered WBI fixture and `LIVEVIEW_SOURCE=bars`
 to release the original step-26 lens-state wait. The default frozen-reply
-behavior is unchanged. No attached lens is modeled.
+behavior is unchanged when neither option is enabled.
 
 The panel uses stock firmware display selection by default ([E0651](../docs/evidence/0651-qemu-a6400-stock-finder-monitor-rear-lcd.md)):
 with `REAR_CONTROLS=1` holding GPIO `P0.2` (`KEY_OTHER_EYE_CONTACT`) idle high, stock `FINDER/MONITOR`

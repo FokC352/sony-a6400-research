@@ -39,6 +39,13 @@
 # ZMA1_JPEG_FILL=1 (opt-in DGI neutral fill; requires ZMA1_STARTUP=1).
 # LOWMEM_ABORT=1 (opt-in bus error on PA 0x000F8000 in the reserved first MiB, as on the
 # camera, E0647; guest log under -d guest_errors).
+# STRICT_BUS_ABORT=1 (opt-in synchronous external abort on PA 0x000F8000 and all unmapped
+# physical address holes, E0647).
+# PL310=1 (opt-in ARM PL310 L2 cache controller at 0xF8002000, E0416/E0655).
+# CRCDC_MODEL=1 (opt-in stateful CRCDC clock block at 0xF2A31000 with self-clearing +0x30 bit 0, E0423).
+# MISCREG=1 (opt-in CXD90045 EFUSE_CHIPID 0xF2915000, MODEREAD 0xF2915010, and ASV 0xF2927000, E0643).
+# LINUX_BOOT=1 (opt-in standard ARMv7 Linux ATAGS/DTB boot contract on 1..4 cores with initrd at
+# 0x10000000; optional DTB=/path/to/board.dtb passes -dtb "$DTB").
 # REAR_CONTROLS=1 (route host keys to emulated rear camera controls).
 # SHUTTER_EDGE_IRQ=1 (opt-in latched body shutter edges in the GIC).
 # REAR_LCD_DIAGNOSTIC=1 (E0572 device select on the run's qcow2 overlay).
@@ -128,12 +135,17 @@ AVCAM_PA=0x035C6000
 # kernel does not read past the loaded image.
 KERNEL_OVERRIDE="${KERNEL:-}"
 INITRD_OVERRIDE="${INITRD:-}"
-for f in "$KERNEL_OVERRIDE" "$INITRD_OVERRIDE"; do
+DTB_OVERRIDE="${DTB:-}"
+for f in "$KERNEL_OVERRIDE" "$INITRD_OVERRIDE" "$DTB_OVERRIDE"; do
     if [ -n "$f" ] && [ ! -f "$f" ]; then
-        echo "KERNEL/INITRD override is missing: $f" >&2
+        echo "KERNEL/INITRD/DTB override is missing: $f" >&2
         exit 1
     fi
 done
+if [ -n "$DTB_OVERRIDE" ] && [ "${LINUX_BOOT:-0}" != 1 ]; then
+    echo "DTB requires LINUX_BOOT=1" >&2
+    exit 1
+fi
 IDT_BOOT=()
 if [ -n "${IDT_CAM:-}" ]; then
     if [ "$PREPARED" != 1 ] || ! printf '%s  %s\n' \
@@ -182,14 +194,21 @@ else
           | sed 's/ \*[[:space:]]*$//; s/^kemco //; s/console=ttynull/console=ttyAM0,115200n8 amba2.console=1/')
 fi
 
-# Keep the initrd= token consistent with a declared initrd override.
+# Keep the initrd= token consistent with a declared initrd override (or LINUX_BOOT=1 @ 0x10000000).
+INITRD_LOAD_PA=0x00700000
+if [ "${LINUX_BOOT:-0}" = 1 ]; then
+    INITRD_LOAD_PA=0x10000000
+fi
 if [ -n "$INITRD_OVERRIDE" ]; then
     ISZ=$(stat -Lc '%s' -- "$INITRD_OVERRIDE")
-    CMD=$(printf '%s\n' "$CMD" | sed -E "s#initrd=0x[0-9a-fA-F]+,[^ ]+#initrd=0x00700000,0x$(printf '%08x' "$ISZ")#")
-    if ! printf '%s\n' "$CMD" | grep -q "initrd=0x00700000,0x$(printf '%08x' "$ISZ")"; then
+    CMD=$(printf '%s\n' "$CMD" | sed -E "s#initrd=0x[0-9a-fA-F]+,[^ ]+#initrd=${INITRD_LOAD_PA},0x$(printf '%08x' "$ISZ")#")
+    if ! printf '%s\n' "$CMD" | grep -q "initrd=${INITRD_LOAD_PA},0x$(printf '%08x' "$ISZ")"; then
         echo "Could not size the initrd= token for the INITRD override." >&2
         exit 1
     fi
+elif [ "${LINUX_BOOT:-0}" = 1 ] && [ -f "$D/nflasha3-initrd" ]; then
+    ISZ=$(stat -Lc '%s' -- "$D/nflasha3-initrd")
+    CMD=$(printf '%s\n' "$CMD" | sed -E "s#initrd=0x[0-9a-fA-F]+,[^ ]+#initrd=${INITRD_LOAD_PA},0x$(printf '%08x' "$ISZ")#")
 fi
 
 rm -f "$R/emmc-overlay.qcow2"
@@ -247,7 +266,7 @@ if [ "${PP_UNLOCK:-0}" = 1 ]; then
 fi
 
 # E0527: the board replays the captured micro->CPU slots A/C/B on SIO ch3.
-MACHINE=sony-a6400
+MACHINE="${MACHINE_NAME:-sony-a6400}"
 if [ -n "$SUBMICRO_RX" ]; then
     # A retained extract can itself be in RUN_DIR; never overwrite it.
     SUBMICRO_STAGED=$(mktemp -- "$R/submicro-frames.XXXXXX")
@@ -255,7 +274,34 @@ if [ -n "$SUBMICRO_RX" ]; then
         > "$SUBMICRO_STAGED"
     # Check what will actually be replayed, even if the source changed after preflight.
     printf '%s  %s\n' "$SUBMICRO_FRAME_SHA" "$SUBMICRO_STAGED" | sha256sum -c --quiet - >&2
-    MACHINE="sony-a6400,submicro-frames=$SUBMICRO_STAGED"
+    MACHINE="$MACHINE,submicro-frames=$SUBMICRO_STAGED"
+fi
+if [ -n "${CAMERA_MODEL:-}" ]; then
+    MACHINE="$MACHINE,camera-model=$CAMERA_MODEL"
+fi
+if [ "${PERIPHERALS:-0}" = 1 ]; then
+    MACHINE="$MACHINE,peripherals=on"
+fi
+if [ "${TOUCHSCREEN:-0}" = 1 ]; then
+    MACHINE="$MACHINE,touchscreen=on"
+fi
+if [ "${BCM4339:-0}" = 1 ]; then
+    MACHINE="$MACHINE,bcm4339=on"
+fi
+if [ "${HDMI_CEC:-0}" = 1 ]; then
+    MACHINE="$MACHINE,hdmi-cec=on"
+fi
+if [ "${AUDIO_IO:-0}" = 1 ]; then
+    MACHINE="$MACHINE,audio-io=on"
+fi
+if [ -n "${AUDIO_INPUT:-}" ]; then
+    MACHINE="$MACHINE,audio-input=$AUDIO_INPUT"
+fi
+if [ "${AUDIO_MIC_PLUGGED:-0}" = 1 ]; then
+    MACHINE="$MACHINE,audio-mic-plugged=on"
+fi
+if [ -n "${EMOUNT_LENS:-}" ]; then
+    MACHINE="$MACHINE,emount-lens=$EMOUNT_LENS"
 fi
 if [ "${SUBMICRO_LENS_POWER:-0}" = 1 ]; then
     MACHINE="$MACHINE,submicro-lens-power=on"
@@ -312,6 +358,21 @@ fi
 if [ "${LOWMEM_ABORT:-0}" = 1 ]; then
     MACHINE="$MACHINE,lowmem-abort=on"
 fi
+if [ "${STRICT_BUS_ABORT:-0}" = 1 ]; then
+    MACHINE="$MACHINE,strict-bus-abort=on"
+fi
+if [ "${PL310:-0}" = 1 ]; then
+    MACHINE="$MACHINE,pl310=on"
+fi
+if [ "${CRCDC_MODEL:-0}" = 1 ]; then
+    MACHINE="$MACHINE,crcdc-model=on"
+fi
+if [ "${MISCREG:-0}" = 1 ]; then
+    MACHINE="$MACHINE,miscreg=on"
+fi
+if [ "${LINUX_BOOT:-0}" = 1 ]; then
+    MACHINE="$MACHINE,linux-boot=on"
+fi
 if [ "${F30A_FILL:-0}" = 1 ]; then
     MACHINE="$MACHINE,f30a-fill=on"
 fi
@@ -356,10 +417,17 @@ if [ -n "$INITRD_OVERRIDE" ]; then
         "$(sha256sum -- "$INITRD_PATH" | cut -d' ' -f1)" "$INITRD_PATH" \
         "$(stat -Lc '%s' -- "$INITRD_PATH")" >&2
 fi
+DTB_ARGS=()
+if [ -n "$DTB_OVERRIDE" ]; then
+    printf 'dtb override: %s %s (%s bytes)\n' \
+        "$(sha256sum -- "$DTB_OVERRIDE" | cut -d' ' -f1)" "$DTB_OVERRIDE" \
+        "$(stat -Lc '%s' -- "$DTB_OVERRIDE")" >&2
+    DTB_ARGS=(-dtb "$DTB_OVERRIDE")
+fi
 T=()
 if [ "${TIMEOUT:-0}" != 0 ]; then T=(timeout "$TIMEOUT"); fi
 exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial "${SERIAL:-mon:stdio}" \
-  -kernel "$KERNEL_PATH" -initrd "$INITRD_PATH" \
+  -kernel "$KERNEL_PATH" -initrd "$INITRD_PATH" "${DTB_ARGS[@]}" \
   -append "$CMD ${EXTRA:-}" \
   -drive if=sd,format=qcow2,file="$R/emmc-overlay.qcow2" \
   -device loader,file="$R/Backup.bin",addr="$BACKUP_PA",force-raw=on \
