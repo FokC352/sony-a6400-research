@@ -2507,6 +2507,45 @@ static void sony_a6400_set_sm_file(Object *obj, const char *value,
     sony_a6400_sm_file = g_strdup(value);
 }
 
+/*
+ * L0137: SA core 4 (base 0xF35D0000, index 4 of av-cam's SA base pool) ID
+ * words.  av-cam 0x63A7ED50 compares them with the firmware constant
+ * "SA1_V1.0SA5_V1.0" (F-0136); only the ID is evidenced, so the rest of the
+ * core is left unmodelled (no IRQs, no other registers).  Expected value
+ * from firmware, not a bus capture.
+ */
+static const uint8_t cxd90045_sa4_id[16] = {
+    'S', 'A', '1', '_', 'V', '1', '.', '0',
+    'S', 'A', '5', '_', 'V', '1', '.', '0',
+};
+
+static uint64_t cxd90045_sa4_id_read(void *opaque, hwaddr off, unsigned size)
+{
+    uint64_t v = 0;
+    unsigned i;
+
+    for (i = 0; i < size; i++) {
+        v |= (uint64_t)cxd90045_sa4_id[(off + i) & 0xF] << (i * 8);
+    }
+    return v;
+}
+
+static void cxd90045_sa4_id_write(void *opaque, hwaddr off, uint64_t v,
+                                  unsigned size)
+{
+    qemu_log_mask(LOG_UNIMP,
+                  "cxd90045.sa4-id: write +0x%x size %u value 0x%" PRIx64
+                  " ignored\n", (unsigned)off, size, v);
+}
+
+static const MemoryRegionOps cxd90045_sa4_id_ops = {
+    .read = cxd90045_sa4_id_read,
+    .write = cxd90045_sa4_id_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
 static void sony_a6400_init(MachineState *machine)
 {
     bool liveview = sony_a6400_liveview_source && *sony_a6400_liveview_source;
@@ -3098,6 +3137,19 @@ static void sony_a6400_init(MachineState *machine)
                                    pic[sa_cores[n].irq[k] - 32]);
             }
         }
+    }
+
+    /*
+     * L0137: ID-only window for SA core 4 (see cxd90045_sa4_id above).
+     * Mapped at -600, above the cxd90045.unmodelled catch-all (-1000).
+     */
+    {
+        MemoryRegion *sa4_id = g_new0(MemoryRegion, 1);
+
+        memory_region_init_io(sa4_id, NULL, &cxd90045_sa4_id_ops, NULL,
+                              "cxd90045.sa4-id", 0x10);
+        memory_region_add_subregion_overlap(sysmem, 0xF35D00F0ULL, sa4_id,
+                                            -600);
     }
 
     /*
