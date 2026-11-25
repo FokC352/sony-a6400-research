@@ -12257,6 +12257,9 @@
     "0701-qemu-f292-otg-avcam-hdmi-windows-boot-score.md": [
       "qemu-a6400"
     ],
+    "0702-qemu-rcraw-idt-page-windows-boot-score.md": [
+      "qemu-a6400"
+    ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"
     ],

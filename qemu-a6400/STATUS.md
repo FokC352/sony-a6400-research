@@ -98,6 +98,61 @@ all 11 page offsets read 0 after a write, the shared rule block's RF path
 still reads back the last write at OTG `+0x40` (code-path control; no page
 offset is RF), and an unruled `+0x200` still logs read and write.
 
+## 0xF3030000 RCRAW/IDT compressor page (2026-11-21 / L0105)
+
+The `0xF3030000..0xF303FFFF` page is the IDT/RCRAW hardware compressor
+block (E0629 names `0xF30310B0`, `0xF3031570`, `0xF303159C`, `0xF30315A0`,
+`0xF30317B0`, `0xF30317C0..0xF30317CC`). The brief counted **112** pairs
+because the oracle's `unmodelled_top` list is capped at 200 entries (L0102
+score: 112 F303 entries = 13 reads + 99 writes). The full `-d unimp` log of
+the certified 120 s boot is the ground truth: **547 distinct pairs / 9471
+accesses** in the page, i.e. 532 write offsets and 15 read offsets, 13 of
+which are written too (534 distinct offsets). A fresh boot of the baseline
+`loop/builds/L0102` (qemu sha256 `59eaf180…79c82`, model `11929b07…bd148`,
+`qemu-d.log` sha256 `3584debc…bbb93`) reproduces those 547 pairs exactly;
+`loop/scratch/L0105/before-pairs.txt` lists every offset, count, size and
+write value.
+
+A gdbstub first-hit pass names every reader (Z3,
+`loop/runs/L0105/readwatch-120/watch.json`, 15/15, state still index 42) and
+a matching writer pass names the writers (Z2,
+`loop/runs/L0105/writewatch-120/watch.json`, 13/13). The page's readers are
+`0xF3030000/004` (`0x63787F6A/7A`, the register self-test at `0x63787F70/80`),
+`0xF3030084` (`0x63787F96`/LR `0x63773487`, never written),
+`0xF303000C` (`0x63787B2E`, RMW with `0x63787B34`), `0xF3030220`
+(`0x63787FEA`, never written), the bulk status words `0xF3031090/94`
+(`0x63B3FFF0/F4`), `0xF30310A8/AC` (`0x63B3AFF8/FA`), `0xF30310B8`
+(`0x6378801A`), `0xF30310C0/C4` (`0x63B3CA9A/A0`), `0xF30310F8`
+(`0x63B4EAAC`), and `0xF30317C0/C8` (`0x63B48C5C/60`). The 512-word bulk
+block `0xF3031000..0xF30317FC` is written by `0x63788006`/LR `0x63B50B0F`;
+the scattered config words `0xF3030104/108/110/144/148/204/208/304/308/404/408/504/508/604/608`
+by `0x63787B4E..0x63787C7A` with LR `0x63CE77xx`/`0x63B50493`, and
+`0xF3030008/030` by the self-test at `0x63787F8A/A2`.
+
+`sony_a6400.c` now maps one local per-offset rule window
+`0xF3030000..0xF303FFFF` at priority -600 (`cxd90045.f303`), above the
+`cxd90045.unmodelled` catch-all (-1000); the CAMPIG windows end below it.
+There is one rule for every one of the 534 distinct offsets: 12 RF where a
+read follows a write (`+0x004/00C/1090/1094/10A8/10AC/10B8/10C0/10C4/10F8/17C0/17C8`)
+and 522 ZERO for the two read-only status words and the 520 non-RF write
+offsets (0 is the certified catch-all read reply). Writes are stored for
+every offset. An unruled offset inside the window still logs both ways as
+`cxd90045.f303.unmodelled` with the `0xF0000000` base, so the window is not
+a blanket zero.
+
+A fresh 120 s boot of `loop/builds/L0105` (qemu sha256 `dea94742…517e5`,
+model sha256 `b91db92f…7dfd`, log sha256 `59b6a6a3…8ac5`) has **0**
+catch-all pairs in the page and **0 added** pairs elsewhere. Against the
+same-run baseline, distinct catch-all pairs fall **680 -> 133** (exactly
+the 547 page pairs retire; no other page changes); against the accepted
+L0102 oracle score of 704 the expected page-free count is 157. The final
+sequencer state is identical (index 42, step `0x897F`, status/mirror
+`0x0102`, top/b5_top/b5_opd 1, 43 steps, 0 mismatches, identity and
+step-table controls true). qtest (`tests/test_qemu_rcraw.py`) passes 41/41:
+all 12 RF words read back the exact write, all 25 sampled ZERO words read 0
+after a write, ruled offsets are silent, and an unruled `+0x1800` still
+logs read and write.
+
 ## Opt-in bus error in the reserved first MiB (2026-11-19 / E0647)
 
 What the option does:
