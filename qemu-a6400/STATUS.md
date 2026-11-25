@@ -834,3 +834,10 @@ TIMEOUT=110 bash qemu-a6400/run.sh
 Records: [E0521](../docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md),
 [E0522](../docs/evidence/0522-qemu-a6400-smp-four-cores-and-cxd4115-timers.md).
 Receipts: `artifacts/qemu-a6400/e0521/`, `artifacts/qemu-a6400/e0522/`.
+
+## L0111 (route device-model, coverage)
+
+The 13 write-only pairs at 0xF3C04208..0xF3C0422C and 0xF3C08280..0xF3C0828C (F-0109) are now Z0 rows
+(`CAM_ZERO`) in `camcore_rules_f3c0`, so they read 0 and accept writes inside the already-mapped f3c0 window. No
+new window and no change to `sony_a6400.c`. Static check: `qemu-a6400/tests/test_qemu_f3c0.py`. The boot check and
+oracle numbers are in `loop/scratch/L0111/check.txt` and the L0111 `LEAD-RESULT.json`.
