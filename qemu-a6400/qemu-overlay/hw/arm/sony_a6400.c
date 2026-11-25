@@ -3412,6 +3412,34 @@ static const Cxd90045F292Rule cxd90045_f304_rules[] = {
       "(F-0108)" },
 };
 
+/*
+ * FUSB block: kernel UDIF resource 'add' at PA 0xF0220000, size 0x20000
+ * (F-0106, L0112, L0114).  The bound images show 5 distinct offsets / 9
+ * unmodelled pairs.  +0x0, +0x4 and +0x11008 are read-modify-write in the
+ * firmware (F-0106), but they are ruled ZERO (read 0, the catch-all value)
+ * because RF read-back was non-deterministic in L0112 (F-0112): read-back
+ * changed the kernel driver's path.  +0x11080 and +0x11084 are write-only and
+ * ZERO.  Writes are stored but never read back.  Probe PC 0x602AD52C, handler
+ * 0x602B6778.  Every other offset in the 0x20000 window still logs as
+ * unmodelled, so the window is not a blanket zero.  DWC3 (0xF020C000, 0x4000)
+ * does not overlap.
+ */
+static const Cxd90045F292Rule cxd90045_f022_rules[] = {
+    { 0x00000, CXD90045_F292_ZERO,
+      "read returns 0, the catch-all-equivalent value; RF read-back was "
+      "non-deterministic in L0112 (F-0112) (L0114)" },
+    { 0x00004, CXD90045_F292_ZERO,
+      "read returns 0, the catch-all-equivalent value; RF read-back was "
+      "non-deterministic in L0112 (F-0112) (L0114)" },
+    { 0x11008, CXD90045_F292_ZERO,
+      "read returns 0, the catch-all-equivalent value; RF read-back was "
+      "non-deterministic in L0112 (F-0112) (L0114)" },
+    { 0x11080, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (L0114)" },
+    { 0x11084, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (L0114)" },
+};
+
 typedef struct Cxd90045F292 {
     MemoryRegion mmio;
     const Cxd90045F292Rule *rules;
@@ -4543,6 +4571,14 @@ static void sony_a6400_init(MachineState *machine)
     cxd90045_f292_create(sysmem, 0xF3040000ULL, 0x10000ULL,
                          "cxd90045.f304", cxd90045_f304_rules,
                          ARRAY_SIZE(cxd90045_f304_rules));
+
+    /*
+     * L0112: FUSB block at 0xF0220000 (F-0106), priority -600 as in L0108.
+     * Rules above; unruled offsets still log as cxd90045.f022.unmodelled.
+     */
+    cxd90045_f292_create(sysmem, 0xF0220000ULL, 0x20000ULL,
+                         "cxd90045.f022", cxd90045_f022_rules,
+                         ARRAY_SIZE(cxd90045_f022_rules));
 
     /*
      * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
