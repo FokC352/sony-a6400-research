@@ -788,6 +788,7 @@
         "C03",
         "C05",
         "C06",
+        "C11",
         "C08",
         "C09",
         "C10"
@@ -9943,6 +9944,15 @@
         "status": "verified-offline"
       }
     ],
+    "E9104": [
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C11",
+        "file": "9104-a6100-photonbin-6mp-port.md",
+        "status": "verified-physical"
+      }
+    ],
     "README": [
       {
         "area": "mods",
@@ -12182,6 +12192,9 @@
       "mods"
     ],
     "9103-a6100-mod-loader-port.md": [
+      "mods"
+    ],
+    "9104-a6100-photonbin-6mp-port.md": [
       "mods"
     ],
     "cross_model/a6400-scalarwebapi-2026-11-20-transcript.jsonl": [
