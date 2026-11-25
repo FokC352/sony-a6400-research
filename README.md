@@ -165,6 +165,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 | **ModsTabLook** | Renders the custom `MODS` tab icon artwork (`E0522`) | Auto-enabled in QEMU mod-dev mode ([E0522](docs/evidence/0522-mods-tab-icon-and-uxd-image-container.md)) |
 | **Command items** (`--action`) | A Mods row without ON/OFF: pressing it starts the mod and closes the menu to the shooting screen, like the ZV-E10 "USB Streaming" entry | Loader feature verified in Unicorn and QEMU ([E0592](docs/evidence/0592-mod-loader-command-items-usb-streaming-entry.md)); no UVC streaming mod uses it yet. The QEMU virtual USB host reaches the DWC3 model, but the guest never starts a gadget ([E0593](docs/evidence/0593-qemu-dwc3-virtual-host-and-gadget-start-gap.md)) |
 | **Open Gate (3:2)** | Candidate `IMX284` 3:2 (`1620×1080` / `3240×2160`) recording path via `DMM` & `ZIMA DVENC` | [Buffer selection verified; recording unproven](docs/evidence/mods/2026-11-19-firmware-qualification.md#stock-recording-and-open-gate). The stock guest mounts virtual SD but did not save an AVCHD clip. |
+| **[WiFiSync](mods/wifisync/README.md)** | 5 GHz AP + background `.JPG`/`.ARW` transfer over HTTP `:8765` (Smart Single-Best, Range resume, CRC-32, read-only Sony Fsys reads, 3-stage power management) | Camera half implemented and offline-verified: 72 core assertions, 93 Unicorn checks, 62 end-to-end TCP checks, 22 Phase 0 contracts ([E0698](docs/evidence/0698-wifisync-camera-side-mod.md)). **The physical 5 GHz AP gate is open** |
 
 👉 **[Read `mods/README.md` for step-by-step installation (QEMU & physical `ILCE-6400`)](mods/README.md)**
 
@@ -288,7 +289,7 @@ frame (currently a black clear) and loads `viewUnified2.so`.
 - **[E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) / [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md)** add opt-in QEMU SYSV/VPH/evsel frame clock and oracle-backed SIO ch3, GPIO `0x32`, and ADC `0x3FF` peripheral models to `UnicornMachine`.
 - **UVC / 5 GHz Wi-Fi Streaming & CinemaHUD tooling:** adds offline-tested UVC-PTP adapter (`uvc_ptp_adapter.c`), Run B26 pre-arm harness (`tools/research/run_b26_uvc_prearm.py`), BCM4339 5 GHz Wi-Fi liveview bootstrap/daemon/client (`tools/native_camera/wifi_5ghz_bootstrap.sh`, `camera-daemon/src/wifi_stream.c`, `tools/research/wifi_uvc_client.py`), and CinemaHUD updates.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=aca59278e6b4)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=ad15e3f73ec8)
 
 [Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 

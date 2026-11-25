@@ -54,6 +54,7 @@ For subject lookups (an address, symbol, device, or "is E0xxx still valid?") use
 | [Mobile fotufilm-engine GPU roll architecture (E0689)](evidence/0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md) | Apache-2.0 `DhaliwalX/fotufilm-engine` audit, Halide Metal/Vulkan bottlenecks, and `<350 MB` 36-exposure `.ARW` mobile GPU blueprint |
 | [ISP_TRANSFORM_CATALOG.md](ISP_TRANSFORM_CATALOG.md) | Transform formats, control dependencies, evidence, and open verification for ARRI tuning |
 | [ROADMAP.md](ROADMAP.md) | Long-term project roadmap |
+| [WIFISYNC_MOD.md](WIFISYNC_MOD.md) | Camera-side WiFiSync mod design: 5 GHz AP, read-only Sony Fsys transfer, HTTP `:8765`, Smart Single-Best, power states, Phase 0–2 gates |
 
 ## 4. Evidence, Decisions & Archives
 
