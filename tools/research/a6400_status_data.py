@@ -219,23 +219,22 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-21",
+    as_of="2026-11-24",
     latest=EvidenceRef(
-        evidence_id="E9103",
-        path="docs/evidence/9103-a6100-mod-loader-port.md",
-        date="2026-11-21",
-        title="Mod Loader v2 (MLCR) & Film Simulations ported to ILCE-6100; multi-target SMOD v2 for ILCE-6400",
+        evidence_id="E9104",
+        path="docs/evidence/9104-a6100-photonbin-6mp-port.md",
+        date="2026-11-24",
+        title="PhotonBin 6MP ported to ILCE-6100 1.00 and verified on physical hardware",
         demonstrated=(
-            "Offline Picture Profile gate analysis + opt-in PP_UNLOCK=1 overlay (E9101), procedure record (E9102), "
-            "and MLV2_TARGET=a6100 Mod Loader v2 QEMU execution with folder navigation, Film Simulations / Studio GUI, "
-            "FilmSimLive picker, and FilmTexture SMOD v2 builds targeting both ILCE-6100 1.00 and ILCE-6400 2.00."
+            "Ported PhotonBin 6MP to ILCE-6100 1.00, fixed MakeRawInfoArea IFD-relative out-of-line offsets, "
+            "4 KiB DMM extent alignment, and Call 2 stack RawInfoArea re-application, and verified 6 MP 16-bit "
+            "uncompressed .ARW capture (_DSC5765.ARW), Force HCG (_DSC5769.ARW vs _DSC5770.ARW), and SMNU v4 core.bin SD boot."
         ),
         boundary=(
-            "ILCE-6100 Picture Profile unlock and MLCR port are verified in offline dumps and QEMU (no physical a6100 flash "
-            "write); ILCE-6400 Ver. 2.00 film-simulation addresses are binary/offline-verified against captured av-cam.bin "
-            "and libObj.so without a live hardware camera test."
+            "Verified on physical ILCE-6100 1.00 via RAM-only Mod Loader v2 + SD card MLV2.TAR (requires SMNU v4 "
+            "core.bin and matching SHA-256 in /setting/mlv2_sd_boot.sh)."
         ),
-        tier="OFFLINE + QEMU + ARMv7 SMOD v2",
+        tier="PHYSICAL HARDWARE + UNICORN",
     ),
     headline="ILCE-6400A SD boot & 10 mods | ILCE-6100 MLCR & Film Sims | L3 OSD surface",
     cards=(
