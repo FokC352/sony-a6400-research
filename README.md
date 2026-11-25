@@ -32,7 +32,7 @@ If you just want to add mods to your Sony **`ILCE-6400`** (or **`ILCE-6400A` / `
 | **[Arrivederci](mods/arri_isp/arrivederci/README.md)** | Adds an ARRI LogC3 Classic cinema tone curve and color look right in-camera | Usable on `ILCE-6400` / `ILCE-6400A` ([E0556](docs/evidence/0556-arrivederci-classic-fitted-matrix.md)); turn OFF before power-off |
 | **Film Simulations & Studio** | Custom Picture Profile film looks and live preview picker | Hardware-verified on `ILCE-6100` & `ILCE-6400` ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
 | **PhotonBin 6MP** | 6 MP low-light 16-bit `.ARW` capture with high-conversion-gain mode | Hardware-verified on `ILCE-6100` ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)); QEMU-verified on `ILCE-6400A` ([E0680](docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md)) |
-| **[WiFiSync](mods/wifisync/README.md)** | Sends `.JPG` and `.ARW` photos in the background over 5 GHz Wi-Fi (`:8765`) | Offline-verified ([E0698](docs/evidence/0698-wifisync-camera-side-mod.md)); physical 5 GHz AP gate still open |
+| **[WiFiSync](mods/wifisync/README.md)** | Sends `.JPG` and `.ARW` photos in the background over 5 GHz Wi-Fi (`:8765`) | Faster than stock image transfer, but still slow to our liking |
 | **ModsTabLook & Open Gate 3:2** | Custom `MODS` tab icon and experimental 3:2 full-sensor recording research | Details & installation steps in [mods/README.md](mods/README.md) |
 
 ---
