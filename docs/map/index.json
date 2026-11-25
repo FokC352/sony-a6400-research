@@ -834,6 +834,25 @@
       ],
       "inactive_claims": []
     },
+    "mod.wifisync": {
+      "area": "mods",
+      "name": "WiFiSync",
+      "kind": "module",
+      "address": null,
+      "aliases": [
+        "WiFiSync.mod",
+        "5 GHz transfer",
+        "wifisync"
+      ],
+      "anchor": "mods.md#mod-wifisync",
+      "active_claims": [
+        "C12",
+        "C13",
+        "C14",
+        "C15"
+      ],
+      "inactive_claims": []
+    },
     "tool.native-debugger": {
       "area": "native-debugger",
       "name": "Native root USB debugger (A6400_USB_DEBUG)",
@@ -9863,6 +9882,36 @@
         "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
       }
     ],
+    "E0698": [
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C12",
+        "file": "0698-wifisync-camera-side-mod.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C13",
+        "file": "0698-wifisync-camera-side-mod.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0698-wifisync-camera-side-mod.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C15",
+        "file": "0698-wifisync-camera-side-mod.md",
+        "status": "open"
+      }
+    ],
     "E9001": [
       {
         "area": "l3-userspace",
@@ -12184,6 +12233,9 @@
     ],
     "0697-qemu-uart3-pl011-boot-score.md": [
       "qemu-a6400"
+    ],
+    "0698-wifisync-camera-side-mod.md": [
+      "mods"
     ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"

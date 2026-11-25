@@ -14,6 +14,22 @@ For the full documentation index see [docs/INDEX.md](INDEX.md). For the verified
 
 Historical 2026-10-18 and 2026-11-06 checkpoints are preserved in [docs/archives/](archives/).
 
+## WiFiSync camera-side mod (2026-11-24 / E0698)
+
+[E0698](evidence/0698-wifisync-camera-side-mod.md) implements the camera half of
+the 5 GHz background-transfer plan as a RAM-only `SMOD v2` mod
+([`mods/wifisync/`](../mods/wifisync/README.md), [design](WIFISYNC_MOD.md)):
+a `ConPutWriteStill` interposition, a single worker thread serving
+HTTP `:8765` (`/status`, `/events`, `/manifest`, `/file` with Range, `/ack`),
+Smart Single-Best (RAW+JPG sends only `.ARW`), read-only Sony `Fsys` reads
+behind size/FNV/prologue identity checks, and an AP script
+(`bcmdhd` + `wpa_supplicant` AP mode + `dhcpd` at `192.168.122.1/24`) with
+`low`/`deep` standby. Verified offline: 72 core assertions on x86-64 and on
+Cortex-A5 Thumb (93 Unicorn checks including packaging), 62 end-to-end TCP
+checks with SHA-256/Range/CRC, and 22 Phase 0 firmware contracts. No camera was
+accessed; the physical 5 GHz AP, on-camera WFS reads and `iperf` gate remain
+open.
+
 The earlier no-peripheral captured-profile [E0527](evidence/0527-qemu-task43-initialization-flag-wait.md)
 decodes Task 43's first display wait as flag 10, mask 3, pattern zero, not the
 later `0x3373` loop. Its unasserted IRQs and dormant Task 65 remain bounded
