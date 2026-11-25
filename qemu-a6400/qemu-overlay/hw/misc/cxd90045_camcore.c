@@ -229,6 +229,8 @@ static const CamCoreRule camcore_rules_f312[] = {
     { 0x043C, CAM_ZERO, 0x3fff3fff, "not RMW (no read->write); 0 at 0x63cd48ce" },
     { 0x047C, CAM_ZERO, 0xffffffff, "status, never written; getter 0x63cd4902" },
     { 0x2160, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cef180" },
+    /* L0119: write-only in the 120 s baseline (write 0x3123000, no read); not a decoded contract */
+    { 0x3000, CAM_ZERO, 0xffffffff, "L0119 write-only in the 120 s baseline; read 0" },
 };
 
 /*
