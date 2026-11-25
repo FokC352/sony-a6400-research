@@ -54,7 +54,7 @@ Verify all 8 modeled `CXD90045` camera machines register cleanly:
 ```
 
 Registered machine types match `DEFAULT_REGISTRY` in `src/a6400/targets/catalog.py`:
-`sony-a6400` (`ilce_6400`), `sony-a6400a` (`ilce_6400a`), `sony-zve10` (`zv_e10`, EVF-less `P0.2` idle-high + 6-axis IMU), `sony-a6100` (`ilce_6100`), `sony-a6600` (`ilce_6600`, IBIS IMU), `sony-a7c` (`ilce_7c`, FF IBIS), `sony-a7m3` (`ilce_7m3`, FF IBIS + Dual-SD `mmc2`), and `sony-a7rm4a` (`ilce_7rm4a`, FF IBIS + Dual-SD `mmc2`). Pass `MACHINE_NAME=sony-zve10` (or `CAMERA_MODEL=zv_e10`) and `PERIPHERALS=1` (or individual `TOUCHSCREEN=1`, `BCM4339=1`, `HDMI_CEC=1`, `AUDIO_IO=1`, `EMOUNT_LENS=selp1650|sigma1850|sel2470gm|fe50f18`) to `qemu-a6400/run.sh`; see [E0699](../docs/evidence/0699-qemu-touchscreen-peripherals-and-multimodel.md).
+`sony-a6400` (`ilce_6400`), `sony-a6400a` (`ilce_6400a`), `sony-zve10` (`zv_e10`, EVF-less `P0.2` idle-high + 6-axis IMU), `sony-a6100` (`ilce_6100`), `sony-a6600` (`ilce_6600`, IBIS IMU), `sony-a7c` (`ilce_7c`, FF IBIS), `sony-a7m3` (`ilce_7m3`, FF IBIS + Dual-SD `mmc2`), and `sony-a7rm4a` (`ilce_7rm4a`, FF IBIS + Dual-SD `mmc2`). Pass `MACHINE_NAME=sony-zve10` (or `CAMERA_MODEL=zv_e10`) and `PERIPHERALS=1` (or individual `TOUCHSCREEN=1`, `BCM4339=1`, `HDMI_CEC=1`, `AUDIO_IO=1`, `EMOUNT_LENS=selp1650|sigma1850|sel2470gm|fe50f18`) to `qemu-a6400/run.sh`; see [E0700](../docs/evidence/0700-qemu-touchscreen-peripherals-and-multimodel.md).
 
 ## Interactive rear panel
 
@@ -91,7 +91,7 @@ not for a powered menu test.
 For the captured boot, `SUBMICRO_LENS_POWER=1` opts in to the slot-B
 rail-status reply, while `EMOUNT_LENS=selp1650` (or `sigma1850`, `sel2470gm`,
 `fe50f18`, or `PERIPHERALS=1`) additionally attaches an emulated E-mount `BL`
-serial/DMA lens with focus, iris, zoom, and OSS motor kinematics ([E0699](../docs/evidence/0699-qemu-touchscreen-peripherals-and-multimodel.md)). The [matched replay](../docs/evidence/0591-qemu-a6400-first-live-view-frame.md#captured-step-26-sub-micro-lens-rail-acknowledgement)
+serial/DMA lens with focus, iris, zoom, and OSS motor kinematics ([E0700](../docs/evidence/0700-qemu-touchscreen-peripherals-and-multimodel.md)). The [matched replay](../docs/evidence/0591-qemu-a6400-first-live-view-frame.md#captured-step-26-sub-micro-lens-rail-acknowledgement)
 uses the explicitly qualified powered WBI fixture and `LIVEVIEW_SOURCE=bars`
 to release the original step-26 lens-state wait. The default frozen-reply
 behavior is unchanged when neither option is enabled.

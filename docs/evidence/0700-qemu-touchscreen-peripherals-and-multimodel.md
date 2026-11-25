@@ -1,7 +1,7 @@
-# E0699 — QEMU Virtual Touchscreen, Peripherals (`BCM4339`, HDMI/CEC, AudioIp, E-Mount Lens Motors), and 8-Model `CXD90045` Compatibility
+# E0700 — QEMU Virtual Touchscreen, Peripherals (`BCM4339`, HDMI/CEC, AudioIp, E-Mount Lens Motors), and 8-Model `CXD90045` Compatibility
 
 ```text
-ID: E0699
+ID: E0700
 Date: 2026-11-25
 Claim: Expands the out-of-tree QEMU v11.1.3 CXD90045 emulator (qemu-a6400/) with opt-in models for (1) the FocalTech 0x20 capacitive touchscreen IC on i2c0 (0xF2401000, IRQ 199) + GPIO P0.12 INT (IRQ 133) + VPH LCD pointer input and rear_panel.py /touch click/drag forwarding, (2) Broadcom BCM4339 SDIO Wi-Fi (mmc1 @ 0xF0301000, IRQ 221) and Bluetooth 4.1 H4 HCI + HCD firmware controller (uart3 @ 0xF2003000, IRQ 120 = /dev/ttyBT), (3) HDMI TX (0xF2A40000, 256-byte EDID DDC + HPD/RSEN + TMDS -> VPH Console 1) and CEC (0xF3C10000, virtual TV responder), (4) AudioIp (0xF3420000..0xF3428FFF, capture/playback DMA ring buffers + 440 Hz stereo PCM mic + jack detect), and (5) Sony E-mount BL physical bus (UART1 @ 0xF2001000, IRQ 151 + PL080 M2P/P2M @ 0xF0102000, IRQ 174 + P1.4 detect) with stateful focus, iris, zoom, and OSS lens motors, parameterized across all 8 registered CXD90045 camera models (sony-a6400, sony-a6400a, sony-zve10, sony-a6100, sony-a6600, sony-a7c, sony-a7m3, sony-a7rm4a).
 Status: verified-offline (8/8 native qtest/QMP peripheral + multi-model suites PASS; live captured ILCE-6400 2.00 QEMU firmware boot with paired MenuTouchFull OFF vs ON pure virtual-touchscreen tap and swipe PASS; baseline -M sony-a6400 regressions preserved)
