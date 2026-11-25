@@ -2621,6 +2621,220 @@ static const MemoryRegionOps cxd90045_sif_ops = {
     .impl = { .min_access_size = 1, .max_access_size = 4 },
 };
 
+/*
+ * L0100: 0xF2920000 block, per-offset rule windows for the resolved kernel
+ * OTG and av-cam A/E sub-blocks (F-0099 contract table).  The block is not
+ * CamCore and not one device, so this is a local rule block instead of a
+ * camcore table:
+ *
+ *   0xF2920000 (0x3000)  kernel FUSB/OTG (udif "otg", PC 0x602AD2A8..;
+ *                        4 offsets)
+ *   0xF292A000 (0x1000)  av-cam sub-block A (literals at 0x637989C0..;
+ *                        5 offsets)
+ *   0xF292E000 (0x1000)  av-cam sub-block E (literals at 0x63AA2F18/1C;
+ *                        2 offsets)
+ *
+ * The unresolved 0xF292C000 page is deliberately not mapped (F-0099: no
+ * static owner in the bound images; only a carved emmc module names it).
+ *
+ * Rule kinds: RF reads back the last value written; ZERO reads 0 (F-0099
+ * status words the guest never writes, and write-only config words, for
+ * which 0 is the certified catch-all baseline).  Writes are stored for
+ * every offset.  An offset without a rule is not claimed: it logs through
+ * the same "<name>.unmodelled: unimplemented device ..." format and offset
+ * base (0xF0000000) as the board catch-all, so an unruled gap in a mapped
+ * window still counts as unmodelled.  Each retired offset has its own rule
+ * and the F-0099 reading/writing PC.
+ */
+#define CXD90045_F292_UNMODELLED_BASE 0xF0000000ULL
+
+typedef enum Cxd90045F292Kind {
+    CXD90045_F292_ZERO, /* read 0 (status never written, or write-only) */
+    CXD90045_F292_RF,   /* read back the last value written */
+} Cxd90045F292Kind;
+
+typedef struct Cxd90045F292Rule {
+    uint32_t off;
+    Cxd90045F292Kind kind;
+    const char *why;
+} Cxd90045F292Rule;
+
+/* Kernel FUSB/OTG window 0xF2920000..0xF2922FFF (F-0099). */
+static const Cxd90045F292Rule cxd90045_f292_rules_otg[] = {
+    { 0x0010, CXD90045_F292_ZERO,
+      "status VBUS bit0/CID bit1: read 0x602AD2AC/DB74/DB80/DB330, "
+      "never written (F-0099)" },
+    { 0x0040, CXD90045_F292_RF,
+      "RMW ldr 0x602AD5BC / str 0x602AD5E4 (F-0099)" },
+    { 0x0050, CXD90045_F292_RF,
+      "RMW ldr 0x602AD5EC/0x602AD674 / str 0x602AD694 (F-0099)" },
+    { 0x0100, CXD90045_F292_RF,
+      "RMW ldr 0x602AD748 / str 0x602AD76C (F-0099)" },
+};
+
+/* av-cam sub-block A 0xF292A000..0xF292AFFF (F-0099). */
+static const Cxd90045F292Rule cxd90045_f292_rules_avcam_a[] = {
+    { 0x010, CXD90045_F292_RF,
+      "RMW bfi helper 0x63CEEF86/90/9A/A4/AE; leaf str 0x637989F8 (F-0099)" },
+    { 0x044, CXD90045_F292_ZERO,
+      "write-only config: str 0x63798A10, helper 0x63CEF008/01C; no "
+      "read in the baseline (F-0099)" },
+    { 0x070, CXD90045_F292_ZERO,
+      "status getter 0x63CEF038 (ubfx #8,#5); never written (F-0099)" },
+    { 0x074, CXD90045_F292_ZERO,
+      "write-only config: str 0x63CEF030/040; no read in the baseline "
+      "(F-0099)" },
+    { 0x080, CXD90045_F292_ZERO,
+      "status getter 0x63CEF054 (ubfx #8,#5); never written (F-0099)" },
+};
+
+/* av-cam sub-block E 0xF292E000..0xF292EFFF (F-0099). */
+static const Cxd90045F292Rule cxd90045_f292_rules_avcam_e[] = {
+    { 0x008, CXD90045_F292_ZERO,
+      "write-only config: 0x63AA2F00 stores 1 via 0x63D99230; no read "
+      "in the baseline (F-0099)" },
+    { 0x018, CXD90045_F292_ZERO,
+      "write-only config: 0x63AA2F0A stores 0x100000 via 0x63D99230; "
+      "no read in the baseline (F-0099)" },
+};
+
+/*
+ * HDMI TX page 0xF292C000..0xF292CFFF (F-0101/L0102).  The page is live:
+ * a 120 s certified boot logs 11 distinct (read|write, offset) pairs / 41
+ * accesses.  The ten write offsets run at PC 0x5F519BEC / LR 0x5F519BE8
+ * (module space) and are write-only in the boot (no read of any of them);
+ * +0x160 is a 21-read poll at PC 0x5F519B34 / LR 0x5F519F94 and is never
+ * written, so the catch-all returns 0 and ZERO preserves that observed
+ * value.  There is no read-follows-write on this page, so no offset is RF.
+ * Every rule still stores writes (the shared handler) and reads 0, i.e.
+ * the certified catch-all baseline for these offsets.
+ */
+static const Cxd90045F292Rule cxd90045_f292_rules_c[] = {
+    { 0x004, CXD90045_F292_ZERO,
+      "2 writes 0x00010000/0x00000000 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x008, CXD90045_F292_ZERO,
+      "2 writes 0x001f0000/0x0000000c at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x104, CXD90045_F292_ZERO,
+      "2 writes 0x1/0x10 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x108, CXD90045_F292_ZERO,
+      "2 writes 0x1/0x10 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x114, CXD90045_F292_ZERO,
+      "1 write 0x1 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x118, CXD90045_F292_ZERO,
+      "1 write 0x1 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x124, CXD90045_F292_ZERO,
+      "4 writes 0x001f0000/0x2000/0/0 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x128, CXD90045_F292_ZERO,
+      "4 writes 0x007f0000/0x7f00/0x30/0x0f at PC 0x5F519BEC; no read "
+      "(F-0101)" },
+    { 0x154, CXD90045_F292_ZERO,
+      "1 write 0x0e82 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x158, CXD90045_F292_ZERO,
+      "1 write 0xffff at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x160, CXD90045_F292_ZERO,
+      "21 reads at PC 0x5F519B34 / LR 0x5F519F94, never written; returns "
+      "0 as the catch-all did (F-0101)" },
+};
+
+typedef struct Cxd90045F292 {
+    MemoryRegion mmio;
+    const Cxd90045F292Rule *rules;
+    size_t nrules;
+    uint32_t *regs;      /* one word per 4 bytes of the mapped window */
+    hwaddr base;
+    uint64_t size;
+    const char *name;
+} Cxd90045F292;
+
+static const Cxd90045F292Rule *cxd90045_f292_rule(const Cxd90045F292 *s,
+                                                  uint32_t off)
+{
+    size_t i;
+
+    for (i = 0; i < s->nrules; i++) {
+        if (s->rules[i].off == off) {
+            return &s->rules[i];
+        }
+    }
+    return NULL;
+}
+
+static void cxd90045_f292_log_unlisted(const Cxd90045F292 *s, bool write,
+                                       hwaddr off, unsigned size, uint64_t v)
+{
+    uint64_t o = (s->base + off) - CXD90045_F292_UNMODELLED_BASE;
+
+    if (write) {
+        qemu_log_mask(LOG_UNIMP, "%s.unmodelled: unimplemented device write "
+                      "(size %u, offset 0x%" PRIx64 ", value 0x%" PRIx64 ")\n",
+                      s->name, size, o, v);
+    } else {
+        qemu_log_mask(LOG_UNIMP, "%s.unmodelled: unimplemented device read "
+                      "(size %u, offset 0x%" PRIx64 ")\n",
+                      s->name, size, o);
+    }
+}
+
+static uint64_t cxd90045_f292_read(void *opaque, hwaddr off, unsigned size)
+{
+    Cxd90045F292 *s = opaque;
+    hwaddr w = off & ~3ULL;
+    const Cxd90045F292Rule *r = cxd90045_f292_rule(s, w);
+    uint32_t v = 0;
+
+    if (!r) {
+        cxd90045_f292_log_unlisted(s, false, off, size, 0);
+    } else if (r->kind == CXD90045_F292_RF) {
+        v = s->regs[w >> 2];
+    }
+    /* ZERO and unlisted offsets read 0, as the certified catch-all did. */
+    v >>= (off & 3) * 8;
+    if (size < 4) {
+        v &= (1u << (size * 8)) - 1;
+    }
+    return v;
+}
+
+static void cxd90045_f292_write(void *opaque, hwaddr off, uint64_t v,
+                                unsigned size)
+{
+    Cxd90045F292 *s = opaque;
+    hwaddr w = off & ~3ULL;
+    unsigned sh = (off & 3) * 8;
+    uint32_t mask = size >= 4 ? 0xffffffffu : ((1u << (size * 8)) - 1) << sh;
+    uint32_t old = s->regs[w >> 2];
+
+    if (!cxd90045_f292_rule(s, w)) {
+        cxd90045_f292_log_unlisted(s, true, off, size, v);
+    }
+    s->regs[w >> 2] = (old & ~mask) | (((uint32_t)v << sh) & mask);
+}
+
+static const MemoryRegionOps cxd90045_f292_ops = {
+    .read = cxd90045_f292_read,
+    .write = cxd90045_f292_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+static void cxd90045_f292_create(MemoryRegion *sysmem, hwaddr base,
+                                 uint64_t size, const char *name,
+                                 const Cxd90045F292Rule *rules,
+                                 size_t nrules)
+{
+    Cxd90045F292 *s = g_new0(Cxd90045F292, 1);
+
+    s->base = base;
+    s->size = size;
+    s->name = name;
+    s->rules = rules;
+    s->nrules = nrules;
+    s->regs = g_new0(uint32_t, size / sizeof(uint32_t));
+    memory_region_init_io(&s->mmio, NULL, &cxd90045_f292_ops, s, name, size);
+    memory_region_add_subregion_overlap(sysmem, base, &s->mmio, -600);
+}
+
 static void sony_a6400_create_liveview_pipeline(MachineState *machine,
                                                 MemoryRegion *sysmem,
                                                 qemu_irq *pic)
@@ -3601,6 +3815,32 @@ static void sony_a6400_init(MachineState *machine)
                                     cc_windows[k].window, -600);
         }
     }
+
+    /*
+     * L0100: the 0xF2920000 block's resolved kernel OTG (0x3000) and av-cam
+     * A/E (0x1000 each) windows, from the F-0099 contract.  Each window is a
+     * local per-offset rule block mapped at -600, above the
+     * cxd90045.unmodelled catch-all (-1000); the 0xF292C000 page was not
+     * mapped then (F-0099: no static owner).
+     * L0102: F-0101 found that page live (11 pairs / 41 accesses, PCs in
+     * module space), so it gets its own 0x1000 rule window below.
+     * Unruled offsets inside any of these windows still log as unmodelled
+     * (see cxd90045_f292_* above).
+     */
+    cxd90045_f292_create(sysmem, 0xF2920000ULL, 0x3000,
+                         "cxd90045.f292-otg", cxd90045_f292_rules_otg,
+                         ARRAY_SIZE(cxd90045_f292_rules_otg));
+    cxd90045_f292_create(sysmem, 0xF292A000ULL, 0x1000,
+                         "cxd90045.f292-avcam-a",
+                         cxd90045_f292_rules_avcam_a,
+                         ARRAY_SIZE(cxd90045_f292_rules_avcam_a));
+    cxd90045_f292_create(sysmem, 0xF292E000ULL, 0x1000,
+                         "cxd90045.f292-avcam-e",
+                         cxd90045_f292_rules_avcam_e,
+                         ARRAY_SIZE(cxd90045_f292_rules_avcam_e));
+    cxd90045_f292_create(sysmem, 0xF292C000ULL, 0x1000,
+                         "cxd90045.f292-c", cxd90045_f292_rules_c,
+                         ARRAY_SIZE(cxd90045_f292_rules_c));
 
     /*
      * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
