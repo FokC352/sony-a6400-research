@@ -10,7 +10,9 @@ from src.a6400.execution.guest_threads import GuestThreads, EXPECTED_PTHREAD_CLO
 from src.a6400.execution.interpreter_probe import InterpreterProbe
 try:
     from tests.test_interpreter_probe import make_elf
-except ModuleNotFoundError:
+except ModuleNotFoundError as exc:
+    if exc.name not in ("tests", "tests.test_interpreter_probe"):
+        raise
     from test_interpreter_probe import make_elf
 
 

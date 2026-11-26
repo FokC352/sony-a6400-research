@@ -13,7 +13,9 @@ from src.a6400.execution.guest_stdio import GuestStdio
 from project_paths import PROJECT_ROOT
 try:
     from tests.test_interpreter_probe import make_elf
-except ModuleNotFoundError:
+except ModuleNotFoundError as exc:
+    if exc.name not in ("tests", "tests.test_interpreter_probe"):
+        raise
     from test_interpreter_probe import make_elf
 
 

@@ -4,7 +4,9 @@ from pathlib import Path
 
 try:
     from tests.test_interpreter_probe import make_elf
-except ModuleNotFoundError:
+except ModuleNotFoundError as exc:
+    if exc.name not in ("tests", "tests.test_interpreter_probe"):
+        raise
     from test_interpreter_probe import make_elf
 from project_paths import PROJECT_ROOT
 from tools.research.boot_event_trace import run_window, RETURN

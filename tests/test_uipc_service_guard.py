@@ -11,7 +11,9 @@ from src.a6400.execution.guarded_bytes import UnverifiedGuestData
 from src.a6400.execution.interpreter_probe import InterpreterProbe
 try:
     from tests.test_interpreter_probe import make_elf
-except ModuleNotFoundError:
+except ModuleNotFoundError as exc:
+    if exc.name not in ("tests", "tests.test_interpreter_probe"):
+        raise
     from test_interpreter_probe import make_elf
 
 

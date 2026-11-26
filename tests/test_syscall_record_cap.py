@@ -16,7 +16,9 @@ from src.a6400.execution.guest_uipc import GuestUipc
 from src.a6400.execution.interpreter_probe import InterpreterProbe
 try:
     from tests.test_guest_checkpoint import MockProbe
-except ModuleNotFoundError:
+except ModuleNotFoundError as exc:
+    if exc.name not in ("tests", "tests.test_guest_checkpoint"):
+        raise
     from test_guest_checkpoint import MockProbe
 from tools.camera_link import BootLogger
 
