@@ -28,9 +28,10 @@
 # P2S_TRACE=1 (log the first 64 sensor-writer transfers).
 # USB_VBUS_TEST=1 (enable the runtime usb-vbus QMP property).
 # USB_CID_HIGH=1 (opt-in FUSB CID bit 1 high / peripheral idle, E0587).
-# DWC3_GADGET=1 (opt-in CXD90045 DWC3 gadget at 0xF020C000 and IRQ 229, E0590).
-# WATCHDOG=1 (opt-in CXD4115 hardware watchdog at 0xF2402000, E0636; expiry follows
-# QEMU -action watchdog=, add e.g. QEMU_EXTRA="-icount shift=0,sleep=on -action watchdog=pause").
+# DWC3_GADGET (default on, E0590): CXD90045 DWC3 gadget at 0xF020C000 and IRQ 229.
+# Set DWC3_GADGET=0 to disable it.
+# WATCHDOG (default on, E0636): CXD4115 hardware watchdog at 0xF2402000; expiry follows
+# QEMU -action watchdog=. Set WATCHDOG=0 to drop the writes (unmodelled baseline).
 # WORK_DMA=1 (opt-in work DMA copy channel at 0xF0102000, E0641).
 # F30A_FILL=1 (opt-in 0xF30A memory-fill engine at 0xF30A1280, E0642).
 # DDRB_CONTROL=1 (opt-in initialized DDR-B idle/active-mode sequence).
@@ -136,10 +137,18 @@ fi
 
 D="$E/data"
 PREPARED=0
+PACKAGED=0
 if [ -n "${A6400_QEMU_DATA_DIR:-}" ]; then
     D="$(cd "$A6400_QEMU_DATA_DIR" && pwd)"
     PREPARED=1
     (cd "$E/.." && python3 -m tools.research.qemu_boot_inputs verify --report-dir "$D")
+elif [ -n "${A6400_PACKAGED_DATA_DIR:-}" ]; then
+    D="$(cd "$A6400_PACKAGED_DATA_DIR" && pwd)"
+    if [ ! -f "$D/manifest.json" ]; then
+        echo "A6400_PACKAGED_DATA_DIR is missing manifest.json: $D" >&2
+        exit 1
+    fi
+    PACKAGED=1
 fi
 VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["qemu"]["version"])' "$E/../tools/toolchain.json")"
 Q="${A6400_QEMU_DIR:-$HOME/sony-a6400-qemu-$VERSION}"
@@ -155,6 +164,8 @@ if [ "$PREPARED" = 1 ]; then
         echo "Refusing to overwrite an existing prepared-input run: $R" >&2
         exit 1
     fi
+elif [ "$PACKAGED" = 1 ] && [ -f "$D/av-cam.bin" ]; then
+    AVCAM="${AVCAM:-$D/av-cam.bin}"
 else
     AVCAM="${AVCAM:-$E/../firmware/extracted_a6400/firmware.tar_unpacked/0700_part_image/dev/nflasha3_unpacked/av-cam.bin}"
 fi
@@ -179,11 +190,22 @@ if [ -n "$DTB_OVERRIDE" ] && [ "${LINUX_BOOT:-0}" != 1 ]; then
 fi
 IDT_BOOT=()
 if [ -n "${IDT_CAM:-}" ]; then
-    if [ "$PREPARED" != 1 ] || ! printf '%s  %s\n' \
-        dd8f8d0cc74ad4b70100e5728cf8b159b5155e7fb50eaf1147b99c9054740209 "$AVCAM" \
-        d7a9ae09d2195c1b5151e60f3ff1344715b619631cfad608d9a5fcf7a876c618 "$D/nflasha3-Image" \
-        | sha256_check; then
-        echo 'IDT_CAM requires the verified captured ILCE-6400 kernel and av-cam.' >&2
+    AVCAM_OK=0
+    if [ "$PREPARED" = 1 ] || [ "$PACKAGED" = 1 ]; then
+        if printf '%s  %s\n' \
+            dd8f8d0cc74ad4b70100e5728cf8b159b5155e7fb50eaf1147b99c9054740209 "$AVCAM" \
+            d7a9ae09d2195c1b5151e60f3ff1344715b619631cfad608d9a5fcf7a876c618 "$D/nflasha3-Image" \
+            | sha256_check; then
+            AVCAM_OK=1
+        elif printf '%s  %s\n' \
+            3029a174b393fee9b2624d27737c20bc60e71cbbb33736b2a9363b57184ee03d "$AVCAM" \
+            9d51ab60df8246f10cb2afb12fb504d7f148fae437ee404f5b9837cc3b8f85ca "$D/nflasha3-Image" \
+            | sha256_check; then
+            AVCAM_OK=1
+        fi
+    fi
+    if [ "$AVCAM_OK" != 1 ]; then
+        echo 'IDT_CAM requires the verified captured ILCE-6400 or ILCE-6400A kernel and av-cam.' >&2
         exit 1
     fi
     if [ ! -f "$IDT_CAM" ] || [ "$(file_size "$IDT_CAM")" != 176528 ] ||
@@ -202,9 +224,27 @@ if [ -n "${SD_IMAGE:-}${SD_SHA256:-}" ]; then
 fi
 mkdir -p "$R"
 
+EMMC_OVERLAY="${PERSIST_EMMC_OVERLAY:-$R/emmc-overlay.qcow2}"
+OVERLAY_REUSED=0
+if [ -n "${PERSIST_EMMC_OVERLAY:-}" ] && [ -f "$PERSIST_EMMC_OVERLAY" ]; then
+    OVERLAY_REUSED=1
+else
+    rm -f "$EMMC_OVERLAY"
+    mkdir -p "$(dirname "$EMMC_OVERLAY")"
+    "$Q/build/qemu-img" create -q -f qcow2 -F raw -b "$D/emmc.img" "$EMMC_OVERLAY"
+fi
+
 # QEMU's option parser splits on ',' and the repo path may contain spaces,
 # so stage the preload inputs under $R.
-tar xOf "$D/setting.tar" ./Backup.bin > "$R/Backup.bin"
+SET_OFF=$((0x1000000)); SET_LEN=$((0x1400000))
+if [ "$OVERLAY_REUSED" = 1 ]; then
+    "$Q/build/qemu-img" dd -f qcow2 -O raw bs=1M skip=$((SET_OFF >> 20)) count=$((SET_LEN >> 20)) \
+        if="$EMMC_OVERLAY" of="$R/setting-part.img"
+    (cd "$E/.." && python3 -m tools.research.qemu_media extract-setting-backup \
+        --part-image "$R/setting-part.img" --out "$R/Backup.bin" >/dev/null)
+else
+    tar xOf "$D/setting.tar" ./Backup.bin > "$R/Backup.bin"
+fi
 cp "$AVCAM" "$R/av-cam.bin"
 BACKUP_PA=$(printf '0x%08X' "$(od -An -tu4 -N4 "$R/Backup.bin" | tr -d ' ')")
 if [ -n "${IDT_CAM:-}" ]; then
@@ -242,9 +282,6 @@ elif [ "${LINUX_BOOT:-0}" = 1 ] && [ -f "$D/nflasha3-initrd" ]; then
     CMD=$(printf '%s\n' "$CMD" | sed -E "s#initrd=0x[0-9a-fA-F]+,[^ ]+#initrd=${INITRD_LOAD_PA},0x$(printf '%08x' "$ISZ")#")
 fi
 
-rm -f "$R/emmc-overlay.qcow2"
-"$Q/build/qemu-img" create -q -f qcow2 -F raw -b "$D/emmc.img" "$R/emmc-overlay.qcow2"
-
 # /setting/ulogio.bin (E0525): without it osal_ulogio.ko fails, nobody serves
 # the ulogio queue 0x13A, its message pool fills and every task that logs
 # (av-cam task 65, bootin, im.elf THREAD_INFRA*) blocks in vpool_alloc.
@@ -254,9 +291,10 @@ rm -f "$R/emmc-overlay.qcow2"
 # nflasha2 = user-area 0x00800000 (+8 MiB of eMMC boot partitions in the file).
 ULOGIO="${ULOGIO-$E/../firmware/extracted_zve10_v203_packman/firmware.tar_unpacked/0800_appli/setting/ulogio.bin}"
 if [ -n "$ULOGIO" ] || [ -n "${SETTING_FILES:-}" ]; then
-    SET_OFF=$((0x1000000)); SET_LEN=$((0x1400000))
-    dd if="$D/emmc.img" of="$R/setting-part.img" bs=1048576 skip=$((SET_OFF >> 20)) \
-       count=$((SET_LEN >> 20)) status=none
+    if [ "$OVERLAY_REUSED" != 1 ]; then
+        dd if="$D/emmc.img" of="$R/setting-part.img" bs=1M skip=$((SET_OFF >> 20)) \
+           count=$((SET_LEN >> 20)) status=none
+    fi
     if [ -n "$ULOGIO" ]; then
         python3 "$E/tools/fat_add_file.py" --if-absent "$R/setting-part.img" "$ULOGIO" ulogio.bin >&2
     fi
@@ -267,7 +305,7 @@ if [ -n "$ULOGIO" ] || [ -n "${SETTING_FILES:-}" ]; then
     # Use a relative source name so a run directory with spaces works.
     QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
     (cd "$R" && "$QEMU_IO" -f qcow2 \
-        -c "write -q -s setting-part.img $SET_OFF $SET_LEN" emmc-overlay.qcow2)
+        -c "write -q -s setting-part.img $SET_OFF $SET_LEN" "$EMMC_OVERLAY")
 fi
 
 # E0572 is an opt-in firmware diagnostic applied only to the disposable overlay.
@@ -275,7 +313,7 @@ if [ "${REAR_LCD_DIAGNOSTIC:-0}" = 1 ]; then
     LCD_OFF=$(python3 "$E/tools/rear_lcd_overlay.py" "$D/emmc.img" "$R/rear-lcd-sector.bin")
     QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
     (cd "$R" && "$QEMU_IO" -f qcow2 \
-        -c "write -q -s rear-lcd-sector.bin $LCD_OFF 512" emmc-overlay.qcow2)
+        -c "write -q -s rear-lcd-sector.bin $LCD_OFF 512" "$EMMC_OVERLAY")
 fi
 
 # PP_UNLOCK=1 (opt-in, default off, E9102): point the Soft Skin menu node at the
@@ -293,7 +331,7 @@ if [ "${PP_UNLOCK:-0}" = 1 ]; then
              "$R/pp-unlock.json")
     QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
     (cd "$R" && "$QEMU_IO" -f qcow2 \
-        -c "write -q -s pp-unlock.bin $PP_OFF 4" emmc-overlay.qcow2)
+        -c "write -q -s pp-unlock.bin $PP_OFF 4" "$EMMC_OVERLAY")
 fi
 
 # E0527: the board replays the captured micro->CPU slots A/C/B on SIO ch3.
@@ -383,14 +421,14 @@ fi
 if [ "${USB_CID_HIGH:-0}" = 1 ]; then
     MACHINE="$MACHINE,usb-cid-high=on"
 fi
-if [ "${DWC3_GADGET:-0}" = 1 ]; then
-    MACHINE="$MACHINE,dwc3-gadget=on"
+if [ "${DWC3_GADGET:-1}" = 0 ]; then
+    MACHINE="$MACHINE,dwc3-gadget=off"
 fi
 if [ "${PL330_DMA:-0}" = 1 ]; then
     MACHINE="$MACHINE,pl330-dma=on"
 fi
-if [ "${WATCHDOG:-0}" = 1 ]; then
-    MACHINE="$MACHINE,watchdog=on"
+if [ "${WATCHDOG:-1}" = 0 ]; then
+    MACHINE="$MACHINE,watchdog=off"
 fi
 if [ "${WORK_DMA:-0}" = 1 ]; then
     MACHINE="$MACHINE,work-dma=on"
@@ -422,6 +460,21 @@ fi
 if [ "${F30A_FILL:-0}" = 1 ]; then
     MACHINE="$MACHINE,f30a-fill=on"
 fi
+if [ "${CLKRST_MODEL:-0}" = 1 ]; then
+    MACHINE="$MACHINE,clkrst-model=on"
+fi
+if [ "${PMIC_RESET:-0}" = 1 ]; then
+    MACHINE="$MACHINE,pmic-reset=on"
+fi
+if [ "${REMOTE_SUSPEND_BYPASS:-0}" = 1 ]; then
+    MACHINE="$MACHINE,remote-suspend-bypass=on"
+fi
+if [ "${SD_UHS_U3:-0}" = 1 ]; then
+    MACHINE="$MACHINE,sd-uhs-u3=on"
+fi
+if [ "${STILL_CAPTURE:-0}" = 1 ]; then
+    MACHINE="$MACHINE,still-capture=on"
+fi
 LIVEVIEW_ARGS=()
 if [ -n "${LIVEVIEW_SOURCE:-}" ]; then
     LIVEVIEW_ARGS=(-M "liveview-source=${LIVEVIEW_SOURCE//,/,,}")
@@ -449,9 +502,15 @@ fi
 if [ "${ZMA1_JPEG_FILL:-0}" = 1 ]; then
     SA+=(-global cxd90014-sa.zma1-jpeg-fill=on)
 fi
+if [ "${ZMA1_JPEG_DECODE:-0}" = 1 ]; then
+    SA+=(-global cxd90014-sa.zma1-jpeg-decode=on)
+fi
+if [ "${MOVIE_CODEC_HLE:-0}" = 1 ]; then
+    SA+=(-global cxd90014-sa.movie-codec-hle=on)
+fi
 
 echo "machine: $MACHINE" >&2
-echo "Backup.bin -> $BACKUP_PA, av-cam.bin -> $AVCAM_PA, overlay $R/emmc-overlay.qcow2" >&2
+echo "Backup.bin -> $BACKUP_PA, av-cam.bin -> $AVCAM_PA, overlay $EMMC_OVERLAY" >&2
 KERNEL_PATH="${KERNEL_OVERRIDE:-$D/nflasha3-Image}"
 INITRD_PATH="${INITRD_OVERRIDE:-$D/nflasha3-initrd}"
 if [ -n "$KERNEL_OVERRIDE" ]; then
@@ -484,7 +543,7 @@ fi
 exec ${T[@]+"${T[@]}"} "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial "${SERIAL:-mon:stdio}" \
   -kernel "$KERNEL_PATH" -initrd "$INITRD_PATH" ${DTB_ARGS[@]+"${DTB_ARGS[@]}"} \
   -append "$CMD ${EXTRA:-}" \
-  -drive if=sd,format=qcow2,file="$R/emmc-overlay.qcow2" \
+  -drive if=sd,format=qcow2,file="$EMMC_OVERLAY" \
   -device loader,file="$R/Backup.bin",addr="$BACKUP_PA",force-raw=on \
   -device loader,file="$R/av-cam.bin",addr="$AVCAM_PA",force-raw=on \
   ${IDT_BOOT[@]+"${IDT_BOOT[@]}"} ${EVSEL[@]+"${EVSEL[@]}"} ${P2S[@]+"${P2S[@]}"} ${SA[@]+"${SA[@]}"} ${LIVEVIEW_ARGS[@]+"${LIVEVIEW_ARGS[@]}"} ${SD[@]+"${SD[@]}"} \

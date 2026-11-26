@@ -16,7 +16,7 @@ An open-source toolkit for Sony **BIONZ X** cameras (such as the **a6400**, **a6
 If you just want to add mods to your Sony **`ILCE-6400`** (or **`ILCE-6400A` / `ILCE-6100`**), use the graphical **BIONZ X Mod Manager** on Windows:
 
 1. **Install Python (one time):** Download [Python 3.11+](https://www.python.org/downloads/) and check **"Add python.exe to PATH"** during setup (or open a prebuilt `BionzX-Mod-Manager.exe` release if you have one).
-2. **Launch the app:** Double-click [`scripts/launch_mod_manager.bat`](scripts/launch_mod_manager.bat). Wait a few seconds for the **BIONZ X Mod Manager** window to open.
+2. **Launch the app:** Double-click [`scripts/launch_mod_manager.bat`](scripts/launch_mod_manager.bat) (macOS/Linux: run [`scripts/launch_mod_manager.sh`](scripts/launch_mod_manager.sh)). Wait a few seconds for the **BIONZ X Mod Manager** window to open.
 3. **Download the mod pack:** If prompted at the top, click **Download Official Release** (or **Tools & Setup → Download / Prepare Tools**).
 4. **Plug in your camera:** On the camera, set `MENU → Setup → USB Connection` to **Mass Storage**, connect via USB, and click **Scan Camera**.
 5. **Choose mods & click Install:** Switch the mods you want **ON**, click **1-Click Install to Camera**, and follow the prompt. Unplug the cable and open `MENU → Mods` on your camera!
@@ -30,7 +30,8 @@ If you just want to add mods to your Sony **`ILCE-6400`** (or **`ILCE-6400A` / `
 | :--- | :--- | :--- |
 | **[MenuTouchFull](mods/menu_touch_full/README.md)** | Lets you tap tabs, swipe pages, and use dropdowns across the Sony menu with the touchscreen | Hardware-verified on `ILCE-6400` ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)) and `ZV-E10` ([ZV-E10 guide](tools/native_camera/zve10/README.md)) |
 | **[Arrivederci](mods/arri_isp/arrivederci/README.md)** | Adds an ARRI LogC3 Classic cinema tone curve and color look right in-camera | Usable on `ILCE-6400` / `ILCE-6400A` ([E0556](docs/evidence/0556-arrivederci-classic-fitted-matrix.md)); turn OFF before power-off |
-| **Film Simulations & Studio** | Custom Picture Profile film looks and live preview picker | Hardware-verified on `ILCE-6100` & `ILCE-6400` ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
+| **[SilentShutterUnlock](mods/silent_shutter_unlock/README.md)** | Unlocks Picture Profile (+ sub-items), Picture Effect, Auto HDR/DRO, Multi Frame NR, and Auto/SCN modes while **Silent Shooting** is active (`libObj.so` `ExcMgr` hook + reversible `libSysDef.so` `DefInh::sm_refTbl` patch; Flash/BULB/LENR remain stock) | **Hardware-verified on physical `ILCE-6400` (`2.00` captured layout, RAM-only)** + Unicorn verified (`16` unlocked / `5` stock-preserved, `425` `DefInh` bits cleared & restored on `OFF`) |
+| **Film Simulations & Studio** | Custom Picture Profile film looks and live preview picker | Look pipeline fitted offline ([E0682](docs/evidence/0682-still-jpeg-film-look-domain-and-recipe-recalibration.md), [E0683](docs/evidence/0683-arri-shoulder-and-fujifilm-simulations.md), [E0687](docs/evidence/0687-photo-movie-fixes.md)); no physical film-simulation application recorded |
 | **PhotonBin 6MP** | 6 MP low-light 16-bit `.ARW` capture with high-conversion-gain mode | Hardware-verified on `ILCE-6100` ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)); QEMU-verified on `ILCE-6400A` ([E0680](docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md)) |
 | **[WiFiSync](mods/wifisync/README.md)** | Sends `.JPG` and `.ARW` photos in the background over 5 GHz Wi-Fi (`:8765`) | Faster than stock image transfer, but still slow to our liking |
 | **ModsTabLook & Open Gate 3:2** | Custom `MODS` tab icon and experimental 3:2 full-sensor recording research | Details & installation steps in [mods/README.md](mods/README.md) |
@@ -45,7 +46,7 @@ All listed cameras share Sony's **BIONZ X (`CXD90045`)** processor ([platform ov
 | :--- | :--- | :--- |
 | **`ILCE-6400`** | **Verified (Hardware + Emulator)** | Full QEMU & Unicorn emulation, Mod Loader v2, MenuTouchFull, Arrivederci, Film Sims |
 | **`ILCE-6400A`** | **Verified (QEMU + SD Auto-Boot)** | 4-core QEMU stock UI boot, Mod Loader v2 + 10 `.mod` packages, FAT32/exFAT SD auto-boot ([`mods/ilce_6400a/`](mods/ilce_6400a/README.md)) |
-| **`ILCE-6100`** | **Verified (Hardware Mods)** | Mod Loader v2, Film Simulations, Picture Profile unlock, PhotonBin 6MP ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)) |
+| **`ILCE-6100`** | **Verified (Hardware Mods)** | PhotonBin 6MP and MLV2 SD-boot/SMNU ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)); Picture Profile unlock is QEMU-only ([E9101](docs/evidence/9101-a6100-picture-profile-gate.md)); the emulator Mod Loader port is offline ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
 | **`ZV-E10`** | **Verified (RAM Touch Mod)** | Full Main Menu + 12-tile Fn touch on physical hardware via direct RAM injection ([ZV-E10 guide](tools/native_camera/zve10/README.md)) |
 | **`ILCE-6600` · `ILCE-7C` · `ILCE-7M3` · `ILCE-7RM4A`** | **Reference Profiles** | Firmware symbols & USB IDs mapped offline; ready for contributors to verify mods |
 
@@ -85,9 +86,9 @@ python -m unittest discover -s tests -q
 
 ## Project Status & Verification
 
-This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)**.
+This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9105](docs/evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md)**.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=4209459c3476)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=ae8bb41ed0b5)
 
 [Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 

@@ -277,6 +277,8 @@ def serve(args, scratch, server):
         env["SUBMICRO_SYNTHETIC"] = "1"
     if getattr(args, "sd_uhs_u3", False):
         env["SD_UHS_U3"] = "1"
+    if getattr(args, "persist_overlay", None):
+        env["PERSIST_EMMC_OVERLAY"] = str(args.persist_overlay.resolve())
     if args.inputs:
         env["A6400_QEMU_DATA_DIR"] = str(moddev.ensure_linux_inputs(args.inputs))
         env["ULOGIO"] = ""                    # the captured /setting already has its ulogio.bin
@@ -459,6 +461,28 @@ def serve(args, scratch, server):
                     except (ValueError, TypeError) as error:
                         handler.reply("application/json",
                                       json.dumps({"error": str(error)}).encode(), code=400)
+                elif path == "/power":
+                    try:
+                        payload = json.loads(body(handler, 1024) or b"{}")
+                        off = str(payload.get("state", "off")).lower() in ("off", "0", "false")
+                        qmp.command("qom-set", path="/machine",
+                                    property="power-off", value=off)
+                        handler.reply("application/json",
+                                      json.dumps({"ok": True, "power_off": off}).encode())
+                    except (ValueError, TypeError, RuntimeError) as error:
+                        handler.reply("application/json",
+                                      json.dumps({"error": str(error)}).encode(), code=400)
+                elif path == "/hdmi":
+                    try:
+                        payload = json.loads(body(handler, 1024) or b"{}")
+                        plugged = bool(payload.get("plugged", True))
+                        qmp.command("qom-set", path="/machine/cxd90045-hdmi-cec",
+                                    property="hdmi-plugged", value=plugged)
+                        handler.reply("application/json",
+                                      json.dumps({"ok": True, "hdmi_plugged": plugged}).encode())
+                    except (ValueError, TypeError, RuntimeError) as error:
+                        handler.reply("application/json",
+                                      json.dumps({"error": str(error)}).encode(), code=400)
                 elif path in ("/emu/pause", "/emu/resume"):
                     qmp.command("stop" if path == "/emu/pause" else "cont")
                     handler.reply("application/json", json.dumps(emu_state()).encode())
@@ -622,6 +646,8 @@ def main():
                         help="Synthesize powered idle 384-byte sub-micro RX frames without an external capture file")
     parser.add_argument("--sd-uhs-u3", action="store_true",
                         help="Advertise virtual UHS-I U3 / Class 10 / V30 in removable SD ACMD13 SD Status")
+    parser.add_argument("--persist-overlay", type=Path, default=None,
+                        help="Persist and reuse this eMMC qcow2 overlay (and saved /setting/Backup.bin) across restarts")
     parser.add_argument("--inputs", type=Path, help="Prepared camera-captured inputs (qemu_boot_inputs prepare)")
     parser.add_argument("--loader", type=Path, help="Mod Loader v2 build directory to install and watch")
     parser.add_argument("--mod", type=Path, action="append", default=[], help="SMOD file to load and hot-reload")

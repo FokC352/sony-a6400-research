@@ -35,6 +35,7 @@ Current knowledge:
 - **C08** `OFFLINE` Six mount points are writable at runtime and three flash partitions are frozen. ([E0486](../evidence/0486-writable-mounts-versus-the-flash-boundary.md))
 - **C11** `OFFLINE` The platform model states its boundary: everything is offline from packaged images, and facts that need a camera stay unknown. ([E0490](../evidence/0490-platform-model-and-flash-boundary.md))
 - **C13** `OFFLINE` A research checkpoint and publication audit inventoried local evidence at E0110. ([E0110](../evidence/0110-research-checkpoint-and-github-publication.md), [0110-local-evidence-inventory](../evidence/manifests/0110-local-evidence-inventory.json))
+- **C14** `OFFLINE` The ILCE-6100 Ver.1.00 and ILCE-6400 captures are distinct builds of the same Sony CE Linux 8.2.6.0 release: version.txt reads 38115_03.2021040601 on the a6100 and 38111_06.2021081003 on the a6400, and the kernels were built on different hosts and dates. Their partition size map is identical (1,360,986,112 bytes over 18 partitions), but only nflasha16, nflasha23 and nflashaB1 are byte-identical; the other 15 differ. ([E0707](../evidence/0707-firmware-dump-sets-a6100-a6400.md), [E9101](../evidence/9101-a6100-picture-profile-gate.md), [E0415](../evidence/0415-nflasha-boot-decode-and-full-emulation-roadmap.md))
 
 ### <a id="platform-command-table"></a>Command tables and the 0x413b Movie Eye AF value
 

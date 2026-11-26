@@ -12,7 +12,7 @@ index c3a505e..9aacc66 100644
  
  /*
 diff --git a/hw/arm/Kconfig b/hw/arm/Kconfig
-index 6f5b2ad..9e6577c 100644
+index 6f5b2ad..87c4133 100644
 --- a/hw/arm/Kconfig
 +++ b/hw/arm/Kconfig
 @@ -727,3 +727,15 @@ config ARMSSE
@@ -32,14 +32,14 @@ index 6f5b2ad..9e6577c 100644
 +    select UNIMP
 +    select CXD4115_TIMER
 diff --git a/hw/arm/meson.build b/hw/arm/meson.build
-index 4233a80..6befd6a 100644
+index 4233a80..f0bc619 100644
 --- a/hw/arm/meson.build
 +++ b/hw/arm/meson.build
 @@ -111,5 +111,6 @@ arm_common_ss.add(when: 'CONFIG_VERSATILE', if_true: files('versatilepb.c'))
  arm_common_ss.add(when: 'CONFIG_VEXPRESS', if_true: files('vexpress.c'))
  
  arm_common_ss.add(files('boot.c'))
-+arm_common_ss.add(when: 'CONFIG_SONY_A6400', if_true: files('sony_a6400.c', '../misc/cxd90014_sio.c', '../misc/cxd90014_gpio.c', '../misc/cxd90014_adc.c', '../misc/cxd90014_evsel.c', '../misc/cxd90014_regfile.c', '../misc/cxd90014_vph.c', '../display/dmp_smaph.c', '../display/dmp_shader.c', '../display/cxd90045_hdmi_cec.c', '../misc/cxd90014_sa.c', '../misc/cxd90014_p2s.c', '../misc/cxd90045_camcore.c', '../misc/cxd90045_i2c.c', '../misc/cxd90045_tpu.c', '../misc/cxd90045_touch.c', '../misc/cxd90045_bcm4339.c', '../misc/cxd90045_audio.c', '../misc/cxd90045_lens.c', '../usb/cxd90045_dwc3.c', '../misc/cxd90045_cam.c'))
++arm_common_ss.add(when: 'CONFIG_SONY_A6400', if_true: files('sony_a6400.c', '../misc/cxd90014_sio.c', '../misc/cxd90014_gpio.c', '../misc/cxd90014_adc.c', '../misc/cxd90014_evsel.c', '../misc/cxd90014_regfile.c', '../misc/cxd90014_vph.c', '../display/dmp_smaph.c', '../display/dmp_shader.c', '../display/cxd90045_hdmi_cec.c', '../misc/cxd90014_sa.c', '../misc/cxd90014_p2s.c', '../misc/cxd90045_camcore.c', '../misc/cxd90045_i2c.c', '../misc/cxd90045_tpu.c', '../misc/cxd90045_touch.c', '../misc/cxd90045_bcm4339.c', '../misc/cxd90045_audio.c', '../misc/cxd90045_lens.c', '../usb/cxd90045_dwc3.c', '../misc/cxd90045_cam.c', '../misc/cxd90045_jpeg.c'))
  
  hw_common_arch += {'arm': arm_common_ss}
 diff --git a/hw/cpu/a9mpcore.c b/hw/cpu/a9mpcore.c
@@ -59,43 +59,49 @@ index 2127f95..6898ead 100644
                     "Cortex-A9MPCore peripheral can only use Cortex-A9 CPU");
          return;
 diff --git a/hw/sd/sd.c b/hw/sd/sd.c
-index 780e9f6..c16afc7 100644
+index 780e9f6..5027148 100644
 --- a/hw/sd/sd.c
 +++ b/hw/sd/sd.c
-@@ -164,6 +164,8 @@ struct SDState {
+@@ -164,6 +164,11 @@ struct SDState {
      uint8_t spec_version;
      uint64_t boot_part_size;
      uint64_t rpmb_part_size;
 +    bool sony_legacy_backend;
-+    bool sony_uhs_u3;
++    uint8_t speed_class;
++    uint8_t uhs_speed_grade;
++    bool switching_1v8;
++    bool uhs_activated;
      BlockBackend *blk;
      uint8_t boot_config;
  
-@@ -436,14 +438,22 @@ static void sd_set_ocr(SDState *sd)
+@@ -335,6 +340,17 @@ static void sd_set_voltage(SDState *sd, uint16_t millivolts)
+     trace_sdcard_set_voltage(millivolts);
  
- static void sd_set_scr(SDState *sd)
- {
-+    uint8_t sd_sec = 2; /* SDSC Card (Security Version 1.01) */
-+
-+    if (sd->sony_uhs_u3 && sd->size > SDSC_MAX_CAPACITY) {
-+        sd_sec = sd->size > 32 * GiB ? 4 : 3; /* SDXC v3.0x / SDHC v2.00 */
-+    }
-     sd->scr[0] = 0 << 4;        /* SCR structure version 1.0 */
-     sd->scr[0] |= 2;            /* Spec Version 2.00 or Version 3.0X */
--    sd->scr[1] = (2 << 4)       /* SDSC Card (Security Version 1.01) */
-+    sd->scr[1] = (sd_sec << 4)
-                  | 0b0101;      /* 1-bit or 4-bit width bus modes */
-     sd->scr[2] = 0x00;          /* Extended Security is not supported. */
+     switch (millivolts) {
++    case 1700 ... 1950: /* SD_VOLTAGE_1_8V */
++        if (sd->uhs_speed_grade > 0 && sd->size > SDSC_MAX_CAPACITY) {
++            if (sd->switching_1v8) {
++                sd->switching_1v8 = false;
++                sd->uhs_activated = true;
++                sd->dat_lines = 0x0f;
++            }
++            break;
++        }
++        qemu_log_mask(LOG_GUEST_ERROR, "SD card 1.8V switch not armed\n");
++        break;
+     case 3001 ... 3600: /* SD_VOLTAGE_3_3V */
+     case 2001 ... 3000: /* SD_VOLTAGE_3_0V */
+         break;
+@@ -444,7 +460,7 @@ static void sd_set_scr(SDState *sd)
      if (sd->spec_version >= SD_PHY_SPECv3_01_VERS) {
          sd->scr[2] |= 1 << 7;   /* Spec Version 3.0X */
      }
-+    if (sd->sony_uhs_u3) {
-+        sd->scr[2] |= 1 << 2;   /* Spec Version 4.XX+ (SD_SPEC4) */
-+    }
-     sd->scr[3] = 0x00;
+-    sd->scr[3] = 0x00;
++    sd->scr[3] = (sd->spec_version >= SD_PHY_SPECv3_01_VERS && sd->uhs_speed_grade > 0) ? 0x02 : 0x00; /* CMD23 support (SCR[33]) */
      /* reserved for manufacturer usage */
      sd->scr[4] = 0x00;
-@@ -537,7 +547,7 @@ static void emmc_set_ext_csd(SDState *sd, uint64_t size)
+     sd->scr[5] = 0x00;
+@@ -537,7 +553,7 @@ static void emmc_set_ext_csd(SDState *sd, uint64_t size)
      sd->ext_csd[205] = 0x46; /* Min read perf for 4bit@26Mhz */
      sd->ext_csd[EXT_CSD_CARD_TYPE] = 0b11;
      sd->ext_csd[EXT_CSD_STRUCTURE] = 2;
@@ -104,31 +110,80 @@ index 780e9f6..c16afc7 100644
      sd->ext_csd[EXT_CSD_RPMB_MULT] = sd->rpmb_part_size / (128 * KiB);
      sd->ext_csd[EXT_CSD_PARTITION_SUPPORT] = 0b111;
  
-@@ -729,6 +739,23 @@ static void sd_set_cardstatus(SDState *sd)
+@@ -729,6 +745,30 @@ static void sd_set_cardstatus(SDState *sd)
  static void sd_set_sdstatus(SDState *sd)
  {
      memset(sd->sd_status, 0, 64);
-+    if (sd->sony_uhs_u3 && !sd_is_emmc(sd)) {
-+        /*
-+         * Opt-in virtual UHS-I U3 / Class 10 / V30 SD Status (ACMD13,
-+         * SD Physical Layer Specification 4.10.2):
-+         *   byte  8 [447:440] SPEED_CLASS       = 0x04 (Class 10)
-+         *   byte 10 [431:428] AU_SIZE           = 0x9  (4 MiB)
-+         *   byte 13 [407:402] ERASE_TIMEOUT     = 1 s, ERASE_OFFSET = 0
-+         *   byte 14 [399:396] UHS_SPEED_GRADE   = 0x3  (U3, 30 MB/s)
-+         *           [395:392] UHS_AU_SIZE       = 0x9  (4 MiB)
-+         *   byte 15 [391:384] VIDEO_SPEED_CLASS = 0x1e (V30)
-+         */
++    switch (sd->speed_class) {
++    case 2:
++        sd->sd_status[8] = 0x01;
++        break;
++    case 4:
++        sd->sd_status[8] = 0x02;
++        break;
++    case 6:
++        sd->sd_status[8] = 0x03;
++        break;
++    case 10:
 +        sd->sd_status[8] = 0x04;
-+        sd->sd_status[10] = 0x90;
-+        sd->sd_status[13] = 0x04;
-+        sd->sd_status[14] = 0x39;
-+        sd->sd_status[15] = 0x1e;
++        sd->sd_status[9] = 0x00;
++        sd->sd_status[10] = 0x90; /* AU_SIZE = 4 MiB */
++        sd->sd_status[11] = 0x00;
++        sd->sd_status[12] = 0x08;
++        sd->sd_status[13] = 0x01;
++        break;
++    default:
++        break;
++    }
++    if (sd->uhs_speed_grade == 1 || sd->uhs_speed_grade == 3) {
++        sd->sd_status[14] = (sd->uhs_speed_grade << 4) | 0x09;
 +    }
  }
  
  static const uint8_t sd_tuning_block_pattern4[64] = {
-@@ -2272,6 +2299,11 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
+@@ -932,6 +972,9 @@ static void sd_reset(DeviceState *dev)
+     sect = sd_addr_to_wpnum(size) + 1;
+ 
+     sd->state = sd_idle_state;
++    sd->switching_1v8 = false;
++    sd->uhs_activated = false;
++    sd->dat_lines = 0x0f;
+ 
+     /* card registers */
+     sd->rca = sd_is_emmc(sd) ? 0x0001 : 0x0000;
+@@ -1464,7 +1507,7 @@ static void sd_function_switch(SDState *sd, uint32_t arg)
+     sd->data[10] = 0x80;    /* Supported group 2 functions */
+     sd->data[11] = 0x43;
+     sd->data[12] = 0x80;    /* Supported group 1 functions */
+-    sd->data[13] = 0x03;
++    sd->data[13] = sd->uhs_activated ? 0x1f : 0x03;
+ 
+     memset(&sd->data[14], 0, 3);
+     for (i = 0; i < 6; i ++) {
+@@ -1809,6 +1852,22 @@ static sd_rsp_type_t sd_cmd_DE_SELECT_CARD(SDState *sd, SDRequest req)
+     return sd_invalid_state_for_cmd(sd, req);
+ }
+ 
++/* CMD11 */
++static sd_rsp_type_t sd_cmd_VOLTAGE_SWITCH(SDState *sd, SDRequest req)
++{
++    if (sd->spec_version < SD_PHY_SPECv3_01_VERS || sd->uhs_speed_grade == 0) {
++        return sd_cmd_optional(sd, req);
++    }
++    if (sd->state != sd_ready_state || sd->uhs_activated ||
++        !FIELD_EX32(sd->ocr, OCR, ACCEPT_SWITCH_1V8)) {
++        return sd_invalid_state_for_cmd(sd, req);
++    }
++    sd->switching_1v8 = true;
++    sd->ocr = FIELD_DP32(sd->ocr, OCR, ACCEPT_SWITCH_1V8, 0);
++    sd->dat_lines = 0x00;
++    return sd_r1;
++}
++
+ /* CMD8 */
+ static sd_rsp_type_t sd_cmd_SEND_IF_COND(SDState *sd, SDRequest req)
+ {
+@@ -2272,6 +2331,11 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
          return sd_invalid_state_for_cmd(sd, req);
      }
  
@@ -140,7 +195,7 @@ index 780e9f6..c16afc7 100644
      /*
       * If it's the first ACMD41 since reset, we need to decide
       * whether to power up. If this is not an enquiry ACMD41,
-@@ -2300,7 +2332,8 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
+@@ -2300,7 +2364,8 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
          sd->state = sd_ready_state;
          return sd_r1;
      } else {
@@ -150,7 +205,20 @@ index 780e9f6..c16afc7 100644
              /*
               * We accept any voltage.  10000 V is nothing.
               *
-@@ -2665,7 +2698,7 @@ static size_t sd_write_data(SDState *sd, const void *buf, size_t length)
+@@ -2309,6 +2374,12 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
+              */
+             sd->state = sd_ready_state;
+         }
++        if (!sd_is_emmc(sd) &&
++            sd->spec_version >= SD_PHY_SPECv3_01_VERS &&
++            sd->uhs_speed_grade > 0 && sd->size > SDSC_MAX_CAPACITY &&
++            !sd->uhs_activated && FIELD_EX32(req.arg, OCR, ACCEPT_SWITCH_1V8)) {
++            sd->ocr = FIELD_DP32(sd->ocr, OCR, ACCEPT_SWITCH_1V8, 1);
++        }
+         return sd_r3;
+     }
+ }
+@@ -2665,7 +2736,7 @@ static size_t sd_write_data(SDState *sd, const void *buf, size_t length)
      int i;
      const uint8_t *value = buf;
  
@@ -159,7 +227,7 @@ index 780e9f6..c16afc7 100644
          return length;
      }
  
-@@ -2813,7 +2846,7 @@ static size_t sd_read_data(SDState *sd, void *buf, size_t length)
+@@ -2813,7 +2884,7 @@ static size_t sd_read_data(SDState *sd, void *buf, size_t length)
      uint32_t io_len;
      uint8_t *value = buf;
  
@@ -168,7 +236,16 @@ index 780e9f6..c16afc7 100644
          memset(buf, dummy_byte, length);
          return length;
      }
-@@ -3117,9 +3150,14 @@ static void sd_realize(DeviceState *dev, Error **errp)
+@@ -2965,7 +3036,7 @@ static const SDProto sd_proto_sd = {
+         [8]  = {0,  sd_bcr,  "SEND_IF_COND", sd_cmd_SEND_IF_COND},
+         [9]  = {0,  sd_ac,   "SEND_CSD", sd_cmd_SEND_CSD},
+         [10] = {0,  sd_ac,   "SEND_CID", sd_cmd_SEND_CID},
+-        [11] = {0,  sd_ac,   "VOLTAGE_SWITCH", sd_cmd_optional},
++        [11] = {0,  sd_ac,   "VOLTAGE_SWITCH", sd_cmd_VOLTAGE_SWITCH},
+         [12] = {0,  sd_ac,   "STOP_TRANSMISSION", sd_cmd_STOP_TRANSMISSION},
+         [13] = {0,  sd_ac,   "SEND_STATUS", sd_cmd_SEND_STATUS},
+         [15] = {0,  sd_ac,   "GO_INACTIVE_STATE", sd_cmd_GO_INACTIVE_STATE},
+@@ -3117,9 +3188,14 @@ static void sd_realize(DeviceState *dev, Error **errp)
              return;
          }
  
@@ -184,7 +261,7 @@ index 780e9f6..c16afc7 100644
              if (blk_size > SDSC_MAX_CAPACITY) {
                  if (sd_is_emmc(sd) &&
                      !QEMU_IS_ALIGNED(blk_size, 1 << HWBLOCK_SHIFT)) {
-@@ -3135,7 +3173,8 @@ static void sd_realize(DeviceState *dev, Error **errp)
+@@ -3135,7 +3211,8 @@ static void sd_realize(DeviceState *dev, Error **errp)
                                        "multiples of 512K", errp);
                      return;
                  }
@@ -194,13 +271,12 @@ index 780e9f6..c16afc7 100644
                  sd_blk_size_error(sd, blk_size, pow2ceil(blk_size),
                                    "a power of 2", errp);
                  return;
-@@ -3208,11 +3247,13 @@ static const Property sdmmc_common_properties[] = {
- };
- 
+@@ -3210,9 +3287,12 @@ static const Property sdmmc_common_properties[] = {
  static const Property sd_properties[] = {
-+    DEFINE_PROP_BOOL("x-sony-uhs-u3", SDState, sony_uhs_u3, false),
      DEFINE_PROP_UINT8("spec_version", SDState,
                        spec_version, SD_PHY_SPECv3_01_VERS),
++    DEFINE_PROP_UINT8("speed-class", SDState, speed_class, 0),
++    DEFINE_PROP_UINT8("uhs-speed-grade", SDState, uhs_speed_grade, 0),
  };
  
  static const Property emmc_properties[] = {
@@ -209,9 +285,31 @@ index 780e9f6..c16afc7 100644
      DEFINE_PROP_UINT8("boot-config", SDState, boot_config, 0x0),
      DEFINE_PROP_UINT64("rpmb-partition-size", SDState, rpmb_part_size, 0),
 diff --git a/hw/sd/sdhci.c b/hw/sd/sdhci.c
-index a612e5c..d1fc86f 100644
+index a612e5c..c872b92 100644
 --- a/hw/sd/sdhci.c
 +++ b/hw/sd/sdhci.c
+@@ -431,10 +431,7 @@ static void sdhci_read_block_from_card(SDHCIState *s)
+         return;
+     }
+ 
+-    if (!FIELD_EX32(s->hostctl2, SDHC_HOSTCTL2, EXECUTE_TUNING)) {
+-        /* Device is not in tuning */
+-        sdbus_read_data(&s->sdbus, s->fifo_buffer, blk_size);
+-    }
++    sdbus_read_data(&s->sdbus, s->fifo_buffer, blk_size);
+ 
+     if (FIELD_EX32(s->hostctl2, SDHC_HOSTCTL2, EXECUTE_TUNING)) {
+         /* Device is in tuning */
+@@ -442,6 +439,9 @@ static void sdhci_read_block_from_card(SDHCIState *s)
+         s->hostctl2 |= R_SDHC_HOSTCTL2_SAMPLING_CLKSEL_MASK;
+         s->prnsts &= ~(SDHC_DAT_LINE_ACTIVE | SDHC_DOING_READ |
+                        SDHC_DATA_INHIBIT);
++        if (s->norintstsen & SDHC_NISEN_RBUFRDY) {
++            s->norintsts |= SDHC_NIS_RBUFRDY;
++        }
+         goto read_done;
+     }
+ 
 @@ -994,7 +994,7 @@ static void sdhci_data_transfer(void *opaque)
  
  static bool sdhci_can_issue_command(SDHCIState *s)
