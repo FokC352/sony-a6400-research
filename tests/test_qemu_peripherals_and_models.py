@@ -154,6 +154,7 @@ class _QTestQmpHarness(unittest.TestCase):
         pending = [b""]
         rp = _load_rear_panel_module()
         qmp = rp.Qmp(qmp_sock, proc)
+        qmp.request = lambda name, args=None: qmp.command(name, **(args or {}))
         self.addCleanup(qmp.close)
         return proc, pending, qmp, root
 
@@ -653,6 +654,273 @@ class QemuEmountLensMotorTests(_QTestQmpHarness):
         self.wr32(proc, pending, self.PL080 + 0x1CC, 0x1C491001)
         self.wr32(proc, pending, self.PL080 + 0x1D0, 1)
         self.assertEqual(self.rd32(proc, pending, 0x00621000), 0xA6400DEA)
+
+
+class SubmicroSyntheticPreflightTests(unittest.TestCase):
+    """Verify run.sh preflight rules for SUBMICRO_SYNTHETIC=1."""
+
+    def test_submicro_synthetic_rejects_conflicting_fixture_vars(self):
+        run_sh = PROJECT_ROOT / "qemu-a6400/run.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "not-staged"
+            dummy = root / "dummy.bin"
+            dummy.write_bytes(bytes(384))
+            for extra_env in (
+                {"SUBMICRO_PAGE": str(dummy)},
+                {"SUBMICRO_FRAMES": str(dummy)},
+            ):
+                with self.subTest(extra_env=extra_env):
+                    res = subprocess.run(
+                        ["bash", str(run_sh)],
+                        env={
+                            **os.environ,
+                            "RUN_DIR": str(run_dir),
+                            "A6400_QEMU_DATA_DIR": "",
+                            "SUBMICRO_SYNTHETIC": "1",
+                            **extra_env,
+                        },
+                        capture_output=True,
+                        timeout=5,
+                    )
+                    self.assertNotEqual(res.returncode, 0)
+                    self.assertIn(b"SUBMICRO_SYNTHETIC=1 cannot be combined", res.stderr)
+                    self.assertFalse(run_dir.exists())
+
+
+@unittest.skipUnless(NATIVE_AVAILABLE, "Optional WSL/Linux sony-a6400 QEMU build absent")
+class QemuSubmicroSyntheticAndHdmiHotplugTests(_QTestQmpHarness):
+    """Verify opt-in seed-free sub-micro synthesis and machine hdmi-plugged hotplug."""
+
+    SIO3 = 0xF2405600
+    HDMI = 0xF2A40000
+
+    def _sio3_xfer(self, proc, pending, tx: bytes) -> bytes:
+        assert len(tx) in (128, 256)
+        self.wr32(proc, pending, self.SIO3 + 0x00, 0xC0000000)
+        self.wr32(proc, pending, self.SIO3 + 0x0C, ((len(tx) - 1) & 0xFF) << 24)
+        for idx in range(0, len(tx), 4):
+            word = struct.unpack_from("<I", tx, idx)[0]
+            self.wr32(proc, pending, self.SIO3 + 0x100 + idx, word)
+        self.wr32(proc, pending, self.SIO3 + 0x00, 0x20000000)
+        return b"".join(
+            struct.pack("<I", self.rd32(proc, pending, self.SIO3 + 0x100 + idx))
+            for idx in range(0, len(tx), 4)
+        )
+
+    def test_baseline_sio3_stays_silent_without_submicro_opt_in(self):
+        proc, pending, _, _ = self.start_harness("sony-a6400")
+        tx = b"\x31" + b"\xA5" * 127
+        rx = self._sio3_xfer(proc, pending, tx)
+        self.assertEqual(rx, tx)
+
+    def test_submicro_synthetic_slots_lens_rail_sd_detect_and_front_keys(self):
+        from src.a6400.execution.submicro_link import (
+            decode_slot_b_frame,
+            encode_slot_b_frame,
+            verify_frame_crc,
+        )
+        from tools.research.qemu_media import sd_blockdev, sd_event
+        from tools.research.qemu_boot_probe import digest
+
+        rp = _load_rear_panel_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            card = root / "sd.img"
+            card.write_bytes(bytes(16 * 1024 * 1024))
+            import json
+            node = sd_blockdev(card, digest(card), root / "inputs", root / "run")
+            proc, pending, qmp, _ = self.start_harness(
+                "sony-a6400,submicro-synthetic=on,submicro-lens-power=on,rear-controls=on",
+                ["-drive", "if=none,id=a6400-sd", "-blockdev", json.dumps(node)],
+            )
+
+            # 1. Slot A (0x21 -> 0x20): valid CRC, POWER ON (byte 28 = 0x01), SD0 empty
+            rx_a = self._sio3_xfer(proc, pending, b"\x21" + bytes(127))
+            self.assertEqual(rx_a[0], 0x20)
+            self.assertTrue(verify_frame_crc(rx_a))
+            self.assertEqual(rx_a[2] & 0x10, 0x00)
+            self.assertEqual(rx_a[28], 0x01)
+            self.assertEqual(rx_a[29], 0xFF)
+
+            # Insert SD -> Slot A byte 2 bit 4 reflects card insertion
+            sd_event(qmp, "insert")
+            rx_a_ins = self._sio3_xfer(proc, pending, b"\x21" + bytes(127))
+            self.assertTrue(verify_frame_crc(rx_a_ins))
+            self.assertEqual(rx_a_ins[2] & 0x10, 0x10)
+
+            # Toggle power lever -> byte 28 bit 0 clears, then restores
+            rp.press_control(qmp, "power-lever")
+            rx_a_off = self._sio3_xfer(proc, pending, b"\x21" + bytes(127))
+            self.assertTrue(verify_frame_crc(rx_a_off))
+            self.assertEqual(rx_a_off[28] & 0x01, 0x00)
+            rp.press_control(qmp, "power-lever")
+            self.assertEqual(self._sio3_xfer(proc, pending, b"\x21" + bytes(127))[28] & 0x01, 0x01)
+
+            # 2. Slot C (0x61 -> 0x60): valid CRC
+            rx_c = self._sio3_xfer(proc, pending, b"\x61" + bytes(127))
+            self.assertEqual(rx_c[0], 0x60)
+            self.assertTrue(verify_frame_crc(rx_c))
+
+            # 3. Slot B (0x31 -> 0x30): valid 8-TLV powered status + lens rail tracking
+            tx_b_off = encode_slot_b_frame(0x31, [(0x0A, b"\x00\x00" + bytes(6))])
+            rx_b_off = self._sio3_xfer(proc, pending, tx_b_off)
+            dec_off = decode_slot_b_frame(rx_b_off)
+            self.assertTrue(dec_off.crc_valid)
+            self.assertEqual(dec_off.frame_type, 0x30)
+            tlvs_off = dec_off.by_id()
+            self.assertEqual(set(tlvs_off.keys()), {0x00, 0x01, 0x02, 0x03, 0x0A, 0x0B, 0x10, 0x14})
+            self.assertEqual(tlvs_off[0x00], bytes.fromhex("01020138"))
+            self.assertEqual(tlvs_off[0x03], bytes.fromhex("00000002"))  # rail off bit 0 = 0
+
+            tx_b_on = encode_slot_b_frame(0x31, [(0x0A, b"\x00\x01" + bytes(6))])
+            rx_b_on = self._sio3_xfer(proc, pending, tx_b_on)
+            dec_on = decode_slot_b_frame(rx_b_on)
+            self.assertTrue(dec_on.crc_valid)
+            self.assertEqual(dec_on.by_id()[0x03], bytes.fromhex("00000003"))  # rail on bit 0 = 1
+
+            # 4. Combined 256-byte Slot A + Slot B exchange
+            rx_ab = self._sio3_xfer(proc, pending, (b"\x21" + bytes(127)) + tx_b_off)
+            self.assertEqual(rx_ab[0], 0x20)
+            self.assertTrue(verify_frame_crc(rx_ab[:128]))
+            self.assertEqual(rx_ab[128], 0x30)
+            self.assertTrue(verify_frame_crc(rx_ab[128:]))
+            self.assertEqual(decode_slot_b_frame(rx_ab[128:]).by_id()[0x03], bytes.fromhex("00000002"))
+
+    def test_machine_hdmi_plugged_startup_and_runtime_hotplug(self):
+        proc, pending, qmp, _ = self.start_harness(
+            "sony-a6400,hdmi-cec=on,hdmi-plugged=off"
+        )
+        self.assertFalse(qmp.command("qom-get", path="/machine", property="hdmi-plugged"))
+        self.assertEqual(self.rd32(proc, pending, self.HDMI + 0x3004 * 4) & 0xC2, 0)
+
+        # Arm TMDS while unplugged -> tmds-active stays false
+        self.wr32(proc, pending, self.HDMI + 0x4001 * 4, 0x0F)
+        self.assertFalse(
+            qmp.command("qom-get", path="/machine/cxd90045-hdmi-cec", property="tmds-active")
+        )
+
+        # Hotplug HDMI sink via machine property -> HPD + RSEN + transition event + TMDS active
+        qmp.command("qom-set", path="/machine", property="hdmi-plugged", value=True)
+        self.assertTrue(qmp.command("qom-get", path="/machine", property="hdmi-plugged"))
+        self.assertEqual(self.rd32(proc, pending, self.HDMI + 0x3004 * 4) & 0xC2, 0xC2)
+        self.assertEqual(self.rd32(proc, pending, self.HDMI + 0x3005 * 4) & 0xC2, 0xC2)
+        self.assertTrue(
+            qmp.command("qom-get", path="/machine/cxd90045-hdmi-cec", property="tmds-active")
+        )
+
+
+@unittest.skipUnless(NATIVE_AVAILABLE, "Optional WSL/Linux sony-a6400 QEMU build absent")
+class QemuRemovableSdUhsU3Tests(_QTestQmpHarness):
+    """Verify opt-in UHS-I U3 / Class 10 / V30 ACMD13 SD_STATUS and SCR vs baseline."""
+
+    MMC0 = 0xF0300000
+
+    def _sdhci_enable(self, proc, pending):
+        self.wr8(proc, pending, self.MMC0 + 0x29, 0x0F)
+        self.wr16(proc, pending, self.MMC0 + 0x2C, 0x0007)
+        self.wr32(proc, pending, self.MMC0 + 0x34, 0xFFFFFFFF)
+
+    def _sd_cmd(self, proc, pending, idx: int, arg: int, flags: int,
+                blk_size: int = 0) -> int:
+        self.wr32(proc, pending, self.MMC0 + 0x30, 0xFFFFFFFF)
+        self.wr32(proc, pending, self.MMC0 + 0x04, ((1 << 16) | blk_size) if blk_size else 0)
+        self.wr32(proc, pending, self.MMC0 + 0x08, arg)
+        xfer = 0x0012 if blk_size else 0x0000
+        self.wr32(proc, pending, self.MMC0 + 0x0C, (((idx << 8) | flags) << 16) | xfer)
+        for _ in range(30):
+            st = self.rd32(proc, pending, self.MMC0 + 0x30)
+            self.assertEqual(st & 0x8000, 0, f"MMC0 CMD{idx} failed: {st:#x}")
+            if st & 1:
+                return self.rd32(proc, pending, self.MMC0 + 0x10)
+            self.clock_step_ns(proc, pending, 100_000)
+        raise TimeoutError(f"MMC0 CMD{idx} timed out")
+
+    def _init_and_select_sd(self, proc, pending) -> int:
+        self._sd_cmd(proc, pending, 0, 0, 0)
+        self.assertEqual(self._sd_cmd(proc, pending, 8, 0x1AA, 0x1A), 0x1AA)
+        for _ in range(10):
+            self._sd_cmd(proc, pending, 55, 0, 0x1A)
+            ocr = self._sd_cmd(proc, pending, 41, 0x40FF8000, 0x02)
+            if ocr & 0x80000000:
+                break
+            self.clock_step_ns(proc, pending, 1_000_000)
+        else:
+            raise TimeoutError("ACMD41 powerup timeout")
+        self._sd_cmd(proc, pending, 2, 0, 0x09)
+        rca = self._sd_cmd(proc, pending, 3, 0, 0x1A) & 0xFFFF0000
+        self._sd_cmd(proc, pending, 7, rca, 0x1B)
+        return rca
+
+    def _read_acmd_data(self, proc, pending, rca: int, acmd: int, size: int) -> bytes:
+        self._sd_cmd(proc, pending, 55, rca, 0x1A)
+        self._sd_cmd(proc, pending, acmd, 0, 0x3A, blk_size=size)
+        return b"".join(
+            struct.pack("<I", self.rd32(proc, pending, self.MMC0 + 0x20))
+            for _ in range(size // 4)
+        )
+
+    def test_sd_status_baseline_class0_vs_opt_in_uhs_u3(self):
+        import json
+        from tools.research.qemu_media import SD_NODE, sd_event
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # Sparse 4 GiB SDHC image (0 actual data blocks written, instant truncate)
+            card = root / "sdhc.img"
+            with card.open("wb") as f:
+                f.truncate(4 * 1024 * 1024 * 1024)
+            node = {
+                "driver": "raw",
+                "node-name": SD_NODE,
+                "file": {"driver": "file", "filename": str(card)},
+            }
+
+            for uhs_on in (False, True):
+                with self.subTest(sd_uhs_u3=uhs_on):
+                    mspec = "sony-a6400,sd-uhs-u3=on" if uhs_on else "sony-a6400"
+                    proc, pending, qmp, _ = self.start_harness(
+                        mspec,
+                        ["-drive", "if=none,id=a6400-sd", "-blockdev", json.dumps(node)],
+                    )
+                    self._sdhci_enable(proc, pending)
+                    sd_event(qmp, "insert")
+                    self.clock_step_ns(proc, pending, 1_000_000)
+                    rca = self._init_and_select_sd(proc, pending)
+
+                    scr = self._read_acmd_data(proc, pending, rca, 51, 8)
+                    ssr_1bit = self._read_acmd_data(proc, pending, rca, 13, 64)
+
+                    # Switch to 4-bit bus (ACMD6 arg=2) and re-read ACMD13
+                    self._sd_cmd(proc, pending, 55, rca, 0x1A)
+                    self._sd_cmd(proc, pending, 6, 2, 0x1A)
+                    ssr_4bit = self._read_acmd_data(proc, pending, rca, 13, 64)
+                    self.assertEqual(ssr_1bit[0] & 0xC0, 0x00)
+                    self.assertEqual(ssr_4bit[0] & 0xC0, 0x80)
+                    self.assertEqual(ssr_1bit[1:], ssr_4bit[1:])
+
+                    if not uhs_on:
+                        self.assertEqual(ssr_4bit[1:], bytes(63))
+                        self.assertEqual((scr[1] >> 4) & 0x7, 2)
+                        self.assertEqual(scr[2] & 0x04, 0)
+                    else:
+                        self.assertEqual(ssr_4bit[8], 0x04)   # Class 10
+                        self.assertEqual(ssr_4bit[10], 0x90)  # 4 MiB AU_SIZE
+                        self.assertEqual(ssr_4bit[13], 0x04)  # 1 s ERASE_TIMEOUT
+                        self.assertEqual(ssr_4bit[14], 0x39)  # U3 + 4 MiB UHS_AU_SIZE
+                        self.assertEqual(ssr_4bit[15], 0x1E)  # V30
+                        self.assertEqual((scr[1] >> 4) & 0x7, 3)  # SDHC Security v2.00
+                        self.assertEqual(scr[2] & 0x84, 0x84)     # SD_SPEC3 | SD_SPEC4
+
+                    # Eject + re-insert preserves UHS U3 status cleanly
+                    sd_event(qmp, "eject")
+                    sd_event(qmp, "insert")
+                    self._sdhci_enable(proc, pending)
+                    self.clock_step_ns(proc, pending, 1_000_000)
+                    rca2 = self._init_and_select_sd(proc, pending)
+                    ssr_reins = self._read_acmd_data(proc, pending, rca2, 13, 64)
+                    self.assertEqual(ssr_reins[8], 0x04 if uhs_on else 0x00)
+                    self.assertEqual(ssr_reins[14], 0x39 if uhs_on else 0x00)
 
 
 if __name__ == "__main__":

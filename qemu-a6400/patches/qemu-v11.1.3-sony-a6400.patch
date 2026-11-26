@@ -12,7 +12,7 @@ index c3a505e..9aacc66 100644
  
  /*
 diff --git a/hw/arm/Kconfig b/hw/arm/Kconfig
-index 6f5b2ad..87c4133 100644
+index 6f5b2ad..9e6577c 100644
 --- a/hw/arm/Kconfig
 +++ b/hw/arm/Kconfig
 @@ -727,3 +727,15 @@ config ARMSSE
@@ -32,7 +32,7 @@ index 6f5b2ad..87c4133 100644
 +    select UNIMP
 +    select CXD4115_TIMER
 diff --git a/hw/arm/meson.build b/hw/arm/meson.build
-index 4233a80..1b67b81 100644
+index 4233a80..6befd6a 100644
 --- a/hw/arm/meson.build
 +++ b/hw/arm/meson.build
 @@ -111,5 +111,6 @@ arm_common_ss.add(when: 'CONFIG_VERSATILE', if_true: files('versatilepb.c'))
@@ -59,18 +59,43 @@ index 2127f95..6898ead 100644
                     "Cortex-A9MPCore peripheral can only use Cortex-A9 CPU");
          return;
 diff --git a/hw/sd/sd.c b/hw/sd/sd.c
-index 780e9f6..5f8a5d6 100644
+index 780e9f6..c16afc7 100644
 --- a/hw/sd/sd.c
 +++ b/hw/sd/sd.c
-@@ -164,6 +164,7 @@ struct SDState {
+@@ -164,6 +164,8 @@ struct SDState {
      uint8_t spec_version;
      uint64_t boot_part_size;
      uint64_t rpmb_part_size;
 +    bool sony_legacy_backend;
++    bool sony_uhs_u3;
      BlockBackend *blk;
      uint8_t boot_config;
  
-@@ -537,7 +538,7 @@ static void emmc_set_ext_csd(SDState *sd, uint64_t size)
+@@ -436,14 +438,22 @@ static void sd_set_ocr(SDState *sd)
+ 
+ static void sd_set_scr(SDState *sd)
+ {
++    uint8_t sd_sec = 2; /* SDSC Card (Security Version 1.01) */
++
++    if (sd->sony_uhs_u3 && sd->size > SDSC_MAX_CAPACITY) {
++        sd_sec = sd->size > 32 * GiB ? 4 : 3; /* SDXC v3.0x / SDHC v2.00 */
++    }
+     sd->scr[0] = 0 << 4;        /* SCR structure version 1.0 */
+     sd->scr[0] |= 2;            /* Spec Version 2.00 or Version 3.0X */
+-    sd->scr[1] = (2 << 4)       /* SDSC Card (Security Version 1.01) */
++    sd->scr[1] = (sd_sec << 4)
+                  | 0b0101;      /* 1-bit or 4-bit width bus modes */
+     sd->scr[2] = 0x00;          /* Extended Security is not supported. */
+     if (sd->spec_version >= SD_PHY_SPECv3_01_VERS) {
+         sd->scr[2] |= 1 << 7;   /* Spec Version 3.0X */
+     }
++    if (sd->sony_uhs_u3) {
++        sd->scr[2] |= 1 << 2;   /* Spec Version 4.XX+ (SD_SPEC4) */
++    }
+     sd->scr[3] = 0x00;
+     /* reserved for manufacturer usage */
+     sd->scr[4] = 0x00;
+@@ -537,7 +547,7 @@ static void emmc_set_ext_csd(SDState *sd, uint64_t size)
      sd->ext_csd[205] = 0x46; /* Min read perf for 4bit@26Mhz */
      sd->ext_csd[EXT_CSD_CARD_TYPE] = 0b11;
      sd->ext_csd[EXT_CSD_STRUCTURE] = 2;
@@ -79,7 +104,31 @@ index 780e9f6..5f8a5d6 100644
      sd->ext_csd[EXT_CSD_RPMB_MULT] = sd->rpmb_part_size / (128 * KiB);
      sd->ext_csd[EXT_CSD_PARTITION_SUPPORT] = 0b111;
  
-@@ -2272,6 +2273,11 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
+@@ -729,6 +739,23 @@ static void sd_set_cardstatus(SDState *sd)
+ static void sd_set_sdstatus(SDState *sd)
+ {
+     memset(sd->sd_status, 0, 64);
++    if (sd->sony_uhs_u3 && !sd_is_emmc(sd)) {
++        /*
++         * Opt-in virtual UHS-I U3 / Class 10 / V30 SD Status (ACMD13,
++         * SD Physical Layer Specification 4.10.2):
++         *   byte  8 [447:440] SPEED_CLASS       = 0x04 (Class 10)
++         *   byte 10 [431:428] AU_SIZE           = 0x9  (4 MiB)
++         *   byte 13 [407:402] ERASE_TIMEOUT     = 1 s, ERASE_OFFSET = 0
++         *   byte 14 [399:396] UHS_SPEED_GRADE   = 0x3  (U3, 30 MB/s)
++         *           [395:392] UHS_AU_SIZE       = 0x9  (4 MiB)
++         *   byte 15 [391:384] VIDEO_SPEED_CLASS = 0x1e (V30)
++         */
++        sd->sd_status[8] = 0x04;
++        sd->sd_status[10] = 0x90;
++        sd->sd_status[13] = 0x04;
++        sd->sd_status[14] = 0x39;
++        sd->sd_status[15] = 0x1e;
++    }
+ }
+ 
+ static const uint8_t sd_tuning_block_pattern4[64] = {
+@@ -2272,6 +2299,11 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
          return sd_invalid_state_for_cmd(sd, req);
      }
  
@@ -91,7 +140,7 @@ index 780e9f6..5f8a5d6 100644
      /*
       * If it's the first ACMD41 since reset, we need to decide
       * whether to power up. If this is not an enquiry ACMD41,
-@@ -2300,7 +2306,8 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
+@@ -2300,7 +2332,8 @@ static sd_rsp_type_t sd_cmd_SEND_OP_COND(SDState *sd, SDRequest req)
          sd->state = sd_ready_state;
          return sd_r1;
      } else {
@@ -101,7 +150,7 @@ index 780e9f6..5f8a5d6 100644
              /*
               * We accept any voltage.  10000 V is nothing.
               *
-@@ -2665,7 +2672,7 @@ static size_t sd_write_data(SDState *sd, const void *buf, size_t length)
+@@ -2665,7 +2698,7 @@ static size_t sd_write_data(SDState *sd, const void *buf, size_t length)
      int i;
      const uint8_t *value = buf;
  
@@ -110,7 +159,7 @@ index 780e9f6..5f8a5d6 100644
          return length;
      }
  
-@@ -2813,7 +2820,7 @@ static size_t sd_read_data(SDState *sd, void *buf, size_t length)
+@@ -2813,7 +2846,7 @@ static size_t sd_read_data(SDState *sd, void *buf, size_t length)
      uint32_t io_len;
      uint8_t *value = buf;
  
@@ -119,7 +168,7 @@ index 780e9f6..5f8a5d6 100644
          memset(buf, dummy_byte, length);
          return length;
      }
-@@ -3117,9 +3124,14 @@ static void sd_realize(DeviceState *dev, Error **errp)
+@@ -3117,9 +3150,14 @@ static void sd_realize(DeviceState *dev, Error **errp)
              return;
          }
  
@@ -135,7 +184,7 @@ index 780e9f6..5f8a5d6 100644
              if (blk_size > SDSC_MAX_CAPACITY) {
                  if (sd_is_emmc(sd) &&
                      !QEMU_IS_ALIGNED(blk_size, 1 << HWBLOCK_SHIFT)) {
-@@ -3135,7 +3147,8 @@ static void sd_realize(DeviceState *dev, Error **errp)
+@@ -3135,7 +3173,8 @@ static void sd_realize(DeviceState *dev, Error **errp)
                                        "multiples of 512K", errp);
                      return;
                  }
@@ -145,7 +194,13 @@ index 780e9f6..5f8a5d6 100644
                  sd_blk_size_error(sd, blk_size, pow2ceil(blk_size),
                                    "a power of 2", errp);
                  return;
-@@ -3213,6 +3226,7 @@ static const Property sd_properties[] = {
+@@ -3208,11 +3247,13 @@ static const Property sdmmc_common_properties[] = {
+ };
+ 
+ static const Property sd_properties[] = {
++    DEFINE_PROP_BOOL("x-sony-uhs-u3", SDState, sony_uhs_u3, false),
+     DEFINE_PROP_UINT8("spec_version", SDState,
+                       spec_version, SD_PHY_SPECv3_01_VERS),
  };
  
  static const Property emmc_properties[] = {

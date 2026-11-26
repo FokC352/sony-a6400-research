@@ -273,6 +273,10 @@ def serve(args, scratch, server):
         env["AUDIO_IO"] = "1"
     if getattr(args, "emount_lens", None):
         env["EMOUNT_LENS"] = args.emount_lens
+    if getattr(args, "submicro_synthetic", False):
+        env["SUBMICRO_SYNTHETIC"] = "1"
+    if getattr(args, "sd_uhs_u3", False):
+        env["SD_UHS_U3"] = "1"
     if args.inputs:
         env["A6400_QEMU_DATA_DIR"] = str(moddev.ensure_linux_inputs(args.inputs))
         env["ULOGIO"] = ""                    # the captured /setting already has its ulogio.bin
@@ -614,6 +618,10 @@ def main():
                         help="Enable CXD90045 AudioIp DMA capture/playback and synthetic PCM mic")
     parser.add_argument("--emount-lens", default=None,
                         help="Attach a modeled E-mount lens (selp1650, sigma1850, sel2470gm, fe50f18)")
+    parser.add_argument("--submicro-synthetic", action="store_true",
+                        help="Synthesize powered idle 384-byte sub-micro RX frames without an external capture file")
+    parser.add_argument("--sd-uhs-u3", action="store_true",
+                        help="Advertise virtual UHS-I U3 / Class 10 / V30 in removable SD ACMD13 SD Status")
     parser.add_argument("--inputs", type=Path, help="Prepared camera-captured inputs (qemu_boot_inputs prepare)")
     parser.add_argument("--loader", type=Path, help="Mod Loader v2 build directory to install and watch")
     parser.add_argument("--mod", type=Path, action="append", default=[], help="SMOD file to load and hot-reload")

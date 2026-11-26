@@ -53,10 +53,13 @@
 # the Picture Profile node with one 4-byte .dynsym st_value write on the run's
 # disposable overlay; PP_PARTITION_OFFSET overrides the rootfs partition start.
 # SUBMICRO_PAGE (E0527 capture, empty for no micro) or SUBMICRO_FRAMES
-# (the verified 384-byte A/C/B extract from that same capture).
+# (the verified 384-byte A/C/B extract from that same capture), or
+# SUBMICRO_SYNTHETIC=1 (opt-in seed-free powered idle A/C/B synthesis in QEMU).
 # SUBMICRO_LENS_POWER=1 (opt-in lens rail status in slot B; no lens protocol).
+# HDMI_PLUGGED=0/1 (opt-in initial HDMI HPD cable state when HDMI_CEC=1 or PERIPHERALS=1).
 # IDT_CAM (opt-in original sabin/idt_cam.bin, captured boot profile only).
 # SD_IMAGE and SD_SHA256 (opt-in checked raw card; starts ejected).
+# SD_UHS_U3=1 (opt-in virtual UHS-I U3 / Class 10 / V30 speed-class advertising on mmc0/mmc2).
 # KERNEL and INITRD (Custom OS tests only): boot this kernel/initrd pair instead of the captured
 # ones; the SHA-256 of each override is printed for the receipt. The captured inputs are still
 # verified, so the override is one declared file each, not a replacement data dir. With INITRD set
@@ -97,18 +100,26 @@ fi
 # SUBMICRO_FRAMES_SHA declares a different 384-byte extract, e.g. the one
 # tools.research.qemu_packaged_inputs derives from the public updater's WBI.
 SUBMICRO_FRAME_SHA=${SUBMICRO_FRAMES_SHA:-6d5026e3932f3f46b47cc44a15008ced099dba46041deafbc1c058e4a0fa85ed}
-SUBMICRO_RX="${SUBMICRO_FRAMES:-}"
-if [ -n "$SUBMICRO_RX" ]; then
-    if [ -n "${SUBMICRO_PAGE:-}" ]; then
-        echo "Choose either SUBMICRO_PAGE or SUBMICRO_FRAMES, not both." >&2
+SUBMICRO_RX=""
+if [ "${SUBMICRO_SYNTHETIC:-0}" = 1 ]; then
+    if [ -n "${SUBMICRO_FRAMES:-}" ] || [ -n "${SUBMICRO_PAGE:-}" ]; then
+        echo "SUBMICRO_SYNTHETIC=1 cannot be combined with SUBMICRO_PAGE or SUBMICRO_FRAMES." >&2
         exit 1
     fi
-    SUBMICRO_SHA=$SUBMICRO_FRAME_SHA
-    SUBMICRO_SKIP=0
 else
-    SUBMICRO_RX="${SUBMICRO_PAGE-$E/../artifacts/qemu-a6400/e0526/camera-page-0x03443000.bin}"
-    SUBMICRO_SHA=14fba4e607b0efdb76ced74e0463355a279146c96bbba0abec89776b8972fb54
-    SUBMICRO_SKIP=$((0x3A4))
+    SUBMICRO_RX="${SUBMICRO_FRAMES:-}"
+    if [ -n "$SUBMICRO_RX" ]; then
+        if [ -n "${SUBMICRO_PAGE:-}" ]; then
+            echo "Choose either SUBMICRO_PAGE or SUBMICRO_FRAMES, not both." >&2
+            exit 1
+        fi
+        SUBMICRO_SHA=$SUBMICRO_FRAME_SHA
+        SUBMICRO_SKIP=0
+    else
+        SUBMICRO_RX="${SUBMICRO_PAGE-$E/../artifacts/qemu-a6400/e0526/camera-page-0x03443000.bin}"
+        SUBMICRO_SHA=14fba4e607b0efdb76ced74e0463355a279146c96bbba0abec89776b8972fb54
+        SUBMICRO_SKIP=$((0x3A4))
+    fi
 fi
 if [ -n "$SUBMICRO_RX" ]; then
     if [ ! -f "$SUBMICRO_RX" ] || [ ! -r "$SUBMICRO_RX" ]; then
@@ -295,6 +306,8 @@ if [ -n "$SUBMICRO_RX" ]; then
     # Check what will actually be replayed, even if the source changed after preflight.
     printf '%s  %s\n' "$SUBMICRO_FRAME_SHA" "$SUBMICRO_STAGED" | sha256_check >&2
     MACHINE="$MACHINE,submicro-frames=$SUBMICRO_STAGED"
+elif [ "${SUBMICRO_SYNTHETIC:-0}" = 1 ]; then
+    MACHINE="$MACHINE,submicro-synthetic=on"
 fi
 if [ -n "${CAMERA_MODEL:-}" ]; then
     MACHINE="$MACHINE,camera-model=$CAMERA_MODEL"
@@ -311,6 +324,16 @@ fi
 if [ "${HDMI_CEC:-0}" = 1 ]; then
     MACHINE="$MACHINE,hdmi-cec=on"
 fi
+if [ -n "${HDMI_PLUGGED:-}" ]; then
+    if [ "$HDMI_PLUGGED" = 1 ]; then
+        MACHINE="$MACHINE,hdmi-plugged=on"
+    elif [ "$HDMI_PLUGGED" = 0 ]; then
+        MACHINE="$MACHINE,hdmi-plugged=off"
+    else
+        echo "HDMI_PLUGGED must be 0 or 1." >&2
+        exit 1
+    fi
+fi
 if [ "${AUDIO_IO:-0}" = 1 ]; then
     MACHINE="$MACHINE,audio-io=on"
 fi
@@ -325,6 +348,9 @@ if [ -n "${EMOUNT_LENS:-}" ]; then
 fi
 if [ "${SUBMICRO_LENS_POWER:-0}" = 1 ]; then
     MACHINE="$MACHINE,submicro-lens-power=on"
+fi
+if [ "${SD_UHS_U3:-0}" = 1 ]; then
+    MACHINE="$MACHINE,sd-uhs-u3=on"
 fi
 if [ "${CAMPIG_ENABLE_READBACK:-0}" = 1 ]; then
     MACHINE="$MACHINE,campig-enable-readback=on"
