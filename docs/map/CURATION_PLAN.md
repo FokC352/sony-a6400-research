@@ -8,8 +8,8 @@ pull request, and progress is measured by the tools rather than by hand.
 
 | Level | Meaning | Status (2026-11-26) |
 | --- | --- | --- |
-| Indexed | The file belongs to an area; its title, date and correction lines appear in the area's record index. | 706 / 706 records, 22 attachments |
-| Cited | At least one curated claim, frontier item or hazard cites the record. | 706 / 706 |
+| Indexed | The file belongs to an area; its title, date and correction lines appear in the area's record index. | 739 / 739 records, 22 attachments |
+| Cited | At least one curated claim, frontier item or hazard cites the record. | 714 / 739 |
 | Deep-reviewed | Someone read the whole record and checked every claim that cites it, line by line. | usb-ep0 (55 / 55), l2-kernel-boot (88 / 88), qemu-a6400 (59 / 59), usb-emulated (44 / 44) and hardware-live (15 / 15) complete; l3-userspace 22 / 81 and firmware-dumps 1 / 6 in progress; other areas not started (run `todo` for the live count) |
 
 Indexing and citation are complete, so no record is lost. But apart from the areas
@@ -127,7 +127,7 @@ current frontier should be read first. It anchors what "current" means.
 | M1 Pilot complete (done 2026-11-22) | usb-ep0 55 / 55 deep-reviewed; its frontier and hazards re-verified |
 | M2 Active tracks | Phase 1 areas fully deep-reviewed; `AGENTS.md` §3 checkpoint cites map claims |
 | M3 Safety | Phase 2 areas fully deep-reviewed; every `AGENTS.md` safety note has a matching hazard |
-| M4 Complete | 706 / 706 deep-reviewed; every drift entry resolved or scheduled |
+| M4 Complete | 739 / 739 deep-reviewed; every drift entry resolved or scheduled |
 | M5 Steady state | Each new evidence record is mapped and deep-reviewed in the PR that adds it |
 
 ## 5. Rules that keep the map trustworthy
