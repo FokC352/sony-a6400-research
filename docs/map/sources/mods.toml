@@ -12,6 +12,7 @@ reviewed = "2026-11-22"
 records = [
   "E0575-E0577",
   "E0592",
+  "E0692",
   "E9101-E9103",
   "0680-photonbin-6mp-and-mlv2-nested-submenus.md",
   "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
@@ -38,6 +39,12 @@ kind = "module"
 name = "External ZV-E10 adapted menu"
 summary = "Contributor-local adapted ZV-E10 menu in QEMU with receipts; not an upstream stock-boot milestone."
 
+[[entity]]
+id = "mod.wifisync"
+kind = "module"
+name = "WiFiSync"
+aliases = ["WiFiSync.mod", "5 GHz transfer", "wifisync"]
+summary = "RAM-only SMOD v2 mod that serves new .JPG/.ARW files over a 5 GHz AP with a read-only Sony Fsys backend; camera half verified offline, physical AP gate open."
 [[claim]]
 id = "C01"
 entities = ["mod.loader-v2"]
@@ -86,3 +93,31 @@ entities = ["mod.zve10-adapted-menu"]
 status = "verified-offline"
 text = "A contributor-local adapted ZV-E10 menu runs in QEMU with English screenshots and receipts, and an upstream-board integration validation; it is not an upstream stock-boot milestone."
 evidence = ["doc:external-zve10-menu/README.md", "doc:external-zve10-menu/integration-validation.md"]
+
+[[claim]]
+id = "C08"
+entities = ["mod.wifisync"]
+status = "verified-offline"
+text = "The WiFiSync camera-side core (queue, Smart Single-Best, HTTP/1.1 + Range, CRC-32, power machine) passes 72 host assertions and the same 72 assertions on Cortex-A5 Thumb under Unicorn."
+evidence = ["E0692"]
+
+[[claim]]
+id = "C09"
+entities = ["mod.wifisync"]
+status = "verified-offline"
+text = "The WiFiSync SMOD v2 mod builds as a 29,672-byte RLC1 mod with one 12-byte ConPutWriteStill hook whose original bytes equal the pinned ILCE-6400 libmpr.so, and a 311,296-byte bss."
+evidence = ["E0692"]
+
+[[claim]]
+id = "C10"
+entities = ["mod.wifisync"]
+status = "verified-offline"
+text = "Sony's read-only Fsys contract was re-verified by disassembly: Fsys_Open read is flag bit 0, Fsys_Stat returns a 64-bit size at offset 0, and the mod identity-checks size, first-4-KiB FNV and function prologues before any read."
+evidence = ["E0692"]
+
+[[claim]]
+id = "C11"
+entities = ["mod.wifisync"]
+status = "open"
+text = "The 5 GHz SoftAP (bcmdhd + wpa_supplicant AP mode + dhcpd) and the on-camera Fsys reads have not been run on a physical camera; the Phase 1/2 gates remain open."
+evidence = ["E0692"]

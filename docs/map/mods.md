@@ -4,7 +4,7 @@
 
 - **Scope:** Mod Loader v2 in QEMU and on cameras, command items, the ILCE-6100 Picture Profile unlock and Mod Loader port, mod qualification and the external ZV-E10 adapted menu.
 - **Evidence span:** see record index; last reviewed 2026-11-22.
-- **Deep review:** 0 of 12 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 0 of 13 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -47,7 +47,22 @@ Current knowledge:
 
 - **C07** `OFFLINE` A contributor-local adapted ZV-E10 menu runs in QEMU with English screenshots and receipts, and an upstream-board integration validation; it is not an upstream stock-boot milestone. ([README](../evidence/external-zve10-menu/README.md), [integration-validation](../evidence/external-zve10-menu/integration-validation.md))
 
-## Record index (19 files)
+### <a id="mod-wifisync"></a>WiFiSync
+
+`mod.wifisync` | module
+
+RAM-only SMOD v2 mod that serves new .JPG/.ARW files over a 5 GHz AP with a read-only Sony Fsys backend; camera half verified offline, physical AP gate open.
+
+Aliases: `WiFiSync.mod`, `5 GHz transfer`, `wifisync`
+
+Current knowledge:
+
+- **C08** `OFFLINE` The WiFiSync camera-side core (queue, Smart Single-Best, HTTP/1.1 + Range, CRC-32, power machine) passes 72 host assertions and the same 72 assertions on Cortex-A5 Thumb under Unicorn. ([E0692](../evidence/0692-wifisync-camera-side-mod.md))
+- **C09** `OFFLINE` The WiFiSync SMOD v2 mod builds as a 29,672-byte RLC1 mod with one 12-byte ConPutWriteStill hook whose original bytes equal the pinned ILCE-6400 libmpr.so, and a 311,296-byte bss. ([E0692](../evidence/0692-wifisync-camera-side-mod.md))
+- **C10** `OFFLINE` Sony's read-only Fsys contract was re-verified by disassembly: Fsys_Open read is flag bit 0, Fsys_Stat returns a 64-bit size at offset 0, and the mod identity-checks size, first-4-KiB FNV and function prologues before any read. ([E0692](../evidence/0692-wifisync-camera-side-mod.md))
+- **C11** `OPEN` The 5 GHz SoftAP (bcmdhd + wpa_supplicant AP mode + dhcpd) and the on-camera Fsys reads have not been run on a physical camera; the Phase 1/2 gates remain open. ([E0692](../evidence/0692-wifisync-camera-side-mod.md))
+
+## Record index (20 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -59,6 +74,7 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0592](../evidence/0592-mod-loader-command-items-usb-streaming-entry.md) | 2026-11-18 | Mod Loader v2 command items: a "USB Streaming" style entry in the Mods tab |  |  |
 | [E0680](../evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md) | 2026-11-22 | `PhotonBin 6MP` Low-Light `.ARW` Mod and `Mod Loader v2` Nested Submenus (`SMNU`) |  |  |
 | [E0681](../evidence/0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md) | 2026-11-22 | Standalone Option B SD-Card Auto-Boot (`MLV2.TAR`, FAT32/exFAT) for `ILCE-6400A` 1.01 |  |  |
+| [E0692](../evidence/0692-wifisync-camera-side-mod.md) | 2026-11-24 | WiFiSync camera-side mod: read-only WFS transfer over a 5 GHz AP (offline) |  |  |
 | [E9101](../evidence/9101-a6100-picture-profile-gate.md) | 2026-11-21 | Where Picture Profile is gated on an ILCE-6100 (a6100), and the opt-in unlock |  | Date:** 2026-11-21 (supersedes the same-day first pass, see §8) / confirmation in this record, and it also corrects the first pass's assumption that the |
 | [E9102](../evidence/9102-a6100-picture-profile-camera-apply.md) | 2026-11-21 | Applying the Picture Profile redirect to a physical ILCE-6100 |  |  |
 | [E9103](../evidence/9103-a6100-mod-loader-port.md) | 2026-11-21 | Porting Mod Loader v2 to the ILCE-6100: first milestone |  |  |

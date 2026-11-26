@@ -44,6 +44,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/timer.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
@@ -515,10 +516,43 @@ static void vph_init(Object *obj)
     qdev_init_gpio_in_named(DEVICE(obj), vph_hdmi_tmds, "hdmi-tmds", 1);
 }
 
+static int vph_post_load(void *opaque, int version_id)
+{
+    VphState *s = opaque;
+    if (s->con && s->w && s->h) {
+        qemu_console_resize(s->con, s->w, s->h);
+    }
+    return 0;
+}
+
+static const VMStateDescription vmstate_cxd_vph = {
+    .name = "cxd90014-vph",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .post_load = vph_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(vph, VphState, VPH_SIZE / 4),
+        VMSTATE_UINT32_ARRAY(sysv, VphState, 0x1000 / 4),
+        VMSTATE_UINT32(frame, VphState),
+        VMSTATE_UINT32(aif_started, VphState),
+        VMSTATE_UINT32(osd_visible, VphState),
+        VMSTATE_UINT32(line_visible, VphState),
+        VMSTATE_TIMER_PTR(tick, VphState),
+        VMSTATE_TIMER_PTR(lower, VphState),
+        VMSTATE_TIMER_PTR(vtick, VphState),
+        VMSTATE_TIMER_PTR(vlower, VphState),
+        VMSTATE_UINT32(w, VphState),
+        VMSTATE_UINT32(h, VphState),
+        VMSTATE_BOOL(hdmi_tmds, VphState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void vph_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     dc->realize = vph_realize;
+    dc->vmsd = &vmstate_cxd_vph;
     device_class_set_legacy_reset(dc, vph_reset);
 }
 

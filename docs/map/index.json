@@ -16,7 +16,7 @@
     "imaging-pipeline": {
       "title": "Imaging pipeline: color, RAW, RCRAW and recording paths",
       "doc": "docs/map/imaging-pipeline.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-26",
       "evidence_span": "see record index"
     },
     "l2-kernel-boot": {
@@ -249,10 +249,17 @@
       "name": "Body-lens (BL) interface",
       "kind": "device",
       "address": null,
-      "aliases": [],
+      "aliases": [
+        "BL_LENS_DATA",
+        "0x642FE7B8",
+        "capability gate",
+        "0x63855F94"
+      ],
       "anchor": "hardware-live.md#dev-lens",
       "active_claims": [
-        "C08"
+        "C08",
+        "C10",
+        "C11"
       ],
       "inactive_claims": []
     },
@@ -321,7 +328,284 @@
       "anchor": "imaging-pipeline.md#img-recording-paths",
       "active_claims": [
         "C06",
-        "C07"
+        "C07",
+        "C12",
+        "C13",
+        "C14",
+        "C15",
+        "C16",
+        "C18",
+        "C21",
+        "C22",
+        "C23",
+        "C24",
+        "C31",
+        "C38",
+        "C39",
+        "C46",
+        "C48",
+        "C51",
+        "C55"
+      ],
+      "inactive_claims": [
+        "C19"
+      ]
+    },
+    "img.sele-refresh": {
+      "area": "imaging-pipeline",
+      "name": "S-Ele refresh counter and Lost CAMOUT_V latch",
+      "kind": "function",
+      "address": null,
+      "aliases": [
+        "refresh_cnt",
+        "0x64367AF0",
+        "0x644B02B9",
+        "Lost CAMOUT_V"
+      ],
+      "anchor": "imaging-pipeline.md#img-sele-refresh",
+      "active_claims": [
+        "C17",
+        "C20",
+        "C28"
+      ],
+      "inactive_claims": [
+        "C19"
+      ]
+    },
+    "img.camout-v-check": {
+      "area": "imaging-pipeline",
+      "name": "CAMOUT frame commit check and Lost CAMOUT_V",
+      "kind": "function",
+      "address": null,
+      "aliases": [
+        "Lost CAMOUT_V",
+        "0x63907D00",
+        "0x643679A8",
+        "camout_vfc"
+      ],
+      "anchor": "imaging-pipeline.md#img-camout-v-check",
+      "active_claims": [
+        "C20",
+        "C21",
+        "C29",
+        "C31",
+        "C32",
+        "C34",
+        "C35",
+        "C41",
+        "C44",
+        "C45"
+      ],
+      "inactive_claims": [
+        "C27"
+      ]
+    },
+    "img.runtime-imaging-object": {
+      "area": "imaging-pipeline",
+      "name": "ImagingMain singleton 0x643691FC and the 0x645C1798 pointer graph",
+      "kind": "address",
+      "address": null,
+      "aliases": [
+        "0x643691FC",
+        "0x645C1798",
+        "0x6420128C",
+        "0x64200A48",
+        "rt_t14"
+      ],
+      "anchor": "imaging-pipeline.md#img-runtime-imaging-object",
+      "active_claims": [
+        "C25",
+        "C48"
+      ],
+      "inactive_claims": [
+        "C26"
+      ]
+    },
+    "img.size-rows": {
+      "area": "imaging-pipeline",
+      "name": "size_rows mode records 0x63E24F70",
+      "kind": "field",
+      "address": null,
+      "aliases": [
+        "size_rows",
+        "0x63E24F70",
+        "0x63E25430",
+        "0x63E2547C"
+      ],
+      "anchor": "imaging-pipeline.md#img-size-rows",
+      "active_claims": [
+        "C32",
+        "C43"
+      ],
+      "inactive_claims": [
+        "C26"
+      ]
+    },
+    "img.sgc-timing": {
+      "area": "imaging-pipeline",
+      "name": "SGC1/SGC2 hvcycle and rt_t10/rt_t14/rt_t18/rt_t1c",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "SGC1",
+        "SGC2",
+        "hvcycle",
+        "0xF3120220",
+        "rt_t10",
+        "rt_t14"
+      ],
+      "anchor": "imaging-pipeline.md#img-sgc-timing",
+      "active_claims": [
+        "C18",
+        "C29",
+        "C30",
+        "C33",
+        "C40",
+        "C51",
+        "C52"
+      ],
+      "inactive_claims": [
+        "C19",
+        "C26",
+        "C27"
+      ]
+    },
+    "img.fe-rcv": {
+      "area": "imaging-pipeline",
+      "name": "FE records and rcv_desc vertical fields",
+      "kind": "field",
+      "address": null,
+      "aliases": [
+        "fe_rec_0a",
+        "fe_rec_19",
+        "rcv_desc",
+        "0x63E14E94",
+        "0x63E19720"
+      ],
+      "anchor": "imaging-pipeline.md#img-fe-rcv",
+      "active_claims": [
+        "C15",
+        "C21",
+        "C23",
+        "C24",
+        "C25",
+        "C31",
+        "C32",
+        "C34",
+        "C35",
+        "C37",
+        "C47"
+      ],
+      "inactive_claims": [
+        "C19",
+        "C27"
+      ]
+    },
+    "img.dmm-config": {
+      "area": "imaging-pipeline",
+      "name": "DmmConfig.bin movie pools and the av-cam canvas table",
+      "kind": "source",
+      "address": null,
+      "aliases": [
+        "DmmConfig.bin",
+        "0x63DF199C",
+        "0x2EF9200"
+      ],
+      "anchor": "imaging-pipeline.md#img-dmm-config",
+      "active_claims": [
+        "C14"
+      ],
+      "inactive_claims": []
+    },
+    "img.fe-band": {
+      "area": "imaging-pipeline",
+      "name": "FE band register file and the 21-register offset table",
+      "kind": "field",
+      "address": null,
+      "aliases": [
+        "0x6454AC44",
+        "0x6376ECFC",
+        "FE band",
+        "0x438",
+        "0x43C"
+      ],
+      "anchor": "imaging-pipeline.md#img-fe-band",
+      "active_claims": [
+        "C35",
+        "C36",
+        "C42",
+        "C43",
+        "C44",
+        "C45",
+        "C48",
+        "C50",
+        "C52",
+        "C53",
+        "C56"
+      ],
+      "inactive_claims": []
+    },
+    "img.sgc-trim": {
+      "area": "imaging-pipeline",
+      "name": "SgcDev::UpdateWindow trim and phase servo 0x6376910C",
+      "kind": "function",
+      "address": null,
+      "aliases": [
+        "0x6376910C",
+        "UpdateWindow",
+        "0xF312032C",
+        "0xF3120438"
+      ],
+      "anchor": "imaging-pipeline.md#img-sgc-trim",
+      "active_claims": [
+        "C40",
+        "C42"
+      ],
+      "inactive_claims": []
+    },
+    "img.camout-publish": {
+      "area": "imaging-pipeline",
+      "name": "CAMOUT frame publish side (p = *(0x643691FC+4))",
+      "kind": "address",
+      "address": null,
+      "aliases": [
+        "0x643691FC",
+        "p[0]",
+        "0x645CAA40",
+        "0x639303D0"
+      ],
+      "anchor": "imaging-pipeline.md#img-camout-publish",
+      "active_claims": [
+        "C41",
+        "C42",
+        "C50",
+        "C53",
+        "C54",
+        "C55",
+        "C56"
+      ],
+      "inactive_claims": []
+    },
+    "img.imx284-window": {
+      "area": "imaging-pipeline",
+      "name": "IMX284 Y window registers 0x000A-0x000D",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "Y_START",
+        "Y_SIZE",
+        "0x000A",
+        "0x000C",
+        "IMX284"
+      ],
+      "anchor": "imaging-pipeline.md#img-imx284-window",
+      "active_claims": [
+        "C16",
+        "C22",
+        "C34",
+        "C38",
+        "C46",
+        "C49"
       ],
       "inactive_claims": []
     },
@@ -772,6 +1056,25 @@
       "anchor": "mods.md#mod-zve10-adapted-menu",
       "active_claims": [
         "C07"
+      ],
+      "inactive_claims": []
+    },
+    "mod.wifisync": {
+      "area": "mods",
+      "name": "WiFiSync",
+      "kind": "module",
+      "address": null,
+      "aliases": [
+        "WiFiSync.mod",
+        "5 GHz transfer",
+        "wifisync"
+      ],
+      "anchor": "mods.md#mod-wifisync",
+      "active_claims": [
+        "C08",
+        "C09",
+        "C10",
+        "C11"
       ],
       "inactive_claims": []
     },
@@ -8963,6 +9266,12 @@
         "id": "C06",
         "file": "0620-a6400-open-gate-4k-and-6k-paths.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F04",
+        "file": "0620-a6400-open-gate-4k-and-6k-paths.md"
       }
     ],
     "E0621": [
@@ -9638,6 +9947,499 @@
         "kind": "frontier",
         "id": "F01",
         "file": "0677-unicorn-sio-gpio-oracle.md"
+      }
+    ],
+    "E0692": [
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C08",
+        "file": "0692-wifisync-camera-side-mod.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C09",
+        "file": "0692-wifisync-camera-side-mod.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0692-wifisync-camera-side-mod.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C11",
+        "file": "0692-wifisync-camera-side-mod.md",
+        "status": "open"
+      }
+    ],
+    "E0693": [
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0693-ilce6400-bl-gate-bitmap-and-1d-mode.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0694": [
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C11",
+        "file": "0694-ttartisan-af35-command-surface-and-patch-feasibility.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0695": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C12",
+        "file": "0695-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0696": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C13",
+        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C19",
+        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md",
+        "status": "refuted"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C21",
+        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "hazard",
+        "id": "H02",
+        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md"
+      }
+    ],
+    "E0697": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C13",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C15",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C16",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C17",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C18",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C19",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "status": "refuted"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "hazard",
+        "id": "H02",
+        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md"
+      }
+    ],
+    "E0698": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C20",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C21",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C22",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C24",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C25",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C26",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "refuted"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C27",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "refuted"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C28",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C29",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C30",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "hazard",
+        "id": "H03",
+        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md"
+      }
+    ],
+    "E0699": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C31",
+        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C32",
+        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C33",
+        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C34",
+        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C40",
+        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md"
+      }
+    ],
+    "E0700": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C35",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C36",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C37",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C38",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C39",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C40",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C41",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C42",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "inference"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C43",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md"
+      }
+    ],
+    "E0701": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C44",
+        "file": "0701-a6400-open-gate-r4-refutation-live.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0701-a6400-open-gate-r4-refutation-live.md"
+      }
+    ],
+    "E0702": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C45",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C46",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C47",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C48",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C49",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C50",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "inference"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C51",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C52",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C53",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "open"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C54",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C55",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F04",
+        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md"
+      }
+    ],
+    "E0703": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C56",
+        "file": "0703-a6400-open-gate-f3851-mmio-live.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0703-a6400-open-gate-f3851-mmio-live.md"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F04",
+        "file": "0703-a6400-open-gate-f3851-mmio-live.md"
       }
     ],
     "E9001": [
@@ -11909,6 +12711,9 @@
     "0680-still-high-iso-nr-crispening-and-paired-jpg.md": [
       "imaging-pipeline"
     ],
+    "0681-custom-kernel-qemu-gate-f30a-fill-and-liro-contract.md": [
+      "qemu-a6400"
+    ],
     "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md": [
       "mods"
     ],
@@ -11918,10 +12723,64 @@
     "0683-arri-shoulder-and-fujifilm-simulations.md": [
       "imaging-pipeline"
     ],
+    "0684-ilce-6400-ram-only-deadman-handover-bundle.md": [
+      "qemu-a6400"
+    ],
+    "0685-full-custom-os-camera-handover-and-ui-path.md": [
+      "qemu-a6400"
+    ],
     "0686-photo-movie-modes-and-dual-variant-presets.md": [
       "imaging-pipeline"
     ],
     "0687-photo-movie-fixes.md": [
+      "imaging-pipeline"
+    ],
+    "0688-qemu-vph-panel-composition-and-ui-buffer-ownership.md": [
+      "qemu-a6400"
+    ],
+    "0689-qemu-ui-liveview-window-and-sdio-cmd5.md": [
+      "qemu-a6400"
+    ],
+    "0690-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md": [
+      "qemu-a6400"
+    ],
+    "0691-camera-loader-branch-avcam-oops-deadman60.md": [
+      "qemu-a6400"
+    ],
+    "0692-wifisync-camera-side-mod.md": [
+      "mods"
+    ],
+    "0693-ilce6400-bl-gate-bitmap-and-1d-mode.md": [
+      "hardware-live"
+    ],
+    "0694-ttartisan-af35-command-surface-and-patch-feasibility.md": [
+      "hardware-live"
+    ],
+    "0695-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md": [
+      "imaging-pipeline"
+    ],
+    "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md": [
+      "imaging-pipeline"
+    ],
+    "0697-a6400-open-gate-upper-ceiling-static-analysis.md": [
+      "imaging-pipeline"
+    ],
+    "0698-a6400-open-gate-camout-v-plus24-root-cause.md": [
+      "imaging-pipeline"
+    ],
+    "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md": [
+      "imaging-pipeline"
+    ],
+    "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md": [
+      "imaging-pipeline"
+    ],
+    "0701-a6400-open-gate-r4-refutation-live.md": [
+      "imaging-pipeline"
+    ],
+    "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md": [
+      "imaging-pipeline"
+    ],
+    "0703-a6400-open-gate-f3851-mmio-live.md": [
       "imaging-pipeline"
     ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [

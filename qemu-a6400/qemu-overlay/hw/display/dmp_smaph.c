@@ -49,6 +49,7 @@
 #include <math.h>
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/units.h"
 #include "qemu/module.h"
@@ -96,6 +97,8 @@ struct SmaphState {
     unsigned tex_call;          /* fetch counter of the current run */
     bool tex_have_deriv;
     float tex_coord[2][16][2];
+    uint32_t mig_funif[DMP_SH_NUM_FUNIF * 4];
+    uint32_t mig_tex_coord[2 * 16 * 2];
 };
 #define P3D_TEX_REC 16
 
@@ -1415,9 +1418,71 @@ static void smaph_init(Object *obj)
     sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq);
 }
 
+static int smaph_pre_save(void *opaque)
+{
+    SmaphState *s = opaque;
+    memcpy(s->mig_funif, s->prog->funif, sizeof(s->mig_funif));
+    memcpy(s->mig_tex_coord, s->tex_coord, sizeof(s->mig_tex_coord));
+    return 0;
+}
+
+static int smaph_post_load(void *opaque, int version_id)
+{
+    SmaphState *s = opaque;
+    memcpy(s->prog->funif, s->mig_funif, sizeof(s->mig_funif));
+    memcpy(s->tex_coord, s->mig_tex_coord, sizeof(s->mig_tex_coord));
+    return 0;
+}
+
+static const VMStateDescription vmstate_dmp_shader_prog = {
+    .name = "dmp-smaph-prog",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(code, DmpShaderProg, DMP_SH_MAX_CODE),
+        VMSTATE_UINT32(ncode, DmpShaderProg),
+        VMSTATE_UINT32_ARRAY(opdesc, DmpShaderProg, DMP_SH_MAX_OPDESC),
+        VMSTATE_UINT32(nopdesc, DmpShaderProg),
+        VMSTATE_UINT32(entry, DmpShaderProg),
+        VMSTATE_UINT32_2DARRAY(iunif, DmpShaderProg, DMP_SH_NUM_IUNIF, 4),
+        VMSTATE_UINT32(bunif, DmpShaderProg),
+        VMSTATE_UINT32_ARRAY(in_map, DmpShaderProg, DMP_SH_NUM_INPUT),
+        VMSTATE_UINT32_ARRAY(out_map, DmpShaderProg, DMP_SH_NUM_OUTPUT),
+        VMSTATE_UINT32_ARRAY(extra, DmpShaderProg, 64),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_dmp_smaph = {
+    .name = "dmp-smaph-s30",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .pre_save = smaph_pre_save,
+    .post_load = smaph_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(reg, SmaphState, 0x4000 / 4),
+        VMSTATE_UINT32(status, SmaphState),
+        VMSTATE_UINT32_ARRAY(p3d, SmaphState, P3D_NREG),
+        VMSTATE_STRUCT_POINTER(prog, SmaphState, vmstate_dmp_shader_prog, DmpShaderProg),
+        VMSTATE_UINT32(code_idx, SmaphState),
+        VMSTATE_UINT32(opd_idx, SmaphState),
+        VMSTATE_UINT32(unif_idx, SmaphState),
+        VMSTATE_UINT64(ndraw, SmaphState),
+        VMSTATE_UINT64(npix, SmaphState),
+        VMSTATE_UINT32(tex_rec, SmaphState),
+        VMSTATE_UINT32(tex_call, SmaphState),
+        VMSTATE_BOOL(tex_have_deriv, SmaphState),
+        VMSTATE_UINT32_ARRAY(mig_funif, SmaphState, DMP_SH_NUM_FUNIF * 4),
+        VMSTATE_UINT32_ARRAY(mig_tex_coord, SmaphState, 2 * 16 * 2),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void smaph_class_init(ObjectClass *klass, const void *data)
 {
-    device_class_set_legacy_reset(DEVICE_CLASS(klass), smaph_reset);
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->vmsd = &vmstate_dmp_smaph;
+    device_class_set_legacy_reset(dc, smaph_reset);
 }
 
 static const TypeInfo smaph_info = {

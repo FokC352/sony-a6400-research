@@ -80,6 +80,7 @@
 #include "qemu/osdep.h"
 #include "hw/core/sysbus.h"
 #include "hw/core/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/cutils.h"
 #include "qemu/module.h"
@@ -569,6 +570,8 @@ struct CamCoreState {
     bool trace;
     const CamCoreRule *rules;
     size_t nrules;
+    uint32_t mig_words;
+    uint32_t *mig_kv;
 };
 
 /* Block-relative offset of a region access (rule tables are block-relative). */
@@ -713,10 +716,75 @@ static const Property camcore_props[] = {
     DEFINE_PROP_BOOL("trace", CamCoreState, trace, false),
 };
 
+static int camcore_cmp_kv(const void *a, const void *b)
+{
+    uint32_t ka = ((const uint32_t *)a)[0];
+    uint32_t kb = ((const uint32_t *)b)[0];
+    return (ka > kb) - (ka < kb);
+}
+
+static int camcore_pre_save(void *opaque)
+{
+    CamCoreState *s = opaque;
+    uint32_t n = g_hash_table_size(s->regs);
+    GHashTableIter iter;
+    gpointer kp, vp;
+
+    g_free(s->mig_kv);
+    s->mig_words = n * 2;
+    s->mig_kv = n ? g_new(uint32_t, s->mig_words) : NULL;
+    uint32_t idx = 0;
+    g_hash_table_iter_init(&iter, s->regs);
+    while (g_hash_table_iter_next(&iter, &kp, &vp)) {
+        s->mig_kv[idx++] = GPOINTER_TO_UINT(kp);
+        s->mig_kv[idx++] = GPOINTER_TO_UINT(vp);
+    }
+    if (n > 1) {
+        qsort(s->mig_kv, n, sizeof(uint32_t) * 2, camcore_cmp_kv);
+    }
+    return 0;
+}
+
+static void camcore_post_save(void *opaque)
+{
+    CamCoreState *s = opaque;
+    g_clear_pointer(&s->mig_kv, g_free);
+    s->mig_words = 0;
+}
+
+static int camcore_post_load(void *opaque, int version_id)
+{
+    CamCoreState *s = opaque;
+    g_hash_table_remove_all(s->regs);
+    for (uint32_t i = 0; i + 1 < s->mig_words; i += 2) {
+        g_hash_table_insert(s->regs, GUINT_TO_POINTER(s->mig_kv[i]),
+                            GUINT_TO_POINTER(s->mig_kv[i + 1]));
+    }
+    g_clear_pointer(&s->mig_kv, g_free);
+    s->mig_words = 0;
+    return 0;
+}
+
+static const VMStateDescription vmstate_cxd90045_camcore = {
+    .name = "cxd90045-camcore",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .pre_save = camcore_pre_save,
+    .post_save = camcore_post_save,
+    .post_load = camcore_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(mig_words, CamCoreState),
+        VMSTATE_VARRAY_UINT32_ALLOC(mig_kv, CamCoreState, mig_words, 0,
+                                    vmstate_info_uint32, uint32_t),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void camcore_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     dc->realize = camcore_realize;
+    dc->vmsd = &vmstate_cxd90045_camcore;
     device_class_set_legacy_reset(dc, camcore_reset);
     device_class_set_props(dc, camcore_props);
 }

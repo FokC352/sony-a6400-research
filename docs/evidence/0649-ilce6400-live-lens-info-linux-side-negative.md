@@ -22,3 +22,7 @@ On this body, the lens command bitmap and the lens capability record live only i
 
 - Find the receiver or store for the `0xA2AFEC` notifications (candidates: `libIMDB`, application objects in the 430 MB of anonymous `im.elf` mappings), then read it for a Sigma versus TTArtisan comparison.
 - Alternatively read MakerNote `LensE-mountVersion` / lens firmware fields from JPEGs taken with each lens, using a host-side copy of the files.
+
+### Update 2026-11-26 (E0693)
+
+The static half of the first boundary is now settled **in the negative**: `libObj.0xA35258` builds its parameter map as a **stack-local** object at `r7+0x650` (`r7 = sp+8`, frame `0xE2C`) and destroys it before returning; the durable state is the observer list at `this+0x5c`. One correction (E0693 validation, 2026-11-26): a **persistent last-message copy does exist** — `0xA3A1E6` copies the 138-byte category-6/`0x2053` message to object `+0xcc`. The original observation that Linux sees transient converted values therefore stands for the *converted* values, while the raw message is retained per object. Finding the observer-side store (in the 430 MB of `im.elf` mappings) remains the next boundary.

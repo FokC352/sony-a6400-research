@@ -24,6 +24,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
 #include "qemu/module.h"
@@ -35,6 +36,8 @@ OBJECT_DECLARE_SIMPLE_TYPE(GpioState, CXD_GPIO)
 #define NPORT 18
 #define NIRQ (17 + 7)
 
+typedef struct { struct GpioState *s; int n; } DropArg;
+
 struct GpioState {
     SysBusDevice parent_obj;
     MemoryRegion mr;
@@ -43,13 +46,12 @@ struct GpioState {
     qemu_irq irq[NIRQ];
     qemu_irq out_line[NPORT * 32];
     QEMUTimer *drop[NIRQ];
+    DropArg drop_args[NIRQ];
     char *reset_high;
     uint32_t ext_reset[NPORT];
 };
 
 static void drop_cb(void *opaque);
-typedef struct { struct GpioState *s; int n; } DropArg;
-static DropArg drop_args[NIRQ];
 
 static uint32_t pin_in(GpioState *s, int p)
 {
@@ -210,13 +212,29 @@ static void gpio_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mr);
     for (int i = 0; i < NIRQ; i++) {
         sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq[i]);
-        drop_args[i].s = s;
-        drop_args[i].n = i;
-        s->drop[i] = timer_new_ns(QEMU_CLOCK_VIRTUAL, drop_cb, &drop_args[i]);
+        s->drop_args[i].s = s;
+        s->drop_args[i].n = i;
+        s->drop[i] = timer_new_ns(QEMU_CLOCK_VIRTUAL, drop_cb, &s->drop_args[i]);
     }
     qdev_init_gpio_in(DEVICE(obj), gpio_set_ext, NPORT * 32);
     qdev_init_gpio_out_named(DEVICE(obj), s->out_line, "out", NPORT * 32);
 }
+
+static const VMStateDescription vmstate_cxd_gpio = {
+    .name = "cxd90014-gpio",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(dir, GpioState, NPORT),
+        VMSTATE_UINT32_ARRAY(ien, GpioState, NPORT),
+        VMSTATE_UINT32_ARRAY(mode, GpioState, NPORT),
+        VMSTATE_UINT32_ARRAY(out, GpioState, NPORT),
+        VMSTATE_UINT32_ARRAY(ext, GpioState, NPORT),
+        VMSTATE_UINT32_2DARRAY(misc, GpioState, NPORT, 0x100 / 4),
+        VMSTATE_TIMER_PTR_ARRAY(drop, GpioState, NIRQ),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static const Property gpio_props[] = {
     DEFINE_PROP_STRING("reset-high", GpioState, reset_high),
@@ -224,9 +242,11 @@ static const Property gpio_props[] = {
 
 static void gpio_class_init(ObjectClass *klass, const void *data)
 {
-    DEVICE_CLASS(klass)->realize = gpio_realize;
-    device_class_set_legacy_reset(DEVICE_CLASS(klass), gpio_reset);
-    device_class_set_props(DEVICE_CLASS(klass), gpio_props);
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->realize = gpio_realize;
+    dc->vmsd = &vmstate_cxd_gpio;
+    device_class_set_legacy_reset(dc, gpio_reset);
+    device_class_set_props(dc, gpio_props);
 }
 
 static const TypeInfo gpio_info = {

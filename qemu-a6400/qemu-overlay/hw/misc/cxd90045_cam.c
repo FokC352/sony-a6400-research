@@ -24,6 +24,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qemu/ctype.h"
 #include "qemu/log.h"
@@ -566,10 +567,9 @@ static void campig_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr);
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
     qdev_init_gpio_out_named(dev, &s->frame_done, "frame", 1);
-    if (s->is_sg) {
-        s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, sgc1_tick, s);
-        s->iif_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, iif_vd_tick, s);
-    } else {
+    s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, sgc1_tick, s);
+    s->iif_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, iif_vd_tick, s);
+    if (!s->is_sg) {
         qdev_init_gpio_in_named(dev, campig_input_frame, "input-frame", 1);
     }
 }
@@ -587,11 +587,32 @@ static const Property campig_props[] = {
     DEFINE_PROP_UINT32("mmio-size", Cxd90045CamPigState, mmio_size, 0x20000),
 };
 
+static const VMStateDescription vmstate_cxd90045_campig = {
+    .name = "cxd90045-campig",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, Cxd90045CamPigState, CAMPIG_MAX_WORDS),
+        VMSTATE_UINT32(st48, Cxd90045CamPigState),
+        VMSTATE_UINT32(st4c, Cxd90045CamPigState),
+        VMSTATE_UINT32(armed, Cxd90045CamPigState),
+        VMSTATE_BOOL(sg_cmp, Cxd90045CamPigState),
+        VMSTATE_BOOL(sg_hold, Cxd90045CamPigState),
+        VMSTATE_INT64(sg_end_ns, Cxd90045CamPigState),
+        VMSTATE_BOOL(ydet_dirty, Cxd90045CamPigState),
+        VMSTATE_UINT32(frames, Cxd90045CamPigState),
+        VMSTATE_TIMER_PTR(timer, Cxd90045CamPigState),
+        VMSTATE_TIMER_PTR(iif_timer, Cxd90045CamPigState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void campig_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = campig_realize;
+    dc->vmsd = &vmstate_cxd90045_campig;
     device_class_set_legacy_reset(dc, campig_reset);
     device_class_set_props(dc, campig_props);
 }
@@ -892,11 +913,27 @@ static const Property aif_props[] = {
     DEFINE_PROP_UINT32("irq1-mask", Cxd90045AifState, irq1_mask, 0x0000F000u),
 };
 
+static const VMStateDescription vmstate_cxd90045_aif = {
+    .name = "cxd90045-aif",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, Cxd90045AifState, AIF_MMIO_SIZE / 4),
+        VMSTATE_UINT32(st, Cxd90045AifState),
+        VMSTATE_UINT32(armed, Cxd90045AifState),
+        VMSTATE_UINT32(pending, Cxd90045AifState),
+        VMSTATE_UINT32(writes_logged, Cxd90045AifState),
+        VMSTATE_TIMER_PTR(done_timer, Cxd90045AifState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void aif_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = aif_realize;
+    dc->vmsd = &vmstate_cxd90045_aif;
     device_class_set_legacy_reset(dc, aif_reset);
     device_class_set_props(dc, aif_props);
 }

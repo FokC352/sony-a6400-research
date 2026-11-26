@@ -4,7 +4,7 @@
 
 - **Scope:** The QEMU sony-a6400 board: captured four-core boot, av-cam and CamCore sequencing, SIO/sub-micro, display/rear panel, Ydet/CamPig, live-view frame, contributor scores, Custom OS handover guards and DMA engines.
 - **Evidence span:** see record index; last reviewed 2026-11-22.
-- **Deep review:** 59 of 59 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 59 of 66 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -113,7 +113,7 @@ Do not rely on:
 
 - ~~The LIRO ram section filled through 0xF30A is a separate sub-core firmware image.~~ **R01** `RETRACTED` ([E0642](../evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md)); see C13: The LIRO ram section copied by the work DMA is av-cam's own initialised RW data (1,878 references from av-cam code), not a sub-core image.
 
-## Record index (59 files)
+## Record index (66 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -178,3 +178,10 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0651](../evidence/0651-qemu-a6400-stock-finder-monitor-rear-lcd.md) | 2026-11-19 | QEMU a6400 stock FINDER/MONITOR rear-LCD selection without diagnostic overlay | yes |  |
 | [E0652](../evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md) | 2026-11-19 | QEMU a6400 late black-screen scanout and buffer capture | yes |  |
 | [E0665](../evidence/0665-qemu-boots-from-the-public-updater.md) | 2026-11-21 | QEMU reaches the a6400 shooting screen and the step-32 wait without a camera capture | yes |  |
+| [E0681](../evidence/0681-custom-kernel-qemu-gate-f30a-fill-and-liro-contract.md) | 2026-11-22 | Custom Kernel #5 QEMU gate: 0xF30A fill model, im.elf LIRO load contract, Phase A/B harness |  |  |
+| [E0684](../evidence/0684-ilce-6400-ram-only-deadman-handover-bundle.md) | 2026-11-22 | ILCE-6400 RAM-only deadman handover of the Custom Kernel #5 bundle (MSC mode) |  |  |
+| [E0685](../evidence/0685-full-custom-os-camera-handover-and-ui-path.md) | 2026-11-22 | Full Custom OS on a physical ILCE-6400 (MSC): handover, av-cam load, Wi-Fi-branch crash, loader-branch liveview |  | The OSD mapping itself was then corrected against the captured stock contract: E0298 records one |
+| [E0688](../evidence/0688-qemu-vph-panel-composition-and-ui-buffer-ownership.md) | 2026-11-23 | QEMU VPH panel composition contract, pixel-level gate and the Custom OS UI buffer boundary |  | 2. The plan's `+0x140` mute premise is refuted [O] / partial-overlap hypothesis and the plan's `memrsv` remedy are **refuted**. The kernel's allocated |
+| [E0689](../evidence/0689-qemu-ui-liveview-window-and-sdio-cmd5.md) | 2026-11-23 | QEMU Phase A `ui: true` via the 0xFE000000 live-view window, and the SDIO CMD5 function field |  | (E0412 corrects E0410: the mask is on the CMD5 response, before any CMD52). The model returned / (`d21d0a62…c1106`); it produced the same markers and is superseded by `hw-12-samebuild`. |
+| [E0690](../evidence/0690-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md) | 2026-11-23 | Custom OS USB (DWC3) phase 1: root-cause boundary, endpoint budget, and the composite QEMU model |  |  |
+| [E0691](../evidence/0691-camera-loader-branch-avcam-oops-deadman60.md) | 2026-11-23 | Physical camera loader-branch run (`deadman=60`): av-cam oops before the Custom UI |  |  |

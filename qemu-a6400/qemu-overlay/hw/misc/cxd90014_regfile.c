@@ -22,6 +22,7 @@
 #include "qemu/osdep.h"
 #include "hw/core/sysbus.h"
 #include "hw/core/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/cutils.h"
 #include "qemu/module.h"
@@ -41,6 +42,8 @@ struct CXDRegfileState {
     char *init;         /* "off=val,..." reset values */
     char *autoclear;    /* "off=mask,...": bits that self-clear on write */
     GHashTable *acl;
+    uint32_t mig_words;
+    uint32_t *mig_kv;
 };
 
 static void parse_pairs(const char *spec, GHashTable *h)
@@ -151,10 +154,75 @@ static const Property rf_props[] = {
     DEFINE_PROP_STRING("autoclear", CXDRegfileState, autoclear),
 };
 
+static int rf_cmp_kv(const void *a, const void *b)
+{
+    uint32_t ka = ((const uint32_t *)a)[0];
+    uint32_t kb = ((const uint32_t *)b)[0];
+    return (ka > kb) - (ka < kb);
+}
+
+static int rf_pre_save(void *opaque)
+{
+    CXDRegfileState *s = opaque;
+    uint32_t n = g_hash_table_size(s->regs);
+    GHashTableIter iter;
+    gpointer kp, vp;
+
+    g_free(s->mig_kv);
+    s->mig_words = n * 2;
+    s->mig_kv = n ? g_new(uint32_t, s->mig_words) : NULL;
+    uint32_t idx = 0;
+    g_hash_table_iter_init(&iter, s->regs);
+    while (g_hash_table_iter_next(&iter, &kp, &vp)) {
+        s->mig_kv[idx++] = GPOINTER_TO_UINT(kp);
+        s->mig_kv[idx++] = GPOINTER_TO_UINT(vp);
+    }
+    if (n > 1) {
+        qsort(s->mig_kv, n, sizeof(uint32_t) * 2, rf_cmp_kv);
+    }
+    return 0;
+}
+
+static void rf_post_save(void *opaque)
+{
+    CXDRegfileState *s = opaque;
+    g_clear_pointer(&s->mig_kv, g_free);
+    s->mig_words = 0;
+}
+
+static int rf_post_load(void *opaque, int version_id)
+{
+    CXDRegfileState *s = opaque;
+    g_hash_table_remove_all(s->regs);
+    for (uint32_t i = 0; i + 1 < s->mig_words; i += 2) {
+        g_hash_table_insert(s->regs, GUINT_TO_POINTER(s->mig_kv[i]),
+                            GUINT_TO_POINTER(s->mig_kv[i + 1]));
+    }
+    g_clear_pointer(&s->mig_kv, g_free);
+    s->mig_words = 0;
+    return 0;
+}
+
+static const VMStateDescription vmstate_cxd_regfile = {
+    .name = "cxd90014-regfile",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .pre_save = rf_pre_save,
+    .post_save = rf_post_save,
+    .post_load = rf_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(mig_words, CXDRegfileState),
+        VMSTATE_VARRAY_UINT32_ALLOC(mig_kv, CXDRegfileState, mig_words, 0,
+                                    vmstate_info_uint32, uint32_t),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void rf_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     dc->realize = rf_realize;
+    dc->vmsd = &vmstate_cxd_regfile;
     device_class_set_legacy_reset(dc, rf_reset);
     device_class_set_props(dc, rf_props);
 }

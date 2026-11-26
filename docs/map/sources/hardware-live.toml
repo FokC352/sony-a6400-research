@@ -21,6 +21,8 @@ records = [
   "E0647",
   "E0648",
   "E0649",
+  "E0693",
+  "E0694",
 ]
 
 [[entity]]
@@ -69,7 +71,8 @@ summary = "Single-page /dev/mem reads are gated by tools/devmem_policy.py: verif
 id = "dev.lens"
 kind = "device"
 name = "Body-lens (BL) interface"
-summary = "Body-lens focus command IDs and the capability gate; lens capability data is not readable from the Linux side."
+aliases = ["BL_LENS_DATA", "0x642FE7B8", "capability gate", "0x63855F94"]
+summary = "Body-lens focus command IDs, the capability bitmap at BL_LENS_DATA+1, the body mask that admits 0x41-0x4A for any lens, and the three-bit 0x1D mode; the TTArtisan lens implements only the legacy items."
 
 [[claim]]
 id = "C01"
@@ -126,6 +129,20 @@ entities = ["dev.lens"]
 status = "verified-physical"
 text = "Body-lens focus command IDs and a capability gate exist; with a Sigma 18-50 F2.8 DC DN attached, lens capability data is not readable from the Linux side."
 evidence = ["E0648", "E0649"]
+
+[[claim]]
+id = "C10"
+entities = ["dev.lens"]
+status = "verified-offline"
+text = "The capability bitmap is 32 bytes at BL_LENS_DATA+1 (bit id-1) and is intersected per query with a body mask at 0x63F0439B that allows 0x01-0x4C and 0x4E-0x5C for every lens; the only identity block is a three-ID inhibit. The 0x1D record carries a three-bit mode with wire values 0, 3, 4 and 6, so E0648's 'bit 2 flag' is mode bit 2, and the 0x09 STARTUP_INFO item carries status only, not the bitmap."
+evidence = ["E0693"]
+
+[[claim]]
+id = "C11"
+entities = ["dev.lens"]
+status = "verified-offline"
+text = "The TTArtisan AF 35/1.8 II E implements eight frame IDs plus the legacy items 0x1C/0x1D/0x1F/0x22/0x2E/0x2F/0x3C/0x3D, has no handler or reply for 0x41-0x4A, ignores the 0x1D mode byte, ships no capability bitmap or lens ID, and runs a controller with no deadband whose settle test requires exact position equality; the container encoding is undecoded, so no .fir can currently be rebuilt."
+evidence = ["E0694"]
 
 [[claim]]
 id = "R01"

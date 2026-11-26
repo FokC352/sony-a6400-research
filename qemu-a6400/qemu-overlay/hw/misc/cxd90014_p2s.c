@@ -40,6 +40,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/timer.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
@@ -226,9 +227,25 @@ static const Property p2s_props[] = {
     DEFINE_PROP_BOOL("trace-transfers", P2SState, trace_transfers, false),
 };
 
+static const VMStateDescription vmstate_cxd_p2s = {
+    .name = "cxd90014-p2s",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(r, P2SState, P2S_SIZE / 4),
+        VMSTATE_UINT32(status, P2SState),
+        VMSTATE_BOOL(busy, P2SState),
+        VMSTATE_UINT32(trace_count, P2SState),
+        VMSTATE_UINT32(traced_transfer, P2SState),
+        VMSTATE_TIMER_PTR(done, P2SState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void p2s_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->vmsd = &vmstate_cxd_p2s;
     device_class_set_props(dc, p2s_props);
     device_class_set_legacy_reset(dc, p2s_reset);
 }

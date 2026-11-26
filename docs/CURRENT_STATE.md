@@ -3,7 +3,6 @@
 For the full documentation index see [docs/INDEX.md](INDEX.md). For the verified test count and latest evidence snapshot, see [README.md](../README.md) and [UVC/PTP Status](UVC_PTP_STATUS.md).
 
 ## Active Track Summary (as of 2026-11-20 / E0677)
-
 | Track | Current Frontier | Latest Evidence | Next Step |
 | --- | --- | --- | --- |
 | **L2 Full-System Kernel Boot** (`UnicornMachine`) | Both `nflasha1` updater (`E0653`) and captured `nflasha3` main firmware (`E0656`) boot natively through `DMP_2D_Initialize : 0` and `/bin/ash`. With `--qemu-peripherals`, the QEMU SYSV/VPH/evsel frame clock (`E0676`) and the oracle-backed SIO channel-3 start/done path, GPIO port-1 input `0x32`, and ADC done/`0x3FF` results (`E0677`) are on the same machine | [E0677](evidence/0677-unicorn-sio-gpio-oracle.md), [E0676](evidence/0676-unicorn-sysv-vph-frame-clock.md), [E0656](evidence/0656-unicorn-main-firmware-boot.md) | Replay captured `nflasha3` and check whether `av-cam` passes the `ObjMic` wait; CPUs 1–3 are still offline, and no Unicorn GUI frame is claimed |
@@ -13,6 +12,22 @@ For the full documentation index see [docs/INDEX.md](INDEX.md). For the verified
 | **Multi-Device Platform** (`CXD90045`) | 13 bodies / 9 kernels mapped (`E0477–E0489`); `TargetProfile` registry has `ilce_6400`, `ilce_6400a`, `zv_e10`, `ilce_6100`, `ilce_6600`, `ilce_7c`, `ilce_7m3`, `ilce_7rm4a`; read-only physical identities: `ILCE-6400A` 1.01 (`E0509`) and `ILCE-7RM4A` 1.13 (Mass Storage `054C:0D9D`, native `GetModelInfo`, `E0646`) | [PLATFORM_MODEL.md](PLATFORM_MODEL.md), [ADDING_A_BIONZX_CAMERA.md](ADDING_A_BIONZX_CAMERA.md) | Wire `TargetProfile` directly into `UnicornMachine` and `InterpreterProbe` for universal target selection |
 
 Historical 2026-10-18 and 2026-11-06 checkpoints are preserved in [docs/archives/](archives/).
+
+## WiFiSync camera-side mod (2026-11-24 / E0692)
+
+[E0692](evidence/0692-wifisync-camera-side-mod.md) implements the camera half of
+the 5 GHz background-transfer plan as a RAM-only `SMOD v2` mod
+([`mods/wifisync/`](../mods/wifisync/README.md), [design](WIFISYNC_MOD.md)):
+a `ConPutWriteStill` interposition, a single worker thread serving
+HTTP `:8765` (`/status`, `/events`, `/manifest`, `/file` with Range, `/ack`),
+Smart Single-Best (RAW+JPG sends only `.ARW`), read-only Sony `Fsys` reads
+behind size/FNV/prologue identity checks, and an AP script
+(`bcmdhd` + `wpa_supplicant` AP mode + `dhcpd` at `192.168.122.1/24`) with
+`low`/`deep` standby. Verified offline: 72 core assertions on x86-64 and on
+Cortex-A5 Thumb (93 Unicorn checks including packaging), 62 end-to-end TCP
+checks with SHA-256/Range/CRC, and 22 Phase 0 firmware contracts. No camera was
+accessed; the physical 5 GHz AP, on-camera WFS reads and `iperf` gate remain
+open.
 
 The earlier no-peripheral captured-profile [E0527](evidence/0527-qemu-task43-initialization-flag-wait.md)
 decodes Task 43's first display wait as flag 10, mask 3, pattern zero, not the

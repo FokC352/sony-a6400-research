@@ -22,6 +22,7 @@
 #include "qemu/osdep.h"
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
+#include "migration/vmstate.h"
 #include "qemu/timer.h"
 #include "qemu/module.h"
 #include "qom/object.h"
@@ -117,9 +118,23 @@ static void adc_init(Object *obj)
     s->t = timer_new_ns(QEMU_CLOCK_VIRTUAL, adc_done, s);
 }
 
+static const VMStateDescription vmstate_cxd_adc = {
+    .name = "cxd90014-adc",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(reg, AdcState, 0x100 / 4),
+        VMSTATE_UINT16_ARRAY(result, AdcState, 12),
+        VMSTATE_TIMER_PTR(t, AdcState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void adc_class_init(ObjectClass *klass, const void *data)
 {
-    device_class_set_legacy_reset(DEVICE_CLASS(klass), adc_reset);
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->vmsd = &vmstate_cxd_adc;
+    device_class_set_legacy_reset(dc, adc_reset);
 }
 
 static const TypeInfo adc_info = {

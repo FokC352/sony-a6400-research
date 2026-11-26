@@ -50,6 +50,8 @@
 # SUBMICRO_LENS_POWER=1 (opt-in lens rail status in slot B; no lens protocol).
 # IDT_CAM (opt-in original sabin/idt_cam.bin, captured boot profile only).
 # SD_IMAGE and SD_SHA256 (opt-in checked raw card; starts ejected).
+# SNAPSHOT_OVERLAY (opt-in qcow2 with saved VM state) and LOADVM (opt-in snapshot tag
+# passed to QEMU -loadvm): resume an already-booted machine in < 1 s.
 # KERNEL and INITRD (Custom OS tests only): boot this kernel/initrd pair instead of the captured
 # ones; the SHA-256 of each override is printed for the receipt. The captured inputs are still
 # verified, so the override is one declared file each, not a replacement data dir. With INITRD set
@@ -193,57 +195,66 @@ if [ -n "$INITRD_OVERRIDE" ]; then
 fi
 
 rm -f "$R/emmc-overlay.qcow2"
-"$Q/build/qemu-img" create -q -f qcow2 -F raw -b "$D/emmc.img" "$R/emmc-overlay.qcow2"
-
-# /setting/ulogio.bin (E0525): without it osal_ulogio.ko fails, nobody serves
-# the ulogio queue 0x13A, its message pool fills and every task that logs
-# (av-cam task 65, bootin, im.elf THREAD_INFRA*) blocks in vpool_alloc.
-# The a6400 package ships no ulogio.bin; the ZV-E10 (same CXD90045 platform)
-# copy is used as a stand-in [assumption]; its LOGB/PRTB buffers fall inside
-# the a6400 cmdline's wbimem=0x500000@0x03085000.  Set ULOGIO= to skip.
-# nflasha2 = user-area 0x00800000 (+8 MiB of eMMC boot partitions in the file).
-ULOGIO="${ULOGIO-$E/../firmware/extracted_zve10_v203_packman/firmware.tar_unpacked/0800_appli/setting/ulogio.bin}"
-if [ -n "$ULOGIO" ] || [ -n "${SETTING_FILES:-}" ]; then
-    SET_OFF=$((0x1000000)); SET_LEN=$((0x1400000))
-    dd if="$D/emmc.img" of="$R/setting-part.img" bs=1M skip=$((SET_OFF >> 20)) \
-       count=$((SET_LEN >> 20)) status=none
-    if [ -n "$ULOGIO" ]; then
-        python3 "$E/tools/fat_add_file.py" --if-absent "$R/setting-part.img" "$ULOGIO" ulogio.bin >&2
+if [ -n "${SNAPSHOT_OVERLAY:-}" ]; then
+    if [ ! -f "$SNAPSHOT_OVERLAY" ] || [ ! -r "$SNAPSHOT_OVERLAY" ]; then
+        echo "SNAPSHOT_OVERLAY is missing or unreadable: $SNAPSHOT_OVERLAY" >&2
+        exit 1
     fi
-    for item in ${SETTING_FILES:-}; do
-        python3 "$E/tools/fat_add_file.py" "$R/setting-part.img" "${item%%:*}" "${item##*:}" >&2
-    done
-    # qemu-io splits the -c string on whitespace, including within paths.
-    # Use a relative source name so a run directory with spaces works.
-    QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
-    (cd "$R" && "$QEMU_IO" -f qcow2 \
-        -c "write -q -s setting-part.img $SET_OFF $SET_LEN" emmc-overlay.qcow2)
-fi
+    cp --reflink=auto -- "$SNAPSHOT_OVERLAY" "$R/emmc-overlay.qcow2"
+    chmod u+w "$R/emmc-overlay.qcow2"
+else
+    "$Q/build/qemu-img" create -q -f qcow2 -F raw -b "$D/emmc.img" "$R/emmc-overlay.qcow2"
 
-# E0572 is an opt-in firmware diagnostic applied only to the disposable overlay.
-if [ "${REAR_LCD_DIAGNOSTIC:-0}" = 1 ]; then
-    LCD_OFF=$(python3 "$E/tools/rear_lcd_overlay.py" "$D/emmc.img" "$R/rear-lcd-sector.bin")
-    QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
-    (cd "$R" && "$QEMU_IO" -f qcow2 \
-        -c "write -q -s rear-lcd-sector.bin $LCD_OFF 512" emmc-overlay.qcow2)
-fi
+    # /setting/ulogio.bin (E0525): without it osal_ulogio.ko fails, nobody serves
+    # the ulogio queue 0x13A, its message pool fills and every task that logs
+    # (av-cam task 65, bootin, im.elf THREAD_INFRA*) blocks in vpool_alloc.
+    # The a6400 package ships no ulogio.bin; the ZV-E10 (same CXD90045 platform)
+    # copy is used as a stand-in [assumption]; its LOGB/PRTB buffers fall inside
+    # the a6400 cmdline's wbimem=0x500000@0x03085000.  Set ULOGIO= to skip.
+    # nflasha2 = user-area 0x00800000 (+8 MiB of eMMC boot partitions in the file).
+    ULOGIO="${ULOGIO-$E/../firmware/extracted_zve10_v203_packman/firmware.tar_unpacked/0800_appli/setting/ulogio.bin}"
+    if [ -n "$ULOGIO" ] || [ -n "${SETTING_FILES:-}" ]; then
+        SET_OFF=$((0x1000000)); SET_LEN=$((0x1400000))
+        dd if="$D/emmc.img" of="$R/setting-part.img" bs=1M skip=$((SET_OFF >> 20)) \
+           count=$((SET_LEN >> 20)) status=none
+        if [ -n "$ULOGIO" ]; then
+            python3 "$E/tools/fat_add_file.py" --if-absent "$R/setting-part.img" "$ULOGIO" ulogio.bin >&2
+        fi
+        for item in ${SETTING_FILES:-}; do
+            python3 "$E/tools/fat_add_file.py" "$R/setting-part.img" "${item%%:*}" "${item##*:}" >&2
+        done
+        # qemu-io splits the -c string on whitespace, including within paths.
+        # Use a relative source name so a run directory with spaces works.
+        QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
+        (cd "$R" && "$QEMU_IO" -f qcow2 \
+            -c "write -q -s setting-part.img $SET_OFF $SET_LEN" emmc-overlay.qcow2)
+    fi
 
-# PP_UNLOCK=1 (opt-in, default off, E9102): point the Soft Skin menu node at the
-# Picture Profile node by rewriting one .dynsym st_value inside the run's
-# disposable overlay. The dump, emmc.img and /setting are never modified; a
-# stock run is byte-for-byte unaffected. PP_PARTITION_OFFSET is the rootfs
-# partition start in emmc.img (a6100 nflasha15: user area 0x800000 + 0x2d800000).
-if [ "${PP_UNLOCK:-0}" = 1 ]; then
-    PP_OFFSET_ARGS=(--partition-offset "${PP_PARTITION_OFFSET:-0x2e000000}")
-    python3 -m tools.research.a6100_picture_profile unlock-offset \
-        --emmc "$D/emmc.img" "${PP_OFFSET_ARGS[@]}" \
-        --path /lib/CautionConfig.so --out "$R/pp-unlock.bin" \
-        --json "$R/pp-unlock.json" >&2
-    PP_OFF=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_offset"])' \
-             "$R/pp-unlock.json")
-    QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
-    (cd "$R" && "$QEMU_IO" -f qcow2 \
-        -c "write -q -s pp-unlock.bin $PP_OFF 4" emmc-overlay.qcow2)
+    # E0572 is an opt-in firmware diagnostic applied only to the disposable overlay.
+    if [ "${REAR_LCD_DIAGNOSTIC:-0}" = 1 ]; then
+        LCD_OFF=$(python3 "$E/tools/rear_lcd_overlay.py" "$D/emmc.img" "$R/rear-lcd-sector.bin")
+        QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
+        (cd "$R" && "$QEMU_IO" -f qcow2 \
+            -c "write -q -s rear-lcd-sector.bin $LCD_OFF 512" emmc-overlay.qcow2)
+    fi
+
+    # PP_UNLOCK=1 (opt-in, default off, E9102): point the Soft Skin menu node at the
+    # Picture Profile node by rewriting one .dynsym st_value inside the run's
+    # disposable overlay. The dump, emmc.img and /setting are never modified; a
+    # stock run is byte-for-byte unaffected. PP_PARTITION_OFFSET is the rootfs
+    # partition start in emmc.img (a6100 nflasha15: user area 0x800000 + 0x2d800000).
+    if [ "${PP_UNLOCK:-0}" = 1 ]; then
+        PP_OFFSET_ARGS=(--partition-offset "${PP_PARTITION_OFFSET:-0x2e000000}")
+        python3 -m tools.research.a6100_picture_profile unlock-offset \
+            --emmc "$D/emmc.img" "${PP_OFFSET_ARGS[@]}" \
+            --path /lib/CautionConfig.so --out "$R/pp-unlock.bin" \
+            --json "$R/pp-unlock.json" >&2
+        PP_OFF=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_offset"])' \
+                 "$R/pp-unlock.json")
+        QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
+        (cd "$R" && "$QEMU_IO" -f qcow2 \
+            -c "write -q -s pp-unlock.bin $PP_OFF 4" emmc-overlay.qcow2)
+    fi
 fi
 
 # E0527: the board replays the captured micro->CPU slots A/C/B on SIO ch3.
@@ -356,6 +367,10 @@ if [ -n "$INITRD_OVERRIDE" ]; then
         "$(sha256sum -- "$INITRD_PATH" | cut -d' ' -f1)" "$INITRD_PATH" \
         "$(stat -Lc '%s' -- "$INITRD_PATH")" >&2
 fi
+LOADVM_ARGS=()
+if [ -n "${LOADVM:-}" ]; then
+    LOADVM_ARGS=(-loadvm "$LOADVM")
+fi
 T=()
 if [ "${TIMEOUT:-0}" != 0 ]; then T=(timeout "$TIMEOUT"); fi
 exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial "${SERIAL:-mon:stdio}" \
@@ -365,4 +380,4 @@ exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial
   -device loader,file="$R/Backup.bin",addr="$BACKUP_PA",force-raw=on \
   -device loader,file="$R/av-cam.bin",addr="$AVCAM_PA",force-raw=on \
   "${IDT_BOOT[@]}" "${EVSEL[@]}" "${P2S[@]}" "${SA[@]}" "${LIVEVIEW_ARGS[@]}" "${SD[@]}" \
-  ${QEMU_EXTRA--icount shift=0,sleep=on}
+  "${LOADVM_ARGS[@]}" ${QEMU_EXTRA--icount shift=0,sleep=on}

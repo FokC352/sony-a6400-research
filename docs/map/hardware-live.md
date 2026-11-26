@@ -4,7 +4,7 @@
 
 - **Scope:** Read-only observations of the physical ILCE-6400: GPIO, bus power, HDMI/CEC, touch input, display/OSD, GPES BAR, MISCREG and the /dev/mem safety boundary, lens interface.
 - **Evidence span:** see record index; last reviewed 2026-11-22.
-- **Deep review:** 0 of 15 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 0 of 17 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -99,13 +99,17 @@ Current knowledge:
 
 `dev.lens` | device
 
-Body-lens focus command IDs and the capability gate; lens capability data is not readable from the Linux side.
+Body-lens focus command IDs, the capability bitmap at BL_LENS_DATA+1, the body mask that admits 0x41-0x4A for any lens, and the three-bit 0x1D mode; the TTArtisan lens implements only the legacy items.
+
+Aliases: `BL_LENS_DATA`, `0x642FE7B8`, `capability gate`, `0x63855F94`
 
 Current knowledge:
 
 - **C08** `PHYSICAL` Body-lens focus command IDs and a capability gate exist; with a Sigma 18-50 F2.8 DC DN attached, lens capability data is not readable from the Linux side. ([E0648](../evidence/0648-ilce6400-bl-lens-focus-command-ids.md), [E0649](../evidence/0649-ilce6400-live-lens-info-linux-side-negative.md))
+- **C10** `OFFLINE` The capability bitmap is 32 bytes at BL_LENS_DATA+1 (bit id-1) and is intersected per query with a body mask at 0x63F0439B that allows 0x01-0x4C and 0x4E-0x5C for every lens; the only identity block is a three-ID inhibit. The 0x1D record carries a three-bit mode with wire values 0, 3, 4 and 6, so E0648's 'bit 2 flag' is mode bit 2, and the 0x09 STARTUP_INFO item carries status only, not the bitmap. ([E0693](../evidence/0693-ilce6400-bl-gate-bitmap-and-1d-mode.md))
+- **C11** `OFFLINE` The TTArtisan AF 35/1.8 II E implements eight frame IDs plus the legacy items 0x1C/0x1D/0x1F/0x22/0x2E/0x2F/0x3C/0x3D, has no handler or reply for 0x41-0x4A, ignores the 0x1D mode byte, ships no capability bitmap or lens ID, and runs a controller with no deadband whose settle test requires exact position equality; the container encoding is undecoded, so no .fir can currently be rebuilt. ([E0694](../evidence/0694-ttartisan-af35-command-surface-and-patch-feasibility.md))
 
-## Record index (15 files)
+## Record index (17 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -124,5 +128,7 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0313](../evidence/0313-readonly-physical-gpes-bar-and-grm-state.md) | 2026-11-10 | read-only physical observation of GPES BAR, GRM state and OSAL tables |  |  |
 | [E0314](../evidence/0314-gpes-bar-irq-contract-engine-model.md) | 2026-11-10 | GPES BAR/IRQ contract decoded; opt-in engine-completion model |  | Process-shared ctx correction / Corrected the Linux ARM affinity syscall mapping (**241 = |
 | [E0647](../evidence/0647-ilce6400-devmem-reboot-root-cause-and-policy.md) | 2026-11-19 | Why a single-page `/dev/mem` read rebooted the ILCE-6400, and what may be read |  |  |
-| [E0648](../evidence/0648-ilce6400-bl-lens-focus-command-ids.md) | 2026-11-20 | ILCE-6400 body–lens ("BL") focus command IDs and capability gate |  |  |
-| [E0649](../evidence/0649-ilce6400-live-lens-info-linux-side-negative.md) | 2026-11-20 | Live ILCE-6400 with Sigma 18-50 F2.8 DC DN: lens capability data is not readable from the Linux side |  | 4. `/lens` (`/dev/nflasha18`) holds only Sony `VX*_lensfile.bin` correction files. `/log` holds only `feeder.log`. The SD card is not mounted on the Linux side in MSC mode, and Windows showed no drive letter for it in th |
+| [E0648](../evidence/0648-ilce6400-bl-lens-focus-command-ids.md) | 2026-11-20 | ILCE-6400 body–lens ("BL") focus command IDs and capability gate |  | Superseded by E0693 / E0694 (kept for provenance, not deleted) / \| Lens-side bitmap \| **negative for the TTArtisan**: no 32-byte bitmap exists in that image; the body's `0x09` item is status-only, so this record's "STARTUP_INFO produces the bitmap" is **corrected** \| E0693, E0694 \ |
+| [E0649](../evidence/0649-ilce6400-live-lens-info-linux-side-negative.md) | 2026-11-20 | Live ILCE-6400 with Sigma 18-50 F2.8 DC DN: lens capability data is not readable from the Linux side |  | 4. `/lens` (`/dev/nflasha18`) holds only Sony `VX*_lensfile.bin` correction files. `/log` holds only `feeder.log`. The SD card is not mounted on the Linux side in MSC mode, and Windows showed no drive letter for it in th / The static half of the first boundary is now settled **in the negative**: `libObj.0xA35258` builds its parameter map as a **stack-local** object at `r7+0x650` (`r7 = sp+8`, frame `0xE2C`) and destroys it before returning |
+| [E0693](../evidence/0693-ilce6400-bl-gate-bitmap-and-1d-mode.md) | 2026-11-26 | ILCE-6400 BL protocol: capability gate, lens bitmap, and the three-bit `0x1D` mode |  | The bitmap lives at **`BL_LENS_DATA + 1`**, where `BL_LENS_DATA` is the pointer variable at **`0x642FE7B8`** (literal slot `0x645A9088` = module base `0x645A21E4` + `0x6EA4`; the same slot the gate null-tests, and the co / libObj` publishes lens fields as `(0xC0xx key → enum value)` to observers and keeps **no persistent handler-map or lens-state table**; the temporary map is a stack object at `r7+0x650` (`r7 = sp+8`), which corrects E0649 |
+| [E0694](../evidence/0694-ttartisan-af35-command-surface-and-patch-feasibility.md) | 2026-11-26 | TTArtisan AF 35 mm F1.8 II E: command surface, controller, offline harness, and patch feasibility |  |  |
