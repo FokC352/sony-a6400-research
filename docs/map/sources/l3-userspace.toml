@@ -147,7 +147,7 @@ evidence = ["E0003", "E0004", "E0005", "E0006", "E0007"]
 id = "C02"
 entities = ["lib.loader-libc"]
 status = "verified-offline"
-text = "Guarded ARM EABI mmap2 and dynamic-linker library loading work; kuser helpers at 0xFFFF0FA0..0xFFFF0FFC, hardware TLS switching and shared-library initialization run original code."
+text = "Guarded ARM EABI mmap2 and dynamic-linker library loading work; kuser helpers at 0xFFFF0F60..0xFFFF0FFC, hardware TLS switching and shared-library initialization run original code."
 evidence = ["E0015", "E0016", "E0026"]
 
 [[claim]]
@@ -553,6 +553,7 @@ entities = ["process.im-elf", "dev.uipc-osal"]
 status = "verified-offline"
 text = "osal_create_waitable_thread locks a stack mutex before clone and blocks in pthread_mutex_lock; FUTEX_WAIT_PRIVATE parks the parent and switches to the child, and FUTEX_WAKE_PRIVATE releases it. THREAD_INFRA0 (TID 1001, entry 0x954d, priority 4) executes 18,322 instructions; the main thread reaches 2,367,687 instructions and waits on semaphore 0x83037a (ioctl 0x80000001, timeout 0xffffffff)."
 evidence = ["E0019"]
+note = "E0026 shows the cooperative restore did not update hardware TPIDRURO; this run is an observation of the pre-fix implementation, and C68 scopes the threaded results."
 
 [[claim]]
 id = "C54"

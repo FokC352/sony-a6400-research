@@ -46,7 +46,7 @@ All listed cameras share Sony's **BIONZ X (`CXD90045`)** processor ([platform ov
 | :--- | :--- | :--- |
 | **`ILCE-6400`** | **Verified (Hardware + Emulator)** | Full QEMU & Unicorn emulation, Mod Loader v2, MenuTouchFull, Arrivederci, Film Sims |
 | **`ILCE-6400A`** | **Verified (QEMU + SD Auto-Boot)** | 4-core QEMU stock UI boot, Mod Loader v2 + 10 `.mod` packages, FAT32/exFAT SD auto-boot ([`mods/ilce_6400a/`](mods/ilce_6400a/README.md)) |
-| **`ILCE-6100`** | **Verified (Hardware Mods)** | PhotonBin 6MP ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)); Mod Loader v2 and Picture Profile unlock are offline/QEMU ([E9103](docs/evidence/9103-a6100-mod-loader-port.md), [E9101](docs/evidence/9101-a6100-picture-profile-gate.md)) |
+| **`ILCE-6100`** | **Verified (Hardware Mods)** | PhotonBin 6MP and MLV2 SD-boot/SMNU ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)); Picture Profile unlock is QEMU-only ([E9101](docs/evidence/9101-a6100-picture-profile-gate.md)); the emulator Mod Loader port is offline ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
 | **`ZV-E10`** | **Verified (RAM Touch Mod)** | Full Main Menu + 12-tile Fn touch on physical hardware via direct RAM injection ([ZV-E10 guide](tools/native_camera/zve10/README.md)) |
 | **`ILCE-6600` · `ILCE-7C` · `ILCE-7M3` · `ILCE-7RM4A`** | **Reference Profiles** | Firmware symbols & USB IDs mapped offline; ready for contributors to verify mods |
 
