@@ -64,23 +64,27 @@ class TestQemuBootInputs17Part(unittest.TestCase):
                 img.write_bytes(b"\x00" * size)
                 subprocess.run(["mkfs.fat", "--invariant", str(img)], check=True, capture_output=True)
 
-            (root / "Backup.bin").write_bytes(struct.pack("<I", 0x02E80000) + b"\x00" * 60)
-            (root / "kemco.txt").write_bytes(b"kemco console=ttynull root=/dev/ram0\n")
-            (root / "vmlinux.bin").write_bytes(b"ARM\x00" * 32)
-            (root / "initrd.img").write_bytes(b"INITRD" * 16)
-            (root / "av-cam.bin").write_bytes(b"ORIL" * 32)
+            from src.a6400.execution.nflasha_boot_set import ARM_IMAGE_FIRST_WORD
+            (root / "Backup.bin").write_bytes(struct.pack("<I", 0x02E80000) + b"\xaa" * 4 + b"\x00" * 56)
+            (root / "kemco.txt").write_bytes(b"kemco memrsv=0x1000000@0x02E00000 console=ttynull root=/dev/ram0 *\n")
+            (root / "vmlinux.bin").write_bytes(struct.pack("<I", ARM_IMAGE_FIRST_WORD) + b"\x00" * 124)
+            initrd = bytearray(2048)
+            struct.pack_into("<H", initrd, 0x438, 0xEF53)
+            (root / "initrd.img").write_bytes(bytes(initrd))
+            (root / "av-cam.bin").write_bytes(b"\x00" * 4 + b"ORIL" + b"\x00" * 120)
             for name in ("Backup.bin", "kemco.txt"):
                 subprocess.run(["mcopy", "-o", "-i", str(fat2), str(root / name), f"::/{name}"], check=True)
             for name in ("vmlinux.bin", "initrd.img", "av-cam.bin"):
                 subprocess.run(["mcopy", "-o", "-i", str(fat3), str(root / name), f"::/{name}"], check=True)
 
-            # Build SDM 82461.00 header for nflasha2 (at 0x10000) and nflasha3 (at 0x90000)
+            # Build SDM 82461.00 header for nflasha1 (0x10000), nflasha2 (0x20000), nflasha3 (0xa0000)
+            (dump / "nflasha1.bin").write_bytes(b"\x00" * 0x10000)
             header = bytearray(0x10000)
             header[:8] = b"82461.00"
             struct.pack_into("<I", header, 8, 3)
-            struct.pack_into("<4I", header, 32, 0x10000, 0, 0, 0)
-            struct.pack_into("<4I", header, 48, 0x10000, 512 * 1024, 0, 0)
-            struct.pack_into("<4I", header, 64, 0x90000, 512 * 1024, 0, 0)
+            struct.pack_into("<4I", header, 32, 0x10000, 0x10000, 0, 1)
+            struct.pack_into("<4I", header, 48, 0x20000, 512 * 1024, 0, 1)
+            struct.pack_into("<4I", header, 64, 0xa0000, 512 * 1024, 0, 1)
             hdr_path = root / "sdm-head.bin"
             hdr_path.write_bytes(bytes(header))
 
