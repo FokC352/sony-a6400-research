@@ -90,6 +90,8 @@
       <button class="tool" id="rescan" data-needs-mods title="Press MENU so the menu root (and Mods list) is rebuilt">☰ Rescan</button>
       <span class="sep" aria-hidden="true"></span>
       <button class="tool" id="pause" aria-pressed="false" title="Pause or resume the emulated CPUs">⏸ Pause</button>
+      <button class="tool" id="savevm" title="Save instant QEMU VM snapshot (quick)">💾 Save</button>
+      <button class="tool" id="loadvm" title="Restore instant QEMU VM snapshot (quick)">⏪ Restore</button>
       <button class="tool" id="restart" title="Reboot QEMU; loaded mods are installed again">⟲ Restart</button>
       <a class="tool" id="frame" href="/lcd.png" download="a6400-lcd.png" title="Save the current LCD frame" style="text-decoration:none;color:inherit;border:1px solid #565655;background:linear-gradient(#3a3a39,#1a1a19)">⤓ Frame</a>
     </div>
@@ -333,6 +335,8 @@
   $('#rescan').onclick = () => act('MENU pressed to rebuild the menu root', '/loader/rescan');
   $('#pause').onclick = () => act($('#pause').getAttribute('aria-pressed') === 'true' ? 'Resumed' : 'Paused',
     $('#pause').getAttribute('aria-pressed') === 'true' ? '/emu/resume' : '/emu/pause').then(emu);
+  $('#savevm').onclick = () => act('Saved snapshot (quick)', '/emu/savevm?tag=quick');
+  $('#loadvm').onclick = () => act('Restored snapshot (quick)', '/emu/loadvm?tag=quick').then(emu);
   $('#restart').onclick = () => {
     if (confirm('Reboot QEMU? Loaded mods are installed again after boot (about 40 s).'))
       act('Restarting QEMU…', '/emu/restart');

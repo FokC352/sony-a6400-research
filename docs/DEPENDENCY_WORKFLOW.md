@@ -42,3 +42,5 @@ The generated commands use the existing stdlib-only launcher directly within WSL
 `artifacts/analysis/dmm-dependency-cross-module/plan.json` shows a bounded eight-function graph reaching `osal_uipc.ko`; `truncated: true` records the cap. Do not interpret a graph cap or unresolved edge as a missing firmware function.
 
 This workflow reduces repeated disassembly/decompilation. It cannot recover unsupplied `/setting/ulogio.bin`, establish unknown register values or turn static candidates into authentic runtime state. Continue using original-instruction experiments and the evidence rules before implementing responses.
+
+For Thumb-2 `ET_DYN`/`ET_EXEC` user-space libraries (`im.elf`, `libObj.so`, `viewUnified2.so`), instant symbol/callgraph lookups and persistent WSL2 Ghidra decompilation caching are indexed via `tools.research.symbol_index`; for dynamic verification on resumed snapshots, see [TCG_TRACE_WORKFLOW.md](TCG_TRACE_WORKFLOW.md).

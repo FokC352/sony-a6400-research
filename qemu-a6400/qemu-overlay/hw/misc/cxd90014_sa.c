@@ -73,6 +73,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "hw/misc/cxd90045_jpeg.h"
 #include "qapi/error.h"
 #include "qemu/rcu.h"
@@ -902,11 +903,30 @@ static const Property sa_props[] = {
     DEFINE_PROP_BOOL("movie-codec-hle", CxdSaState, movie_codec_hle, false),
 };
 
+static const VMStateDescription vmstate_cxd_sa = {
+    .name = "cxd90014-sa",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(r, CxdSaState, SA_SIZE / 4),
+        VMSTATE_UINT8_ARRAY(factor, CxdSaState, SA_NSRC),
+        VMSTATE_UINT8_ARRAY(mask, CxdSaState, SA_NSRC),
+        VMSTATE_UINT8(completion_factor, CxdSaState),
+        VMSTATE_BOOL(running, CxdSaState),
+        VMSTATE_BOOL(zma1_ready, CxdSaState),
+        VMSTATE_UINT32(fill_desc, CxdSaState),
+        VMSTATE_UINT32(starts, CxdSaState),
+        VMSTATE_TIMER_PTR(done, CxdSaState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void sa_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = sa_realize;
+    dc->vmsd = &vmstate_cxd_sa;
     device_class_set_legacy_reset(dc, sa_reset);
     device_class_set_props(dc, sa_props);
 }

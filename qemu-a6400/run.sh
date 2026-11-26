@@ -58,6 +58,8 @@
 # SUBMICRO_LENS_POWER=1 (opt-in lens rail status in slot B; no lens protocol).
 # IDT_CAM (opt-in original sabin/idt_cam.bin, captured boot profile only).
 # SD_IMAGE and SD_SHA256 (opt-in checked raw card; starts ejected).
+# SNAPSHOT_OVERLAY (opt-in qcow2 with saved VM state) and LOADVM (opt-in snapshot tag
+# passed to QEMU -loadvm): resume an already-booted machine in < 1 s.
 # KERNEL and INITRD (Custom OS tests only): boot this kernel/initrd pair instead of the captured
 # ones; the SHA-256 of each override is printed for the receipt. The captured inputs are still
 # verified, so the override is one declared file each, not a replacement data dir. With INITRD set
@@ -251,6 +253,14 @@ elif [ "${LINUX_BOOT:-0}" = 1 ] && [ -f "$D/nflasha3-initrd" ]; then
     CMD=$(printf '%s\n' "$CMD" | sed -E "s#initrd=0x[0-9a-fA-F]+,[^ ]+#initrd=${INITRD_LOAD_PA},0x$(printf '%08x' "$ISZ")#")
 fi
 
+if [ -n "${SNAPSHOT_OVERLAY:-}" ]; then
+    if [ ! -f "$SNAPSHOT_OVERLAY" ] || [ ! -r "$SNAPSHOT_OVERLAY" ]; then
+        echo "SNAPSHOT_OVERLAY is missing or unreadable: $SNAPSHOT_OVERLAY" >&2
+        exit 1
+    fi
+    cp --reflink=auto -- "$SNAPSHOT_OVERLAY" "$EMMC_OVERLAY"
+    chmod u+w "$EMMC_OVERLAY"
+else
 # /setting/ulogio.bin (E0525): without it osal_ulogio.ko fails, nobody serves
 # the ulogio queue 0x13A, its message pool fills and every task that logs
 # (av-cam task 65, bootin, im.elf THREAD_INFRA*) blocks in vpool_alloc.
@@ -301,6 +311,7 @@ if [ "${PP_UNLOCK:-0}" = 1 ]; then
     QEMU_IO="$(cd "$Q/build" && pwd)/qemu-io"
     (cd "$R" && "$QEMU_IO" -f qcow2 \
         -c "write -q -s pp-unlock.bin $PP_OFF 4" "$EMMC_OVERLAY")
+fi
 fi
 
 # E0527: the board replays the captured micro->CPU slots A/C/B on SIO ch3.
@@ -476,6 +487,10 @@ if [ -n "$INITRD_OVERRIDE" ]; then
         "$(sha256sum -- "$INITRD_PATH" | cut -d' ' -f1)" "$INITRD_PATH" \
         "$(stat -Lc '%s' -- "$INITRD_PATH")" >&2
 fi
+LOADVM_ARGS=()
+if [ -n "${LOADVM:-}" ]; then
+    LOADVM_ARGS=(-loadvm "$LOADVM")
+fi
 DTB_ARGS=()
 if [ -n "$DTB_OVERRIDE" ]; then
     printf 'dtb override: %s %s (%s bytes)\n' \
@@ -492,4 +507,4 @@ exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial
   -device loader,file="$R/Backup.bin",addr="$BACKUP_PA",force-raw=on \
   -device loader,file="$R/av-cam.bin",addr="$AVCAM_PA",force-raw=on \
   "${IDT_BOOT[@]}" "${EVSEL[@]}" "${P2S[@]}" "${SA[@]}" "${LIVEVIEW_ARGS[@]}" "${SD[@]}" \
-  ${QEMU_EXTRA--icount shift=0,sleep=on}
+  "${LOADVM_ARGS[@]}" ${QEMU_EXTRA--icount shift=0,sleep=on}

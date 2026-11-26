@@ -248,9 +248,37 @@ static const Property cxd_props[] = {
     DEFINE_PROP_BOOL("watchdog", CXD4115TimerState, wdt, false),
 };
 
+static const VMStateDescription vmstate_cxd4115_chan = {
+    .name = "cxd4115-chan",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(ctrl, CXDChan),
+        VMSTATE_UINT32(cmp, CXDChan),
+        VMSTATE_UINT32(base_count, CXDChan),
+        VMSTATE_INT64(base_ns, CXDChan),
+        VMSTATE_BOOL(running, CXDChan),
+        VMSTATE_BOOL(pending, CXDChan),
+        VMSTATE_TIMER_PTR(timer, CXDChan),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_cxd4115_timer = {
+    .name = "cxd4115-timer",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_STRUCT_ARRAY(ch, CXD4115TimerState, CXD_NCH, 1,
+                             vmstate_cxd4115_chan, CXDChan),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void cxd_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->vmsd = &vmstate_cxd4115_timer;
     device_class_set_legacy_reset(dc, cxd_reset);
     device_class_set_props(dc, cxd_props);
 }
