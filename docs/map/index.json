@@ -589,7 +589,8 @@
       "anchor": "imaging-pipeline.md#img-recording-paths",
       "active_claims": [
         "C06",
-        "C07"
+        "C07",
+        "C17"
       ],
       "inactive_claims": []
     },
@@ -608,7 +609,8 @@
         "C07",
         "C08",
         "C09",
-        "C10"
+        "C10",
+        "C17"
       ],
       "inactive_claims": []
     },
@@ -11155,6 +11157,21 @@
         "status": "verified-physical"
       }
     ],
+    "E9105": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C17",
+        "file": "9105-a6100-rcraw-aif-w2-and-fopd-gates.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "9105-a6100-rcraw-aif-w2-and-fopd-gates.md"
+      }
+    ],
     "README": [
       {
         "area": "mods",
@@ -13457,6 +13474,9 @@
     ],
     "9104-a6100-photonbin-6mp-port.md": [
       "mods"
+    ],
+    "9105-a6100-rcraw-aif-w2-and-fopd-gates.md": [
+      "imaging-pipeline"
     ],
     "cross_model/a6400-scalarwebapi-2026-11-20-transcript.jsonl": [
       "wifi-and-remote"

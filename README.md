@@ -86,9 +86,9 @@ python -m unittest discover -s tests -q
 
 ## Project Status & Verification
 
-This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)**.
+This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9105](docs/evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md)**.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=65f94247423c)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=88796622e473)
 
 [Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 
