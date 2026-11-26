@@ -3568,6 +3568,20 @@ static const Cxd90045F292Rule cxd90045_f3215_rules[] = {
       "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
 };
 
+/*
+ * L0126: the guest writes +0x004 (0x303) and +0x008 (0x715) and reads each
+ * back once (F-0125, baseline boot).  +0x010..+0x01C are read before their
+ * first write, so their reset value is uncaptured and they stay unmodelled.
+ * Window base 0xF30A0000, size 0x10; +0x00 and +0x0C have no access in the
+ * baseline and no row, so the helper logs them as unmodelled if touched.
+ */
+static const Cxd90045F292Rule cxd90045_f30a0_rules[] = {
+    { 0x004, CXD90045_F292_RF,
+      "write 0x303 then read back (F-0125, baseline boot) (L0126)" },
+    { 0x008, CXD90045_F292_RF,
+      "write 0x715 then read back (F-0125, baseline boot) (L0126)" },
+};
+
 typedef struct Cxd90045F292 {
     MemoryRegion mmio;
     const Cxd90045F292Rule *rules;
@@ -4749,6 +4763,15 @@ static void sony_a6400_init(MachineState *machine)
     cxd90045_f292_create(sysmem, 0xF3215000ULL, 0x1000ULL,
                          "cxd90045.f3215", cxd90045_f3215_rules,
                          ARRAY_SIZE(cxd90045_f3215_rules));
+
+    /*
+     * L0126: read-back window for the +0x004/+0x008 config words the guest
+     * writes and reads back once (F-0125).  Size 0x10 covers only +0x00..+0x0F;
+     * the 0xF30A1280 fill window and the rest of the page are untouched.
+     */
+    cxd90045_f292_create(sysmem, 0xF30A0000ULL, 0x10ULL,
+                         "cxd90045.f30a0", cxd90045_f30a0_rules,
+                         ARRAY_SIZE(cxd90045_f30a0_rules));
 
     /*
      * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
