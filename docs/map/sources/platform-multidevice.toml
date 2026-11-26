@@ -155,6 +155,13 @@ text = "A research checkpoint and publication audit inventoried local evidence a
 evidence = ["E0110", "doc:manifests/0110-local-evidence-inventory.json"]
 
 [[claim]]
+id = "C14"
+entities = ["platform.bodies"]
+status = "verified-offline"
+text = "The ILCE-6100 Ver.1.00 and ILCE-6400 captures are distinct builds of the same Sony CE Linux 8.2.6.0 release: version.txt reads 38115_03.2021040601 on the a6100 and 38111_06.2021081003 on the a6400, and the kernels were built on different hosts and dates. Their partition size map is identical (1,360,986,112 bytes over 18 partitions), but only nflasha16, nflasha23 and nflashaB1 are byte-identical; the other 15 differ."
+evidence = ["E0707", "E9101", "E0415"]
+
+[[claim]]
 id = "R01"
 entities = ["platform.ipc-graph"]
 status = "retracted"

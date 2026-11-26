@@ -31,7 +31,7 @@ If you just want to add mods to your Sony **`ILCE-6400`** (or **`ILCE-6400A` / `
 | **[MenuTouchFull](mods/menu_touch_full/README.md)** | Lets you tap tabs, swipe pages, and use dropdowns across the Sony menu with the touchscreen | Hardware-verified on `ILCE-6400` ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)) and `ZV-E10` ([ZV-E10 guide](tools/native_camera/zve10/README.md)) |
 | **[Arrivederci](mods/arri_isp/arrivederci/README.md)** | Adds an ARRI LogC3 Classic cinema tone curve and color look right in-camera | Usable on `ILCE-6400` / `ILCE-6400A` ([E0556](docs/evidence/0556-arrivederci-classic-fitted-matrix.md)); turn OFF before power-off |
 | **[SilentShutterUnlock](mods/silent_shutter_unlock/README.md)** | Unlocks Picture Profile (+ sub-items), Picture Effect, Auto HDR/DRO, Multi Frame NR, and Auto/SCN modes while **Silent Shooting** is active (`libObj.so` `ExcMgr` hook + reversible `libSysDef.so` `DefInh::sm_refTbl` patch; Flash/BULB/LENR remain stock) | **Hardware-verified on physical `ILCE-6400` (`2.00` captured layout, RAM-only)** + Unicorn verified (`16` unlocked / `5` stock-preserved, `425` `DefInh` bits cleared & restored on `OFF`) |
-| **Film Simulations & Studio** | Custom Picture Profile film looks and live preview picker | Hardware-verified on `ILCE-6100` & `ILCE-6400` ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
+| **Film Simulations & Studio** | Custom Picture Profile film looks and live preview picker | Look pipeline fitted offline ([E0682](docs/evidence/0682-still-jpeg-film-look-domain-and-recipe-recalibration.md), [E0683](docs/evidence/0683-arri-shoulder-and-fujifilm-simulations.md), [E0687](docs/evidence/0687-photo-movie-fixes.md)); no physical film-simulation application recorded |
 | **PhotonBin 6MP** | 6 MP low-light 16-bit `.ARW` capture with high-conversion-gain mode | Hardware-verified on `ILCE-6100` ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)); QEMU-verified on `ILCE-6400A` ([E0680](docs/evidence/0680-photonbin-6mp-and-mlv2-nested-submenus.md)) |
 | **[WiFiSync](mods/wifisync/README.md)** | Sends `.JPG` and `.ARW` photos in the background over 5 GHz Wi-Fi (`:8765`) | Faster than stock image transfer, but still slow to our liking |
 | **ModsTabLook & Open Gate 3:2** | Custom `MODS` tab icon and experimental 3:2 full-sensor recording research | Details & installation steps in [mods/README.md](mods/README.md) |
@@ -46,7 +46,7 @@ All listed cameras share Sony's **BIONZ X (`CXD90045`)** processor ([platform ov
 | :--- | :--- | :--- |
 | **`ILCE-6400`** | **Verified (Hardware + Emulator)** | Full QEMU & Unicorn emulation, Mod Loader v2, MenuTouchFull, Arrivederci, Film Sims |
 | **`ILCE-6400A`** | **Verified (QEMU + SD Auto-Boot)** | 4-core QEMU stock UI boot, Mod Loader v2 + 10 `.mod` packages, FAT32/exFAT SD auto-boot ([`mods/ilce_6400a/`](mods/ilce_6400a/README.md)) |
-| **`ILCE-6100`** | **Verified (Hardware Mods)** | Mod Loader v2, Film Simulations, Picture Profile unlock, PhotonBin 6MP ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)) |
+| **`ILCE-6100`** | **Verified (Hardware Mods)** | PhotonBin 6MP and MLV2 SD-boot/SMNU ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)); Picture Profile unlock is QEMU-only ([E9101](docs/evidence/9101-a6100-picture-profile-gate.md)); the emulator Mod Loader port is offline ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
 | **`ZV-E10`** | **Verified (RAM Touch Mod)** | Full Main Menu + 12-tile Fn touch on physical hardware via direct RAM injection ([ZV-E10 guide](tools/native_camera/zve10/README.md)) |
 | **`ILCE-6600` · `ILCE-7C` · `ILCE-7M3` · `ILCE-7RM4A`** | **Reference Profiles** | Firmware symbols & USB IDs mapped offline; ready for contributors to verify mods |
 
@@ -88,7 +88,7 @@ python -m unittest discover -s tests -q
 
 This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9105](docs/evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md)**.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=6a1b2f9609d3)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=88796622e473)
 
 [Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 
