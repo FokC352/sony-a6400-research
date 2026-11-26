@@ -19,6 +19,9 @@ records = [
   "E0524:reproducible",
   "E0477",
 ]
+deep_reviewed = [
+  "E0707",
+]
 
 [[entity]]
 id = "source.a6100-dump"

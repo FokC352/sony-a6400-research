@@ -31,6 +31,7 @@ records = [
 deep_reviewed = [
   "E0001-E0008",
   "E0015-E0020",
+  "E0021-E0028",
 ]
 
 [[entity]]
@@ -67,6 +68,24 @@ kind = "module"
 name = "libIMDB.so (module entry database)"
 inventory = ["firmware.elf:nflasha15_unpacked/lib/libIMDB.so"]
 summary = "Entry database that names modules and initializers; 197 entries before the sentinel, including appFw.so/Application_System_Init at entry 123."
+
+[[entity]]
+id = "dev.fb0"
+kind = "device"
+name = "/dev/fb0 (major 29, minor 0)"
+summary = "Linux framebuffer character node named by libObj's display path; Package H observed no framebuffer transaction."
+
+[[entity]]
+id = "dev.urandom"
+kind = "device"
+name = "/dev/urandom (1:9)"
+summary = "Character entropy node (inode 110, mode 020444); libssp opens it and requests four bytes for the stack guard."
+
+[[entity]]
+id = "module.liro"
+kind = "module"
+name = "liro.ko"
+summary = "Kernel module that im.elf l requests through init_module at 2,226,764 instructions; the request is not serviced."
 
 [[entity]]
 id = "src.original-init"
@@ -256,9 +275,11 @@ evidence = ["E0001", "E0002", "E0028"]
 [[claim]]
 id = "C17"
 entities = ["process.im-elf"]
-status = "verified-offline"
+status = "retracted"
 text = "Event dispatch and the display subsystem were discovered; Task 94 boot events, the dynamic ID contract and camera subsystem activation, and the original boot launch dispatch with its application-stage thread boundary were recovered."
 evidence = ["E0021", "E0022", "E0025"]
+superseded_by = "C55"
+note = "E0023 withdraws 'authentic' for the injected event sequence and corrects the open count; E0025 shows 0x940038 is unsupported and that the phase commands select separate processes, not one camera boot. The replacement claims keep the static dispatch and the bounded bootin results without the activation claim."
 
 [[claim]]
 id = "C18"
@@ -539,6 +560,106 @@ entities = ["dev.uipc-osal", "process.im-elf"]
 status = "verified-offline"
 text = "The UIPC binary semaphore commands are STAT 0x80000000, WAI 0x80000001 and SIG 0x80000002; semaphore 0x83037a is initially available and is acquired without blocking. The app spawns a fourth thread (TID 1004), sends to Task 92 queue 0x00920021 (SND_MSG 0x80000004), queries depth (0x80000003) and receives with 0x80000007, where empty returns -EAGAIN and OSAL reports 0xfffffc00; nanosleep 162 with {1,0} drives the 1 Hz loop for 8,777,210+ instructions and 17,000+ cycles."
 evidence = ["E0020"]
+
+[[claim]]
+id = "C55"
+entities = ["process.im-elf", "lib.libimdb"]
+status = "verified-offline"
+text = "Task 94's callback 0x9a5c reads event_id = [msg_ptr] and dispatches 0x00940031-0x00940037 to phase handlers (0xb694) and 0x00920152 to a boot notification that queries 0x00920111 to 0x00924127, sets boot mode at 0x14ed4 and starts plugin initialization at 0xae8c. libIMDB's .data.rel.ro holds 198 records of 44 bytes naming kmods, daemons and the Phase-1 libraries libDpro_EVF.so, libBizInitializer.so, appFw.so and gui.so."
+evidence = ["E0021", "E0022"]
+
+[[claim]]
+id = "C56"
+entities = ["dev.uipc-osal"]
+status = "verified-offline"
+text = "UIPC_CMD_DYNAMIC_ID 0x8000000c takes a 12-byte {type, key, out_id_ptr}: type&0x40 releases the id, otherwise the driver allocates an id at or above 0x80001001, associates it with key and writes it to *out_id_ptr. The handler is at osal_uipc.ko offset 0x6a4 and libosal_uipc 0x4840."
+evidence = ["E0022"]
+
+[[claim]]
+id = "C57"
+entities = ["process.im-elf"]
+status = "verified-offline"
+text = "Delivering 0x00940007, 0x0092014b, 0x00940036 and 0x00940038 into queue 0x0094016a reaches 15,000,000 instructions and 592 serviced syscalls while loading more than 30 Sony libraries through the original linker (do_lookup_x at 0x40007048). E0023 corrects the E0022 open count: only 44 of the 86 opens succeeded, the rest were failed searches encoded as unsigned errno, and successful opens are not completed plugin initialization."
+evidence = ["E0022", "E0023"]
+
+[[claim]]
+id = "C58"
+entities = ["dev.fb0", "lib.libobj"]
+status = "verified-offline"
+text = "The display path names /dev/fb0 (29:0) opened by libObj and /dev/dmac used by libmpr's DrawPixels, and libObj carries ux::wgtsys, ux::gfxeng::TextSprite, GRM_fbrmInitializeYUV/UpdateYUV/RectblitYUV/FillrectYUV and ObjDisplay_Create/Init/Start/Destroy. E0023 observed zero framebuffer transactions and found no driver source for the 960x540 ARGB8888, PA 0x60000000 defaults, so these symbols do not establish a display edge or a camera screen."
+evidence = ["E0021", "E0023"]
+
+[[claim]]
+id = "C59"
+entities = ["dev.uipc-osal"]
+status = "verified-offline"
+text = "libosal_uipc's u_osal_rcv_msg_tmo passes a 16-byte {queue, p_out_msg, out_msg, timeout} block to ioctl 0x80000007; the receive handler now writes the message pointer to out_msg when nonzero, and injecting 0x00940031 into queue 0x0094016a runs callback 0x9a5c, logs 94 B/94 E and frees the message."
+evidence = ["E0021"]
+
+[[claim]]
+id = "C60"
+entities = ["process.im-elf", "dev.urandom"]
+status = "verified-offline"
+text = "Package H stops at 41,953,485 instructions during open of /dev/urandom (runtime_namespace_not_supplied, syscall 5, PC 0x5008bc64). libssp's initializer at 0x9c4 checks __stack_chk_guard, loads /dev/urandom at 0x9d4/0x9d6, calls open at 0x9d8 and read at 0x9e8. A 100,000,000-instruction run timed out at 18,291,523 instructions, and a timeout is not success; the longer run serviced 600 syscalls."
+evidence = ["E0023"]
+
+[[claim]]
+id = "C61"
+entities = ["dev.urandom", "tool.interpreter-probe"]
+status = "verified-offline"
+text = "With --urandom-open the guest reaches read(4, 0x546a9188, 4) at 41,955,226 instructions and stops with entropy_state_not_supplied (PC 0x5008b1c4, syscall 3); 601 responses include the open and exactly zero entropy bytes are supplied. /dev/urandom is character 1:9 (inode 110 at 0xa280, mode 020444), and the kernel memory-device table at 0x2d6bf0 resolves mem/null/port/zero/full/random/urandom/kmsg with minor 9 using fops 0x603df048, read 0x60296f20 and no open callback."
+evidence = ["E0024"]
+
+[[claim]]
+id = "C62"
+entities = ["process.im-elf"]
+status = "verified-offline"
+text = "The bounded bootin handler shows events 0x940031-0x940037 selecting separate im.elf launches s, g, r, u, l, i and a; 0x940038 returns 0xfffffc06. Incoming 0x940002 selects destination 0x94020a with outgoing 0x940001, and 0x9400f3/0x9400f4 select 0x94016a; the helper builds a 16-byte body with a four-byte prefix, for example [0x94020a, 0x9400f3, 0, 0, 0]."
+evidence = ["E0025"]
+
+[[claim]]
+id = "C63"
+entities = ["process.im-elf"]
+status = "verified-offline"
+text = "im.elf i with no injected messages reaches 41,782,766 instructions with 473 responses and zero entropy bytes, while im.elf a (flags 0x400003) produces 094_a_thread markers and only 13 successful opens with no plugin file opens. The futex mismatch path was corrected from -EINVAL (0xffffffea) to -EAGAIN (0xfffffff5); the a run's stack-context retry loop remained open at this record."
+evidence = ["E0025"]
+
+[[claim]]
+id = "C64"
+entities = ["process.im-elf"]
+status = "verified-offline"
+text = "E0026 finds the thread-context defect: restore_context updated the software TLS slot but not hardware TPIDRURO, while original libpthread at 0xab90 executes 'mrc p15, 0, r4, c13, c0, 3; sub.w r4, r4, #0x4c0'. After restoring both, the a run stops at 2,298,610 instructions on madvise(0x50480000, 0x7fa000, MADV_DONTNEED); the opt-in advice-4 contract zeroes only known private anonymous pages, and the five-million run then services 21,259 responses in the event loop. dlopen(\"gui.so\") returns 0 and //lib/gui.so, //usr/lib/gui.so and libVssApp.so are ENOENT in the snapshot."
+evidence = ["E0026"]
+
+[[claim]]
+id = "C65"
+entities = ["process.im-elf"]
+status = "verified-offline"
+text = "Clone now resumes the child at the original syscall-return PC 0xa05d8 with r0=0 instead of a host-chosen pthread entry; only flags 0x3d0f00 are accepted. im.elf i reaches 41,782,801 instructions with 473 responses and the same entropy stop, and im.elf l reaches 2,222,528 instructions with 196 responses on an unverified st_rdev read after opening /usr/kmod/liro.ko; no module is inserted and framebuffer transactions remain zero."
+evidence = ["E0027"]
+
+[[claim]]
+id = "C66"
+entities = ["module.liro", "process.im-elf"]
+status = "verified-offline"
+text = "With --regular-inode-rdev and --readonly-image-times, im.elf l reaches syscall 128 (init_module) at 2,226,764 instructions and 197 responses, requesting 65,276 bytes whose buffer hash is 72cb5700d34ecac6f8a9475f05268e55c94bf972183884bdb0e6d95edc40d9f7, matching /usr/kmod/liro.ko, with parameter string ' adr=0x0  '. The request is not serviced; liro.ko declares dependencies osal_uipc, backup, osal_utm and dma330 and vermagic 3.0.27_nl-rt106+ SMP preempt mod_unload ARMv7."
+evidence = ["E0028"]
+note = "E0029 later identifies unverified backup-service acknowledgements before this request; the default runner stops at the earlier reply, and this run remains reproducible only under the explicit historical --backup-service unverified-ack option."
+
+[[claim]]
+id = "C67"
+entities = ["fs.original-ext2-images"]
+status = "verified-offline"
+text = "Four isolated original-kernel windows ground the inode metadata: inode_init_always clears inode+0x88 in 35 instructions, generic_fillattr copies it to kstat+0x1c in 51, init_special_inode runs 12 (char) or 15 (block) instructions with internal device numbers, and touch_atime returns unchanged in 17 when superblock flags contain 0x401. The /rootfs and /usr ext2 candidates both carry MS_RDONLY (0xc0ed0001); liro.ko is inode 10083 at inode file offset 42210560 with atime 1558936647, mtime 1558936569 and ctime 1558936647."
+evidence = ["E0028"]
+
+[[claim]]
+id = "C68"
+entities = ["process.im-elf"]
+status = "verified-offline"
+text = "E0026 retroactively scopes the threaded results: E0019-E0025 switch contexts without updating hardware TPIDRURO, so their thread observations (including the E0019 infrastructure-thread runs and the E0025 argv results) describe the recorded cooperative implementation, not corrected-TLS NPTL behavior. E0027's clone-return model supersedes E0026's direct-function clone shortcut."
+evidence = ["E0019", "E0025", "E0026", "E0027"]
+
 
 [[frontier]]
 id = "F01"

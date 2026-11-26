@@ -424,7 +424,8 @@
         "C15",
         "C37",
         "C38",
-        "C40"
+        "C40",
+        "C58"
       ],
       "inactive_claims": [
         "R01",
@@ -475,7 +476,6 @@
         "C09",
         "C11",
         "C16",
-        "C17",
         "C18",
         "C23",
         "C25",
@@ -490,9 +490,19 @@
         "C51",
         "C52",
         "C53",
-        "C54"
+        "C54",
+        "C55",
+        "C57",
+        "C60",
+        "C62",
+        "C63",
+        "C64",
+        "C65",
+        "C66",
+        "C68"
       ],
       "inactive_claims": [
+        "C17",
         "R05"
       ]
     },
@@ -822,7 +832,8 @@
         "C31",
         "C36",
         "C40",
-        "C41"
+        "C41",
+        "C61"
       ],
       "inactive_claims": []
     },
@@ -864,7 +875,45 @@
       "aliases": [],
       "anchor": "l3-userspace.md#lib-libimdb",
       "active_claims": [
-        "C38"
+        "C38",
+        "C55"
+      ],
+      "inactive_claims": []
+    },
+    "dev.fb0": {
+      "area": "l3-userspace",
+      "name": "/dev/fb0 (major 29, minor 0)",
+      "kind": "device",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#dev-fb0",
+      "active_claims": [
+        "C58"
+      ],
+      "inactive_claims": []
+    },
+    "dev.urandom": {
+      "area": "l3-userspace",
+      "name": "/dev/urandom (1:9)",
+      "kind": "device",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#dev-urandom",
+      "active_claims": [
+        "C60",
+        "C61"
+      ],
+      "inactive_claims": []
+    },
+    "module.liro": {
+      "area": "l3-userspace",
+      "name": "liro.ko",
+      "kind": "module",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#module-liro",
+      "active_claims": [
+        "C66"
       ],
       "inactive_claims": []
     },
@@ -891,7 +940,8 @@
       "anchor": "l3-userspace.md#fs-original-ext2-images",
       "active_claims": [
         "C33",
-        "C34"
+        "C34",
+        "C67"
       ],
       "inactive_claims": []
     },
@@ -914,7 +964,9 @@
         "C48",
         "C50",
         "C53",
-        "C54"
+        "C54",
+        "C56",
+        "C59"
       ],
       "inactive_claims": []
     },
@@ -2392,6 +2444,13 @@
         "id": "C53",
         "file": "0019-multithreading-and-sys-clone.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C68",
+        "file": "0019-multithreading-and-sys-clone.md",
+        "status": "verified-offline"
       }
     ],
     "E0020": [
@@ -2416,6 +2475,27 @@
         "kind": "claim",
         "id": "C17",
         "file": "0021-event-dispatch-and-display-subsystem.md",
+        "status": "retracted"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C55",
+        "file": "0021-event-dispatch-and-display-subsystem.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C58",
+        "file": "0021-event-dispatch-and-display-subsystem.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C59",
+        "file": "0021-event-dispatch-and-display-subsystem.md",
         "status": "verified-offline"
       }
     ],
@@ -2424,6 +2504,27 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C17",
+        "file": "0022-task94-boot-events-and-plugin-subsystems.md",
+        "status": "retracted"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C55",
+        "file": "0022-task94-boot-events-and-plugin-subsystems.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C56",
+        "file": "0022-task94-boot-events-and-plugin-subsystems.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C57",
         "file": "0022-task94-boot-events-and-plugin-subsystems.md",
         "status": "verified-offline"
       }
@@ -2435,6 +2536,27 @@
         "id": "C18",
         "file": "0023-package-h-entropy-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C57",
+        "file": "0023-package-h-entropy-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C58",
+        "file": "0023-package-h-entropy-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C60",
+        "file": "0023-package-h-entropy-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0024": [
@@ -2444,6 +2566,13 @@
         "id": "C18",
         "file": "0024-urandom-dispatch-and-read-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C61",
+        "file": "0024-urandom-dispatch-and-read-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0025": [
@@ -2451,6 +2580,27 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C17",
+        "file": "0025-boot-producers-and-argument-selected-startup.md",
+        "status": "retracted"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C62",
+        "file": "0025-boot-producers-and-argument-selected-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C63",
+        "file": "0025-boot-producers-and-argument-selected-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C68",
         "file": "0025-boot-producers-and-argument-selected-startup.md",
         "status": "verified-offline"
       }
@@ -2462,6 +2612,20 @@
         "id": "C02",
         "file": "0026-thread-tls-and-stack-discard.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C64",
+        "file": "0026-thread-tls-and-stack-discard.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C68",
+        "file": "0026-thread-tls-and-stack-discard.md",
+        "status": "verified-offline"
       }
     ],
     "E0027": [
@@ -2471,6 +2635,20 @@
         "id": "C03",
         "file": "0027-original-clone-return-and-phase-survey.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C65",
+        "file": "0027-original-clone-return-and-phase-survey.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C68",
+        "file": "0027-original-clone-return-and-phase-survey.md",
+        "status": "verified-offline"
       }
     ],
     "E0028": [
@@ -2478,6 +2656,20 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C16",
+        "file": "0028-readonly-inode-metadata-and-module-request.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C66",
+        "file": "0028-readonly-inode-metadata-and-module-request.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C67",
         "file": "0028-readonly-inode-metadata-and-module-request.md",
         "status": "verified-offline"
       }

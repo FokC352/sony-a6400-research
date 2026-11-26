@@ -4,7 +4,7 @@
 
 - **Scope:** The local ILCE-6100 and ILCE-6400 partition sets, their integrity against stored manifests, the build identity each set carries, and which partitions are byte-identical across the two bodies.
 - **Evidence span:** see record index; last reviewed 2026-11-26.
-- **Deep review:** 0 of 6 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 1 of 6 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -81,5 +81,5 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0415](../evidence/0415-nflasha-boot-decode-and-full-emulation-roadmap.md) | 2026-11-12 | nflashaB0 EXBL loader decode, nflasha3 boot-set unpack and full-emulation roadmap |  | Correction to E0414:** E0414 described the `EXBL` bytes at image offset `0xCDE0` as "a / second EXBL record". With the pformat decode that reading is superseded: the container has |
 | [E0477](../evidence/0477-bionz-x-platform-map-13-updaters.md) | 2026-11-13 | BIONZ X (CXD90045) cross-model platform map from 13 official updaters |  |  |
 | [E0524](../evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md) | 2026-11-16 | Reproducible captured QEMU boot inputs and qualified LIRO waits |  | \| QEMU 10.1.0, corrected native binary \| `feb056aad4e6aaa0d668398cc64a257d85184ddca0ec4a2fe35e373db55dfbff` \| / 5. Failures retained and superseded |
-| [E0707](../evidence/0707-firmware-dump-sets-a6100-a6400.md) | 2026-11-26 | ILCE-6100 and ILCE-6400 firmware dump sets: integrity, identity and cross-body partitions |  |  |
+| [E0707](../evidence/0707-firmware-dump-sets-a6100-a6400.md) | 2026-11-26 | ILCE-6100 and ILCE-6400 firmware dump sets: integrity, identity and cross-body partitions | yes |  |
 | [E9101](../evidence/9101-a6100-picture-profile-gate.md) | 2026-11-21 | Where Picture Profile is gated on an ILCE-6100 (a6100), and the opt-in unlock |  | Date:** 2026-11-21 (supersedes the same-day first pass, see §8) / confirmation in this record, and it also corrects the first pass's assumption that the |
