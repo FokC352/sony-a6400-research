@@ -13499,6 +13499,9 @@
     "0708-qemu-write-only-zero-windows-boot-score.md": [
       "qemu-a6400"
     ],
+    "0709-qemu-f30a0-read-back-window-boot-score.md": [
+      "qemu-a6400"
+    ],
     "0713-qemu-ntsc-notice-press-and-black-centre.md": [
       "qemu-a6400"
     ],

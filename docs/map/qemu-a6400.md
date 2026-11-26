@@ -4,7 +4,7 @@
 
 - **Scope:** The QEMU sony-a6400 board: captured four-core boot, av-cam and CamCore sequencing, SIO/sub-micro, display/rear panel, Ydet/CamPig, live-view frame, contributor scores, Custom OS handover guards and DMA engines.
 - **Evidence span:** see record index; last reviewed 2026-11-26.
-- **Deep review:** 63 of 79 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 63 of 80 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -120,7 +120,7 @@ Do not rely on:
 
 - ~~The LIRO ram section filled through 0xF30A is a separate sub-core firmware image.~~ **R01** `RETRACTED` ([E0642](../evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md)); see C13: The LIRO ram section copied by the work DMA is av-cam's own initialised RW data (1,878 references from av-cam code), not a sub-core image.
 
-## Record index (79 files)
+## Record index (80 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -202,6 +202,7 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0705](../evidence/0705-qemu-dwc3-gadget-default-on-boot-score.md) | 2026-11-26 | Boot score for the DWC3 gadget model enabled by default at `0xF020C000` | yes | correction only: the retired set is six pairs, four writes and two reads, not the four |
 | [E0706](../evidence/0706-qemu-watchdog-default-on-boot-score.md) | 2026-11-26 | Boot score for the CXD4115 hardware watchdog enabled by default at `0xF2402000` | yes |  |
 | [E0708](../evidence/0708-qemu-write-only-zero-windows-boot-score.md) | 2026-11-25 | Boot score for ZERO-only windows on four write-only pages at `0xF2931000`, `0xF3203000`, `0xF3212000` and `0xF3215000` |  | Red team (static):** verdict upheld with a correction. It checked that the ten rows match / and the new test. The correction: "same final state" was only a static argument at that point |
+| [E0709](../evidence/0709-qemu-f30a0-read-back-window-boot-score.md) | 2026-11-25 | Boot score for a read-back window on two config words at `0xF30A0000` |  | The red-team verdict was upheld with correction, with 32 of 32 checks passing and no QEMU started. / The correction concerns the diff base only: main advanced after the lead branched, so a literal |
 | [E0713](../evidence/0713-qemu-ntsc-notice-press-and-black-centre.md) | 2026-11-26 | The stock NTSC notice, a declared rear-centre press, and the black live-view centre |  | The red team's verdict was upheld with correction: a single press is not a frame-gate result, and a |
 | [E0714](../evidence/0714-qemu-pal-step32-chain.md) | 2026-11-26 | The PAL step-32 chain: from the TV-system setting to the module-2 report |  | request at `0x032E` and the report at `0x0326`. Each link is marked PROVEN or INFERRED, and the refuted and / A red-team re-check upheld the regression with correction: the image was the reference bars chart under |
 | [E0715](../evidence/0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md) | 2026-11-26 | QEMU `sony-a6400` Playback/Capture Codecs, UHS-I `U3` SDHC, Zero-Unmodelled MMIO / Clock-Reset / PMIC Models, `ILCE-6400A` `IDT_CAM`, `IMX284` P2S, and Outer-L2 (`PL310`) Handover Guard | yes |  |
