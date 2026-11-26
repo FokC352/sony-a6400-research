@@ -10,8 +10,8 @@
     "hardware-live": {
       "title": "Live hardware observations and peripheral contracts",
       "doc": "docs/map/hardware-live.md",
-      "reviewed": "2026-11-22",
-      "evidence_span": "see record index"
+      "reviewed": "2026-11-26",
+      "evidence_span": "E0068-E0075, E0084, E0297-E0298, E0313-E0314, E0647-E0649"
     },
     "imaging-pipeline": {
       "title": "Imaging pipeline: color, RAW, RCRAW and recording paths",
@@ -170,7 +170,8 @@
       "active_claims": [
         "C01",
         "C03",
-        "C09"
+        "C09",
+        "C11"
       ],
       "inactive_claims": []
     },
@@ -182,7 +183,9 @@
       "aliases": [],
       "anchor": "hardware-live.md#dev-hdmi-cec",
       "active_claims": [
-        "C02"
+        "C02",
+        "C15",
+        "C17"
       ],
       "inactive_claims": []
     },
@@ -194,9 +197,12 @@
       "aliases": [],
       "anchor": "hardware-live.md#dev-touch-input",
       "active_claims": [
-        "C04"
+        "C10",
+        "C39"
       ],
-      "inactive_claims": []
+      "inactive_claims": [
+        "C04"
+      ]
     },
     "dev.osd-display": {
       "area": "hardware-live",
@@ -211,7 +217,10 @@
       "anchor": "hardware-live.md#dev-osd-display",
       "active_claims": [
         "C03",
-        "C05"
+        "C05",
+        "C20",
+        "C21",
+        "C22"
       ],
       "inactive_claims": [
         "R01"
@@ -225,7 +234,13 @@
       "aliases": [],
       "anchor": "hardware-live.md#dev-gpes-bar",
       "active_claims": [
-        "C06"
+        "C06",
+        "C24",
+        "C25",
+        "C26",
+        "C27",
+        "C28",
+        "C30"
       ],
       "inactive_claims": []
     },
@@ -240,7 +255,11 @@
       ],
       "anchor": "hardware-live.md#policy-devmem",
       "active_claims": [
-        "C07"
+        "C07",
+        "C30",
+        "C31",
+        "C32",
+        "C33"
       ],
       "inactive_claims": []
     },
@@ -252,7 +271,164 @@
       "aliases": [],
       "anchor": "hardware-live.md#dev-lens",
       "active_claims": [
-        "C08"
+        "C08",
+        "C35",
+        "C36",
+        "C37"
+      ],
+      "inactive_claims": []
+    },
+    "dev.usb-buspower": {
+      "area": "hardware-live",
+      "name": "/dev/usb/buspwr (248:13)",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "usb_buspwr.ko",
+        "libUsbBusPower.so"
+      ],
+      "anchor": "hardware-live.md#dev-usb-buspower",
+      "active_claims": [
+        "C12"
+      ],
+      "inactive_claims": []
+    },
+    "dev.usb-event": {
+      "area": "hardware-live",
+      "name": "/dev/usb/event (242:0)",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "usb_event_thread"
+      ],
+      "anchor": "hardware-live.md#dev-usb-event",
+      "active_claims": [
+        "C13"
+      ],
+      "inactive_claims": []
+    },
+    "dev.usb-otgcore": {
+      "area": "hardware-live",
+      "name": "/dev/usb/otgcore (242:2)",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "libInfraUsbCmn.so"
+      ],
+      "anchor": "hardware-live.md#dev-usb-otgcore",
+      "active_claims": [
+        "C14"
+      ],
+      "inactive_claims": []
+    },
+    "dev.devno-table": {
+      "area": "hardware-live",
+      "name": "devno.ko udif_devnodes table",
+      "kind": "source",
+      "address": null,
+      "aliases": [],
+      "anchor": "hardware-live.md#dev-devno-table",
+      "active_claims": [
+        "C15",
+        "C16"
+      ],
+      "inactive_claims": []
+    },
+    "dev.stream": {
+      "area": "hardware-live",
+      "name": "/dev/stream display and heap window",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "0x202e0000"
+      ],
+      "anchor": "hardware-live.md#dev-stream",
+      "active_claims": [
+        "C19",
+        "C21",
+        "C22"
+      ],
+      "inactive_claims": []
+    },
+    "lib.libobj": {
+      "area": "l3-userspace",
+      "name": "libObj.so (application object library)",
+      "kind": "module",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#lib-libobj",
+      "active_claims": [
+        "C11",
+        "C15"
+      ],
+      "inactive_claims": [
+        "R01",
+        "R02"
+      ]
+    },
+    "sys.camera-memory": {
+      "area": "hardware-live",
+      "name": "ILCE-6400 boot memory layout",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "mem=1G@0",
+        "memrsv=704M@0x14000000:uc"
+      ],
+      "anchor": "hardware-live.md#sys-camera-memory",
+      "active_claims": [
+        "C18",
+        "C34"
+      ],
+      "inactive_claims": []
+    },
+    "proc.osal-uipc": {
+      "area": "hardware-live",
+      "name": "/proc/osal/uipc registration tables",
+      "kind": "source",
+      "address": null,
+      "aliases": [],
+      "anchor": "hardware-live.md#proc-osal-uipc",
+      "active_claims": [
+        "C29"
+      ],
+      "inactive_claims": []
+    },
+    "process.im-elf": {
+      "area": "l3-userspace",
+      "name": "im.elf (Sony main application process)",
+      "kind": "process",
+      "address": null,
+      "aliases": [
+        "PID 149",
+        "im.elf debug s g r u l i a lazy-global"
+      ],
+      "anchor": "l3-userspace.md#process-im-elf",
+      "active_claims": [
+        "C03",
+        "C08",
+        "C09",
+        "C11",
+        "C16",
+        "C17",
+        "C18",
+        "C23",
+        "C25"
+      ],
+      "inactive_claims": []
+    },
+    "tool.ro-page": {
+      "area": "hardware-live",
+      "name": "ro_page v2 (/dev/mem reader with SIGBUS handling)",
+      "kind": "tool",
+      "address": null,
+      "aliases": [
+        "8c9f360b",
+        "catching=True"
+      ],
+      "anchor": "hardware-live.md#tool-ro-page",
+      "active_claims": [
+        "C33"
       ],
       "inactive_claims": []
     },
@@ -551,29 +727,6 @@
       ],
       "inactive_claims": []
     },
-    "process.im-elf": {
-      "area": "l3-userspace",
-      "name": "im.elf (Sony main application process)",
-      "kind": "process",
-      "address": null,
-      "aliases": [
-        "PID 149",
-        "im.elf debug s g r u l i a lazy-global"
-      ],
-      "anchor": "l3-userspace.md#process-im-elf",
-      "active_claims": [
-        "C03",
-        "C08",
-        "C09",
-        "C11",
-        "C16",
-        "C17",
-        "C18",
-        "C23",
-        "C25"
-      ],
-      "inactive_claims": []
-    },
     "tool.interpreter-probe": {
       "area": "l3-userspace",
       "name": "InterpreterProbe (L3 user-space executor)",
@@ -601,22 +754,6 @@
         "C21"
       ],
       "inactive_claims": []
-    },
-    "lib.libobj": {
-      "area": "l3-userspace",
-      "name": "libObj.so (application object library)",
-      "kind": "module",
-      "address": null,
-      "aliases": [],
-      "anchor": "l3-userspace.md#lib-libobj",
-      "active_claims": [
-        "C11",
-        "C15"
-      ],
-      "inactive_claims": [
-        "R01",
-        "R02"
-      ]
     },
     "dev.uipc-osal": {
       "area": "l3-userspace",
@@ -2356,6 +2493,13 @@
         "id": "C01",
         "file": "0068-gpio-contract-and-usbg-buspower-module-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C11",
+        "file": "0068-gpio-contract-and-usbg-buspower-module-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0069": [
@@ -2363,6 +2507,13 @@
         "area": "hardware-live",
         "kind": "claim",
         "id": "C01",
+        "file": "0069-usb-buspower-driver-contract-and-100m-instruction-milestone.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C12",
         "file": "0069-usb-buspower-driver-contract-and-100m-instruction-milestone.md",
         "status": "verified-offline"
       }
@@ -2383,6 +2534,13 @@
         "id": "C09",
         "file": "0071-setting-overlay-media-detection-and-usb-event-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C13",
+        "file": "0071-setting-overlay-media-detection-and-usb-event-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0072": [
@@ -2390,6 +2548,27 @@
         "area": "hardware-live",
         "kind": "claim",
         "id": "C02",
+        "file": "0072-usb-otgcore-contract-and-hdmi-subsystem-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C12",
+        "file": "0072-usb-otgcore-contract-and-hdmi-subsystem-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0072-usb-otgcore-contract-and-hdmi-subsystem-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C15",
         "file": "0072-usb-otgcore-contract-and-hdmi-subsystem-boundary.md",
         "status": "verified-offline"
       }
@@ -2401,6 +2580,27 @@
         "id": "C03",
         "file": "0073-live-hardware-ground-truth-and-a6400-boot-telemetry.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C16",
+        "file": "0073-live-hardware-ground-truth-and-a6400-boot-telemetry.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C18",
+        "file": "0073-live-hardware-ground-truth-and-a6400-boot-telemetry.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C19",
+        "file": "0073-live-hardware-ground-truth-and-a6400-boot-telemetry.md",
+        "status": "verified-physical"
       }
     ],
     "E0074": [
@@ -2410,6 +2610,13 @@
         "id": "C03",
         "file": "0074-native-hardware-tally-frame-milestone.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C20",
+        "file": "0074-native-hardware-tally-frame-milestone.md",
+        "status": "verified-physical"
       }
     ],
     "E0075": [
@@ -2417,6 +2624,13 @@
         "area": "hardware-live",
         "kind": "claim",
         "id": "C02",
+        "file": "0075-hdmi-contract-and-pipe-subsystem-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C17",
         "file": "0075-hdmi-contract-and-pipe-subsystem-boundary.md",
         "status": "verified-offline"
       }
@@ -2499,10 +2713,38 @@
         "kind": "claim",
         "id": "C04",
         "file": "0084-live-hardware-touch-subsystem-and-input-event-architecture.md",
+        "status": "retracted"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0084-live-hardware-touch-subsystem-and-input-event-architecture.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C38",
+        "file": "0084-live-hardware-touch-subsystem-and-input-event-architecture.md",
         "status": "verified-physical"
       }
     ],
     "E0085": [
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0085-touch-hook-false-matches-and-live-disable.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C39",
+        "file": "0085-touch-hook-false-matches-and-live-disable.md",
+        "status": "verified-offline"
+      },
       {
         "area": "menu-touch-ui",
         "kind": "claim",
@@ -2512,6 +2754,20 @@
       }
     ],
     "E0086": [
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0086-live-touch-enodev-and-menu-instruction-audit.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C39",
+        "file": "0086-live-touch-enodev-and-menu-instruction-audit.md",
+        "status": "verified-offline"
+      },
       {
         "area": "menu-touch-ui",
         "kind": "claim",
@@ -4479,6 +4735,13 @@
       },
       {
         "area": "hardware-live",
+        "kind": "claim",
+        "id": "C22",
+        "file": "0297-live-display-contract-and-camera-reboot.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
         "kind": "hazard",
         "id": "H01",
         "file": "0297-live-display-contract-and-camera-reboot.md"
@@ -4491,6 +4754,34 @@
         "id": "C05",
         "file": "0298-safe-osd-capture-and-sugilite-correction.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C13",
+        "file": "0298-safe-osd-capture-and-sugilite-correction.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C21",
+        "file": "0298-safe-osd-capture-and-sugilite-correction.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C22",
+        "file": "0298-safe-osd-capture-and-sugilite-correction.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0298-safe-osd-capture-and-sugilite-correction.md",
+        "status": "verified-offline"
       },
       {
         "area": "hardware-live",
@@ -4630,6 +4921,41 @@
         "id": "C06",
         "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C24",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C25",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C26",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C29",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C30",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-physical"
       }
     ],
     "E0314": [
@@ -4639,6 +4965,40 @@
         "id": "C06",
         "file": "0314-gpes-bar-irq-contract-engine-model.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C24",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C25",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C27",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C28",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "hazard",
+        "id": "H03",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md"
       },
       {
         "area": "l3-userspace",
@@ -9366,8 +9726,54 @@
       },
       {
         "area": "hardware-live",
+        "kind": "claim",
+        "id": "C31",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C32",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C33",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C34",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md"
+      },
+      {
+        "area": "hardware-live",
         "kind": "hazard",
         "id": "H02",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "hazard",
+        "id": "H03",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "hazard",
+        "id": "H04",
         "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md"
       },
       {
@@ -9384,6 +9790,26 @@
         "id": "C08",
         "file": "0648-ilce6400-bl-lens-focus-command-ids.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C35",
+        "file": "0648-ilce6400-bl-lens-focus-command-ids.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C36",
+        "file": "0648-ilce6400-bl-lens-focus-command-ids.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "0648-ilce6400-bl-lens-focus-command-ids.md"
       }
     ],
     "E0649": [
@@ -9393,6 +9819,19 @@
         "id": "C08",
         "file": "0649-ilce6400-live-lens-info-linux-side-negative.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C37",
+        "file": "0649-ilce6400-live-lens-info-linux-side-negative.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "0649-ilce6400-live-lens-info-linux-side-negative.md"
       }
     ],
     "E0650": [

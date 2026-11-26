@@ -6,13 +6,13 @@ pull request, and progress is measured by the tools rather than by hand.
 
 ## 1. Where the map stands
 
-| Level | Meaning | Status (2026-11-22) |
+| Level | Meaning | Status (2026-11-26) |
 | --- | --- | --- |
 | Indexed | The file belongs to an area; its title, date and correction lines appear in the area's record index. | 706 / 706 records, 22 attachments |
 | Cited | At least one curated claim, frontier item or hazard cites the record. | 706 / 706 |
-| Deep-reviewed | Someone read the whole record and checked every claim that cites it, line by line. | usb-ep0 (55 / 55) , l2-kernel-boot (88 / 88) , qemu-a6400 (59 / 59) and usb-emulated (44 / 44) complete; other areas not started (run `todo` for the live count) |
+| Deep-reviewed | Someone read the whole record and checked every claim that cites it, line by line. | usb-ep0 (55 / 55), l2-kernel-boot (88 / 88), qemu-a6400 (59 / 59), usb-emulated (44 / 44) and hardware-live (15 / 15) complete; other areas not started (run `todo` for the live count) |
 
-Indexing and citation are complete, so no record is lost. But apart from the three records
+Indexing and citation are complete, so no record is lost. But apart from the areas
 above, the curated claims were written from record titles, lead paragraphs and the
 consolidated documents (`CURRENT_STATE.md`, `docs/architecture/`, `PLATFORM_MODEL.md`), not
 from full reads. Deep review closes that gap. The method is the one the USB/EP0 pilot used:
@@ -102,7 +102,7 @@ safety-critical physical areas, then completed or stable areas. Sizes come from
 | 1 | qemu-a6400 (done; from short-answer sections) | 0 left | - | - |
 | 1 | usb-emulated (done; from lead sections) | 0 left | - | - |
 | 1 | l3-userspace | 81 | 491 KiB | 5 |
-| 2 Physical safety | hardware-live | 15 | 93 KiB | 1 |
+| 2 Physical safety | hardware-live (done, M3 slice) | 0 left | - | - |
 | 2 | native-debugger | 32 | 160 KiB | 2 |
 | 2 | a6400a-acquisition | 18 | 251 KiB | 3 |
 | 2 | usb-composite | 164 | 708 KiB | 8 |
@@ -113,7 +113,7 @@ safety-critical physical areas, then completed or stable areas. Sizes come from
 | 3 | wifi-and-remote | 13 | 128 KiB | 1 |
 | 3 | mods | 10 | 112 KiB | 1 |
 
-About 4.1 MiB of records in about 45 slices. As a rough guide, one contributor finishing two
+About 4.0 MiB of records in about 44 slices. As a rough guide, one contributor finishing two
 slices a week completes Phase 1 in about ten weeks; three contributors working in parallel on
 different areas finish everything in about two to three months. Within an area, go oldest to
 newest so corrections are met in the order they were made, except that the record holding the

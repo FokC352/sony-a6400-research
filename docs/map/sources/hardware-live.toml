@@ -7,9 +7,22 @@ area = "hardware-live"
 title = "Live hardware observations and peripheral contracts"
 scope = """
 Read-only observations of the physical ILCE-6400: GPIO, bus power, HDMI/CEC, touch input, display/OSD, GPES BAR, MISCREG and the /dev/mem safety boundary, lens interface."""
-evidence_span = "see record index"
-reviewed = "2026-11-22"
+evidence_span = "E0068-E0075, E0084, E0297-E0298, E0313-E0314, E0647-E0649"
+reviewed = "2026-11-26"
 records = [
+  "E0068",
+  "E0069",
+  "E0071-E0075",
+  "E0084",
+  "E0297",
+  "E0298",
+  "E0313",
+  "E0314",
+  "E0647",
+  "E0648",
+  "E0649",
+]
+deep_reviewed = [
   "E0068",
   "E0069",
   "E0071-E0075",
@@ -42,7 +55,7 @@ id = "dev.touch-input"
 kind = "device"
 name = "Touch panel and input event nodes"
 inventory = ["kernel.modules:input"]
-summary = "Live touch subsystem, input event nodes and the camera communication architecture."
+summary = "Input event nodes 13:64-13:66 and the live ENODEV diagnostic; the touch-enable pattern-scanner claims are retracted."
 
 [[entity]]
 id = "dev.osd-display"
@@ -63,13 +76,79 @@ id = "policy.devmem"
 kind = "process"
 name = "/dev/mem access policy"
 aliases = ["PA 0x000F8000", "devmem_policy.py"]
-summary = "Single-page /dev/mem reads are gated by tools/devmem_policy.py: verified pages only, per-address go-ahead for device/SRAM pages, the first MiB and holes forbidden."
+summary = "Single-page /dev/mem reads are gated by tools/devmem_policy.py: verified pages only, per-address go-ahead for device/SRAM pages, DRAM and bulk reads forbidden; first-MiB pages need catching=True plus a go-ahead."
 
 [[entity]]
 id = "dev.lens"
 kind = "device"
 name = "Body-lens (BL) interface"
 summary = "Body-lens focus command IDs and the capability gate; lens capability data is not readable from the Linux side."
+
+[[entity]]
+id = "dev.usb-buspower"
+kind = "device"
+name = "/dev/usb/buspwr (248:13)"
+aliases = ["usb_buspwr.ko", "libUsbBusPower.so"]
+summary = "USB bus-power character device: ioctl family 0xf200-0xf220 for suspend, current limit, charging, notify and port state."
+
+[[entity]]
+id = "dev.usb-event"
+kind = "device"
+name = "/dev/usb/event (242:0)"
+aliases = ["usb_event_thread"]
+summary = "USB event character device consumed by libInfraUsbCmn; ENABLE registers a context id, and records are 12+len+pad bytes."
+
+[[entity]]
+id = "dev.usb-otgcore"
+kind = "device"
+name = "/dev/usb/otgcore (242:2)"
+aliases = ["libInfraUsbCmn.so"]
+summary = "USB OTG core character device with SET_PORT_DESC, SET_CONFIG, START, STOP and RESET ioctls."
+
+[[entity]]
+id = "dev.devno-table"
+kind = "source"
+name = "devno.ko udif_devnodes table"
+summary = "88-entry Sony character/block device registration table; the source of the major/minor numbers checked against the live /dev."
+
+[[entity]]
+id = "dev.stream"
+kind = "device"
+name = "/dev/stream display and heap window"
+aliases = ["0x202e0000"]
+summary = "Display/heap mapping device: gl_common at PA 0x202e0000 (32 MiB), OSD A/B at PA 0x23a80000/0x23b16000, and the mpMemory/mpText heaps."
+
+[[entity]]
+id = "lib.libobj"
+kind = "module"
+name = "libObj.so (Sugilite client and application objects)"
+summary = "Application library that maps the OSD planes, drives the DMP SMAPH-S30 command stream, and owns the GRM/RM state."
+
+[[entity]]
+id = "sys.camera-memory"
+kind = "device"
+name = "ILCE-6400 boot memory layout"
+aliases = ["mem=1G@0", "memrsv=704M@0x14000000:uc"]
+summary = "Kernel command line and physical memory reservations of the live body, including the reserved first MiB and the DRAM windows."
+
+[[entity]]
+id = "proc.osal-uipc"
+kind = "source"
+name = "/proc/osal/uipc registration tables"
+summary = "Live OSAL message-queue, semaphore and callback tables (1,748 lines) used to chase real producers and consumers."
+
+[[entity]]
+id = "process.im-elf"
+kind = "process"
+name = "im.elf (PID 149)"
+summary = "Main camera application; restored from the ssboot.bin hibernation snapshot rather than started with execve."
+
+[[entity]]
+id = "tool.ro-page"
+kind = "tool"
+name = "ro_page v2 (/dev/mem reader with SIGBUS handling)"
+aliases = ["8c9f360b", "catching=True"]
+summary = "Single-page /dev/mem reader that installs SIGBUS/SIGSEGV handlers, so a caught bus error does not reach the exception monitor."
 
 [[claim]]
 id = "C01"
@@ -95,9 +174,18 @@ evidence = ["E0073", "E0074"]
 [[claim]]
 id = "C04"
 entities = ["dev.touch-input"]
-status = "verified-physical"
+status = "retracted"
 text = "The live touch subsystem exposes input event nodes; the camera communication architecture was recorded from the running body."
 evidence = ["E0084"]
+superseded_by = "C10"
+note = "E0085 shows the pattern scanner patched many unrelated functions, and E0086 records ENODEV on all three event nodes with an empty input registry. The nodes exist; a working touch subsystem is not established."
+
+[[claim]]
+id = "C10"
+entities = ["dev.touch-input"]
+status = "verified-physical"
+text = "The live /dev lists input event nodes 13:64, 13:65 and 13:66, but all three opened with errno 19 (ENODEV) and /proc/bus/input/devices had no entries; E0084's assignment of the nodes to a working digitizer, buttons and dials is unsupported."
+evidence = ["E0084", "E0085", "E0086"]
 
 [[claim]]
 id = "C05"
@@ -143,6 +231,211 @@ status = "verified-offline"
 text = "The setting overlay, media detection and the USB event driver contract were modelled."
 evidence = ["E0071"]
 
+[[claim]]
+id = "C11"
+entities = ["dev.gpio-buspower"]
+status = "verified-offline"
+text = "GPIO is character 240:0. libul_GpioCtrl.so issues GPIO_CMD_SET_MODE 0xc0104702 through libResourceBluetooth.so; execution then maps usbg_buspower.ko (14,068 bytes, SHA-256 81fee5ccc6b14bc9f46e7f8315308b2476ba056763bf16e84ccaf053e38cea41) and stops at init_module (r7=128) at 81,686,763 instructions."
+evidence = ["E0068"]
+
+[[claim]]
+id = "C12"
+entities = ["dev.usb-buspower"]
+status = "verified-offline"
+text = "/dev/usb/buspwr is character 248:13. usb_buspwr.ko dispatches ioctls 0xf200-0xf220 through a jump table (out-of-range commands return -EINVAL); SetPortState is 0xf20c and the 100,000,000-instruction run serviced open plus ioctl(12, 0xf20c, 0x11800000) with 1,013,768 syscalls in 11 threads."
+evidence = ["E0069", "E0072"]
+
+[[claim]]
+id = "C13"
+entities = ["dev.usb-event"]
+status = "verified-offline"
+text = "/dev/usb/event is character 242:0 with open, release, unlocked_ioctl and read handlers; ioctls are ENABLE 0x4004e101, DISABLE 0x4004e102 and STOP 0x0000e103. usb_event_start opens it O_RDWR, sets FD_CLOEXEC and spawns usb_event_thread; ENABLE registers a context id rather than a subtype mask."
+evidence = ["E0071", "E0298"]
+
+[[claim]]
+id = "C14"
+entities = ["dev.usb-otgcore"]
+status = "verified-offline"
+text = "/dev/usb/otgcore is character 242:2. libInfraUsbCmn opens it O_RDWR and sends SET_PORT_DESC 0x4024e301, SET_CONFIG 0x4040e311, START 0x0000e304, STOP 0x0000e303 and RESET 0x0000e302 before close."
+evidence = ["E0072"]
+
+[[claim]]
+id = "C15"
+entities = ["dev.devno-table", "dev.hdmi-cec"]
+status = "verified-offline"
+text = "devno.ko's udif_devnodes is an 88-entry character/block registration table: usb/buspwr 248:13, hdmi 248:25, hdmi_external_tx 248:26, cec 248:27, dmpgles2 248:29 and hdmi_input 248:30."
+evidence = ["E0072"]
+
+[[claim]]
+id = "C16"
+entities = ["dev.devno-table"]
+status = "verified-physical"
+text = "The live /dev numbers match the table: dmpgles2 248:29, hdmi 248:25, hdmi_external_tx 248:26, hdmi_input 248:30, gpio 240:0, mmca1 block 250:11 and fb0 29:0; the telemetry is 88,415 bytes in 1,562 lines and identifies im.elf as PID 149."
+evidence = ["E0073"]
+
+[[claim]]
+id = "C17"
+entities = ["dev.hdmi-cec"]
+status = "verified-offline"
+text = "hdmi.ko poll returns 0x104 (POLLOUT|POLLWRNORM), write requires at least 18 bytes (-EMSGSIZE otherwise), read returns -EAGAIN (-11) on an empty queue, and hdmi_dev_ioctl dispatches 19 _IOWR('H', nr, 4) commands 0xc0044801-0xc0044813 (for example getMonitorStatus 0xc0044802 writes 96 bytes; setReso 0xc0044805 takes 20)."
+evidence = ["E0075"]
+
+[[claim]]
+id = "C18"
+entities = ["sys.camera-memory"]
+status = "verified-physical"
+text = "The body runs Linux 3.0.27_nl-rt106+ (SMP PREEMPT RT, armv7l) on a quad-core CXD90045 Cortex-A5 with mem=1G@0, mem=256M@0x80000000@1, memrsv=704M@0x14000000:uc, memrsv=242M@0x80e00000:uc and wbimem=0x3916000@0x20200000."
+evidence = ["E0073"]
+
+[[claim]]
+id = "C19"
+entities = ["process.im-elf", "lib.libobj", "dev.stream"]
+status = "verified-physical"
+text = "im.elf (PID 149) maps libObj.so text at 0x05d18000-0x0700e000 and data at 0x07016000-0x07106000, and maps /dev/stream at VA 0x08a5f000-0x0aa5f000 (32 MiB) backed by PA 0x202e0000; /dev/dmpgles2 registers are mapped at 0x0b5a2000-0x0b5c2000."
+evidence = ["E0073"]
+
+[[claim]]
+id = "C20"
+entities = ["dev.osd-display"]
+status = "verified-physical"
+text = "OSD A/B are 640x480 RGBA4444 (bits 12-15 red, 8-11 green, 4-7 blue, 0-3 alpha); opaque red is 0xF00F, a 32-bit pixel pair is 0xF00FF00F, and each buffer is 614,400 bytes at PA 0x23a80000 (A) and 0x23b16000 (B) with stride 0x96000. Scan-out alternates A/B at 60 Hz, so painting only A produces 30 Hz flicker."
+evidence = ["E0074"]
+
+[[claim]]
+id = "C21"
+entities = ["dev.osd-display", "dev.stream"]
+status = "verified-physical"
+text = "A ptrace read of im.elf's existing /dev/stream mapping returned OSD A as 614,400 bytes with 607,746 nonzero and SHA-256 7a535b09be2e370fda25091a3819289bf59d8f23e82ec0bb8030a43768c32906, which decodes to a complete PlayMemories screen; OSD B returned the identical length and SHA-256, so both buffers held the same frame."
+evidence = ["E0298"]
+
+[[claim]]
+id = "C22"
+entities = ["dev.stream", "dev.osd-display"]
+status = "verified-physical"
+text = "gl_common+0x1000 (PA 0x202e1000, 1,036,800 bytes) held 604,162 nonzero bytes with SHA-256 903f6910878ea1d11dc07a5b0e47b0a86ba58ca650aa700415a8557eae100b04 and decodes as a repeated pattern, not a UI frame; the 960x540 buffer is internal, not a display surface."
+evidence = ["E0297", "E0298"]
+
+[[claim]]
+id = "C23"
+entities = ["lib.libobj"]
+status = "verified-offline"
+text = "libObj.so self-identifies as DMP SMAPH-S30 (OpenGL ES 2.0) at file offset 0xFDF0F0, so the PICA200 register/ISA mapping recorded in E0081/E0082 is invalid for this device; the retained command stream uses 8-byte framing header=0xF000|(index<<16) with 566 packets in 17 runs."
+evidence = ["E0298"]
+
+[[claim]]
+id = "C24"
+entities = ["dev.gpes-bar"]
+status = "verified-offline"
+text = "GPES BAR at 0xF1000000: +0x00 identity, +0x10/+0x14 engine counters, +0x1C acks status 0x04000000, +0x34 IRQ status, +0x3C/+0x44 ack status&0x0F, +0xC0 kick (arg|0x20000000), +0x1000/+0xC18 ack 0x40000000, and +0xE8..+0x170 is a command ring (header +0xE8, 0x80-byte descriptor at +0xF4). IRQ 0x658 reads +0x34, performs those acks and wakes dev+0x4C."
+evidence = ["E0313", "E0314"]
+
+[[claim]]
+id = "C25"
+entities = ["dev.gpes-bar"]
+status = "verified-physical"
+text = "A read-only mmap of 0xF1000000 returned identity word +0x00 = 0x000b0000 with +0x34, +0x38, +0x3c, +0x44, +0xc0, +0xc18 and +0x1000 idle at 0; the engine counters read 0x0405C040 and 0x0406EC40, and IRQ 76 (dmpgles2) had fired 1,107,089 times while fusb_usb_vbus (230) had 6 and fusb_usb_id (231) had 0."
+evidence = ["E0313", "E0314"]
+
+[[claim]]
+id = "C26"
+entities = ["dev.gpes-bar"]
+status = "verified-physical"
+text = "A 2,000,000-read poll of BAR+0x34 saw 1,285 nonzero values and exactly two distinct values: 0x40000000 (793 times) and 0x80000000 (492 times); no other bit was caught."
+evidence = ["E0313"]
+
+[[claim]]
+id = "C27"
+entities = ["dev.gpes-bar"]
+status = "verified-offline"
+text = "The 0xC0048203 event wait requires mask & 0xC4000000, checks [dev+0xA8] and returns the status word. The 0xC004820D ctx wait's fast flag (ctx+0x10) is written only by the guest 0x820E signal handler, and its completion word (ctx+0x14) only by 0x820E, open or release; the IRQ never completes a guest ctx, so the hardware-log wait needs a guest 0x820E."
+evidence = ["E0314"]
+
+[[claim]]
+id = "C28"
+entities = ["dev.gpes-bar", "lib.libobj"]
+status = "verified-offline"
+text = "The opt-in --gles-engine-model command-completion replays the physically observed 0x40000000 IRQ class after the guest submits the BAR command (BAR+0xE8=1, +0xEA=5), performs the decoded acks and consumes the ring header; it never completes a guest ctx and injects no signal. In engine11 the guest exited the 0x72B660 loop, issued a second 0x820E and parked at 0x72BAF0."
+evidence = ["E0314"]
+
+[[claim]]
+id = "C29"
+entities = ["proc.osal-uipc"]
+status = "verified-physical"
+text = "/proc/osal/uipc on the live camera reports 836 message queues, 197 semaphores, 16 messages, 1,135 callbacks and 358 misc entries in 1,748 lines; the ubiquitous callback 0x04113c67 resolves to libMWF+0x1cc67, and the GMSGQ/GSEM tables and the LMSGQ extra columns are not decoded."
+evidence = ["E0313"]
+
+[[claim]]
+id = "C30"
+entities = ["policy.devmem", "dev.gpes-bar"]
+status = "verified-physical"
+text = "/proc/149/mem reads of the BAR mapping return EIO and dd reads of /dev/mem at 0xF1000000 return EFAULT, while a read-only mmap of the same page works; the physical BAR probe therefore used mmap(PROT_READ) on one 4 KiB page."
+evidence = ["E0313"]
+
+[[claim]]
+id = "C31"
+entities = ["policy.devmem"]
+status = "verified-physical"
+text = "tools/devmem_policy.py allows only 0xF2915000 as a standing page; device-map pages and SRAM need a per-address go-ahead; the reserved first MiB and DRAM are forbidden; multi-page ranges, unaligned addresses and read()/write() on /dev/mem, /dev/kmem or /dev/stream are forbidden. With catching=True the first MiB and undecoded holes become per-address GO."
+evidence = ["E0647"]
+
+[[claim]]
+id = "C32"
+entities = ["policy.devmem"]
+status = "verified-offline"
+text = "The kernel does not guard /dev/mem: there is no STRICT_DEVMEM devmem_is_allowed symbol, valid_mmap_phys_addr_range (0x601180EC) accepts any range below 4 GiB, and phys_mem_access_prot_allowed (0x6011F550) acts on conflicts only when mmap.debug != 0. /sys/module/mmap/parameters/debug reads 0 on the camera."
+evidence = ["E0647"]
+
+[[claim]]
+id = "C33"
+entities = ["policy.devmem", "tool.ro-page"]
+status = "verified-physical"
+text = "A single-page read of PA 0x000F8000 faults with FSR 0x008 (external abort on non-linefetch). Uncaught, it reaches force_sig_info(SIGBUS), the default core-dump path and em_exception_monitor, which warm-reboots; ro_page v2 with SIGBUS handling reported 'bus error caught: signal 7' at 0x000F8000 and the camera stayed up (uptime 3,198.8 -> 3,243.9 s). Imprecise aborts and kernel-mode faults still reboot."
+evidence = ["E0647"]
+
+[[claim]]
+id = "C34"
+entities = ["sys.camera-memory"]
+status = "verified-offline"
+text = "-M sony-a6400,lowmem-abort=on answers PA 0x000F8000-0x000F8FFF with MEMTX_DECODE_ERROR and reproduces FSR 0x008 with 'Entering exception monitor.'; the default board backs the first MiB with RAM, so the same read passes silently."
+evidence = ["E0647"]
+
+[[claim]]
+id = "C35"
+entities = ["dev.lens"]
+status = "verified-offline"
+text = "Body-lens frames use a 0x320-byte slot with an item count at +0x18 and item pointers from +0x1C. Second-generation focus IDs are 0x41 POS_CYCLE_A, 0x43 MOVE_FC_2 (12-byte request), 0x44 FC_DRIVE_CYCLE, 0x45 search2 (17 bytes), 0x49 MoveFcVel2 (4 bytes), 0x4A MOVE_FC_CAP2 and 0x5B IS_LENS_SHIFT_CYCLE_A; first-generation items are 0x1C, 0x1D (5 bytes), 0x1F and 0x3C."
+evidence = ["E0648"]
+
+[[claim]]
+id = "C36"
+entities = ["dev.lens"]
+status = "verified-offline"
+text = "Each MOVE_FC_2 wrapper calls 0x63D12860(0x43) -> 0x63855F80 and falls back to the 5-byte 0x1D item when it returns 0; 0x63855F94 tests bit (id-1) of the bitmap at BL_LENS_DATA+1, IDs 0x41-0x49 also require [+0x20FC]+0x20 and a clear inhibit byte at 0x6448B4A0, and a camera-side mask table at 0x6448B366 gives the final answer."
+evidence = ["E0648"]
+note = "Inference (E0648 [I]): the lens's startup data selects second- or first-generation commands; the field meanings and units are not established."
+
+[[claim]]
+id = "C37"
+entities = ["dev.lens"]
+status = "verified-physical"
+text = "With a Sigma 18-50 F2.8 DC DN attached, /proc/iomem lists System RAM 0x00000000-0x3FFFFFFF and 0x80000000-0x8FFFFFFF and no process maps the ORIL window 0x6xxxxxxx, so BL_LENS_DATA is unreachable through process memory; captured libObj data/bss and heap contain no lens name strings and no key 0xC06A paired with 0x2285/0x2286, and /lens (/dev/nflasha18) holds only Sony VX*_lensfile.bin correction files."
+evidence = ["E0649"]
+
+[[claim]]
+id = "C38"
+entities = ["process.im-elf"]
+status = "verified-physical"
+text = "im.elf is not started with execve at power-on: the bootloader restores its address space from /system/sabin/ssboot.bin (warm.mode=2 DDR self-refresh), so /etc/ld.so.preload is not applied to im.elf, while daemons started later by shell scripts (for example bsa_server) do parse it."
+evidence = ["E0084"]
+note = "The touch-scanner claims in the same record are retracted by E0085/E0086; this boot finding is independent of them."
+
+[[claim]]
+id = "C39"
+entities = ["lib.libobj", "dev.touch-input"]
+status = "verified-offline"
+text = "The six-byte prologue 98 b5 00 af 04 46 appears 375 times in libObj executable segments, so it is not a function identity and a patch at its first match proves byte modification only. PAS_MenuSelectMode::setTouchable is at linked 0x56dcb0; its two-byte CBZ at +6 must survive, because the old four-byte NOP also overwrote the following LDR.W and left 08 31 (ADD)."
+evidence = ["E0085", "E0086"]
+
 [[hazard]]
 id = "H01"
 title = "Reading /dev/stream for OSD capture"
@@ -156,3 +449,38 @@ title = "Unvetted /dev/mem pages"
 effect = "External abort on PA 0x000F8000 warm-rebooted the camera."
 rule = "Every /dev/mem access passes tools/devmem_policy.py; never bulk-scan physical memory or read DRAM through /dev/mem."
 evidence = ["E0647"]
+
+[[hazard]]
+id = "H03"
+title = "Bulk /dev/mem physical scan"
+effect = "A 16 MiB-chunk /dev/mem scan dropped the camera's USB and rebooted it (uptime reset to 61 s); the camera recovered with no persistent change."
+rule = "Bulk physical sweeps are excluded from the standing read-only allowance. Only bounded single-page reads with a policy go-ahead, /proc, /sys and kallsyms views are allowed; a bulk scan needs explicit per-incident user approval."
+evidence = ["E0314", "E0647"]
+
+[[hazard]]
+id = "H04"
+title = "Uncaught external abort in a /dev/mem reader"
+effect = "A user-mode external abort with no SIGBUS handler reaches the default core-dump path and em_exception_monitor, which warm-reboots the body even though the fault was precise."
+rule = "Any reader of a GO page must install SIGBUS/SIGSEGV handling (ro_page v2, catching=True) and report the caught fault; imprecise aborts and kernel-mode faults (read() on /dev/mem) cannot be caught and stay forbidden."
+evidence = ["E0647"]
+
+[[frontier]]
+id = "F01"
+title = "Reserved first MiB: what is at 0x000F8000 and what else may be read?"
+state = "blocked-on-user-go"
+entities = ["policy.devmem", "tool.ro-page", "sys.camera-memory"]
+evidence = ["E0647"]
+candidate = "ro_page v2 (529,412 bytes, SHA-256 8c9f360b...5c64) with catching=True, one 4 KiB page per boot."
+verified = "Same FSR 0x008 fault as the reboot, caught as signal 7 on the camera with uptime 3,198.8 -> 3,243.9 s; not a map of the window."
+next = "Bound the first-MiB window with a per-address go-ahead, one page per boot, starting far from 0xF8000; DRAM and read() on /dev/mem stay forbidden."
+read_in_result = "The user-mode fault is reported and caught, the exception monitor stays silent, /proc/uptime remains monotonic, and the page decodes as a device or SRAM page rather than returning zeros."
+
+[[frontier]]
+id = "F02"
+title = "Sigma lens capability through a passive mount-bus capture"
+state = "not-started"
+entities = ["dev.lens"]
+evidence = ["E0648", "E0649"]
+next = "Find the receiver or store of the 0xA2AFEC notifications (candidates: libIMDB and the large anonymous im.elf objects), or read MakerNote LensE-mountVersion and lens firmware fields from host-side JPEGs; compare a Sigma body with the TTArtisan first-generation-only set."
+read_in_result = "The bitmap at BL_LENS_DATA+1 names the second-generation IDs, or the MakerNote values predict which command set the body uses."
+
