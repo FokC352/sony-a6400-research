@@ -47,7 +47,11 @@ Opt-in redirect of the Picture Profile gate on an ILCE-6100 (a6100).
 
 Current knowledge:
 
-- **C04** `PHYSICAL` The ILCE-6100 Picture Profile gate was located, an opt-in unlock designed and the redirect applied to a physical ILCE-6100. ([E9101](../evidence/9101-a6100-picture-profile-gate.md), [E9102](../evidence/9102-a6100-picture-profile-camera-apply.md))
+- **C16** `OFFLINE` The ILCE-6100 Ver.1.00 Picture Profile gate was located in a captured dump and the two-byte `.dynsym` redirect was validated offline and in a `PP_UNLOCK=1` QEMU boot with an A/B drawn-menu pair. E9102 records the physical-camera procedure only; no application to a physical ILCE-6100 is recorded. E9103 (2026-11-21) states the camera still had no injection path, and E9104 (2026-11-24) later runs PhotonBin on hardware through an SD boot path but does not apply the PP redirect. ([E9101](../evidence/9101-a6100-picture-profile-gate.md), [E9102](../evidence/9102-a6100-picture-profile-camera-apply.md), [E9103](../evidence/9103-a6100-mod-loader-port.md))
+
+Do not rely on:
+
+- ~~The ILCE-6100 Picture Profile gate was located, an opt-in unlock designed and the redirect applied to a physical ILCE-6100.~~ **C04** `RETRACTED` ([E9101](../evidence/9101-a6100-picture-profile-gate.md), [E9102](../evidence/9102-a6100-picture-profile-camera-apply.md)); see C16: The ILCE-6100 Ver.1.00 Picture Profile gate was located in a captured dump and the two-byte `.dynsym` redirect was validated offline and in a `PP_UNLOCK=1` QEMU boot with an A/B drawn-menu pair. E9102 records the physical-camera procedure only; no application to a physical ILCE-6100 is recorded. E9103 (2026-11-21) states the camera still had no injection path, and E9104 (2026-11-24) later runs PhotonBin on hardware through an SD boot path but does not apply the PP redirect. *Note: E9102 is a procedure only and states it was not executed on a camera; E9101's unlock receipt is a QEMU boot.*
 
 ### <a id="mod-zve10-adapted-menu"></a>External ZV-E10 adapted menu
 

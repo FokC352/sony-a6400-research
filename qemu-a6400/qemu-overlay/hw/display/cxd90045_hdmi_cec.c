@@ -62,6 +62,7 @@ struct Cxd90045HdmiCecState {
     SysBusDevice parent_obj;
     MemoryRegion hdmi_mr;
     MemoryRegion cec_mr;
+    MemoryRegion phy_wait_mr;
     DeviceState *vph;
 
     uint32_t hdmi_regs[HDMI_TX_WORDS];
@@ -207,9 +208,15 @@ static uint64_t hdmi_tx_read(void *opaque, hwaddr off, unsigned size)
         return 0;
     }
     switch (idx) {
+    case 0x0101:
+        /* GMP send complete status (hdmi_core_check_GMP_is_send_complete) */
+        return s->hdmi_regs[0x0101] | 0x80u;
+    case 0x0108:
+        /* PHY I2C done status (hdmi_core_check_phy_i2c_done) */
+        return s->hdmi_regs[0x0108] | 0x02u;
     case 0x3004:
-        /* Report HPD (0x40), RSEN (0x80), and sense bit 1 (0x02) when plugged */
-        return (s->hdmi_regs[0x3004] & ~0xC2u) | (s->hpd_plugged ? 0xC2u : 0u);
+        /* Report 4-lane RSEN (0xF0), HPD (0x02), and PLL lock (0x01) when plugged */
+        return (s->hdmi_regs[0x3004] & ~0xF3u) | (s->hpd_plugged ? 0xF3u : 0u);
     case 0x4004:
         /* TMDS PHY PLL lock ready */
         return s->hdmi_regs[0x4004] | 0x01u;
@@ -237,6 +244,10 @@ static void hdmi_tx_write(void *opaque, hwaddr off, uint64_t val,
     case 0x0105:
         /* Write-1-to-clear DDC ready flag */
         s->hdmi_regs[0x0105] &= ~v;
+        return;
+    case 0x0108:
+        /* Allow W1C on PHY I2C done flag */
+        s->hdmi_regs[0x0108] &= ~v;
         return;
     case 0x3007:
         /* Write-1-to-clear HPD interrupt flag in 0x3005 */
@@ -439,6 +450,28 @@ static const MemoryRegionOps cec_ops = {
     .impl = { .min_access_size = 4, .max_access_size = 4 },
 };
 
+static uint64_t hdmi_phy_wait_read(void *opaque, hwaddr off, unsigned size)
+{
+    Cxd90045HdmiCecState *s = opaque;
+    if (off == 0) {
+        return s->hpd_plugged ? 0x01u : 0x00u;
+    }
+    return 0;
+}
+
+static void hdmi_phy_wait_write(void *opaque, hwaddr off, uint64_t val,
+                                unsigned size)
+{
+}
+
+static const MemoryRegionOps hdmi_phy_wait_ops = {
+    .read = hdmi_phy_wait_read,
+    .write = hdmi_phy_wait_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 4, .max_access_size = 4 },
+};
+
 static void hdmi_cec_reset(DeviceState *dev)
 {
     Cxd90045HdmiCecState *s = CXD90045_HDMI_CEC(dev);
@@ -447,8 +480,8 @@ static void hdmi_cec_reset(DeviceState *dev)
     memset(s->cec_regs, 0, sizeof(s->cec_regs));
     hdmi_build_edid(s->edid);
     if (s->hpd_plugged) {
-        s->hdmi_regs[0x3004] = 0xC2u;
-        s->hdmi_regs[0x3005] = 0xC2u;
+        s->hdmi_regs[0x3004] = 0xF3u;
+        s->hdmi_regs[0x3005] = 0xF2u;
     }
     s->tmds_active = false;
     s->cec_logical_addr = 4;
@@ -465,8 +498,11 @@ static void hdmi_cec_realize(DeviceState *dev, Error **errp)
                           "cxd90045.hdmi-tx", HDMI_TX_SIZE);
     memory_region_init_io(&s->cec_mr, OBJECT(dev), &cec_ops, s,
                           "cxd90045.cec", CEC_SIZE);
+    memory_region_init_io(&s->phy_wait_mr, OBJECT(dev), &hdmi_phy_wait_ops, s,
+                          "cxd90045.hdmi-phy-wait", 0x10);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->hdmi_mr);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->cec_mr);
+    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->phy_wait_mr);
 }
 
 static bool hdmi_get_plugged(Object *obj, Error **errp)
@@ -480,7 +516,7 @@ static void hdmi_set_plugged(Object *obj, bool val, Error **errp)
 
     if (s->hpd_plugged != val) {
         s->hpd_plugged = val;
-        s->hdmi_regs[0x3005] |= 0xC2u; /* HPD + RSEN transition event */
+        s->hdmi_regs[0x3005] |= 0xF2u; /* HPD + RSEN transition event */
         hdmi_sync_vph_tmds(s);
     }
 }
@@ -572,6 +608,13 @@ DeviceState *cxd90045_hdmi_cec_create(MachineState *machine,
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map_overlap(SYS_BUS_DEVICE(dev), 0, HDMI_TX_BASE, -400);
     sysbus_mmio_map_overlap(SYS_BUS_DEVICE(dev), 1, CEC_BASE, -400);
+    /* PHY LDO ready bit oLWAITSTAT at 0xF292C160 (above cxd90045.f292-c -600) */
+    sysbus_mmio_map_overlap(SYS_BUS_DEVICE(dev), 2, 0xF292C160ULL, -400);
     hdmi_cec_reset(dev);
     return dev;
+}
+
+bool cxd90045_hdmi_is_plugged(DeviceState *dev)
+{
+    return dev && CXD90045_HDMI_CEC(dev)->hpd_plugged;
 }

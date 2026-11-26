@@ -15,7 +15,15 @@ import unittest
 from project_paths import PROJECT_ROOT
 from tests.test_qemu_emmc import NATIVE_AVAILABLE, QEMU, SDHCI as EMMC
 from tools.research.qemu_boot_probe import Qmp, digest
-from tools.research.qemu_media import sd_blockdev, sd_event, verify_photo, verify_playback
+from tools.research.qemu_media import (
+    create_sdhc_fat32_image,
+    extract_setting_backup,
+    sd_blockdev,
+    sd_event,
+    validate_uhs_sdhc_size,
+    verify_photo,
+    verify_playback,
+)
 
 
 TEST_OUTPUT = PROJECT_ROOT / 'artifacts/tests'
@@ -143,6 +151,60 @@ class MediaInputTests(unittest.TestCase):
             self.assertEqual(result['inserted_head_sha256'], digest(inserted))
             with self.assertRaisesRegex(ValueError, 'already matches'):
                 verify_playback(fixture, inserted, inserted, box)
+
+    def test_sdhc_fat32_builder_and_setting_backup_extractor(self):
+        def simple_fat12(files):
+            image = bytearray(8192)
+            image[:3], image[3:11] = b'\xeb\x3c\x90', b'MSDOS5.0'
+            struct.pack_into('<HBHBHH', image, 11, 512, 1, 1, 1, 16, 16)
+            struct.pack_into('<H', image, 22, 1)
+            image[510:512] = b'\x55\xaa'
+            entries, cluster = {0: 0xFF8, 1: 0xFFF}, 2
+            for index, (name, data) in enumerate(files.items()):
+                base, ext = name.rsplit('.', 1)
+                name11 = (base.upper().ljust(8)[:8] + ext.upper().ljust(3)[:3]).encode('ascii')
+                dirent = struct.pack('<11sB14xHI', name11, 0x20, cluster, len(data))
+                image[1024 + index * 32:1056 + index * 32] = dirent
+                count = (len(data) + 511) // 512
+                for offset in range(count):
+                    entries[cluster + offset] = cluster + offset + 1 if offset + 1 < count else 0xFFF
+                start = 1536 + (cluster - 2) * 512
+                image[start:start + len(data)] = data
+                cluster += count
+            for index, value in entries.items():
+                offset = 512 + index + index // 2
+                old = struct.unpack_from('<H', image, offset)[0]
+                value = (old & 0x000F) | value << 4 if index & 1 else (old & 0xF000) | value
+                struct.pack_into('<H', image, offset, value)
+            return bytes(image)
+
+        with self.assertRaisesRegex(ValueError, '>2 GiB'):
+            validate_uhs_sdhc_size(2 * 1024 ** 3)
+        with self.assertRaisesRegex(ValueError, '512 KiB'):
+            validate_uhs_sdhc_size(4 * 1024 ** 3 + 512)
+
+        with temporary_media() as root:
+            card = root / 'uhs_sdhc_4g.img'
+            meta = create_sdhc_fat32_image(card, size_gib=4, cluster_kib=32)
+            self.assertEqual(meta['bytes'], 4 * 1024 ** 3)
+            self.assertEqual(meta['partition_lba'], 8192)
+            self.assertGreaterEqual(meta['clusters'], 65525)
+            with card.open('rb') as f:
+                mbr = f.read(512)
+                self.assertEqual(mbr[0x1FE:0x200], b'\x55\xAA')
+                self.assertEqual(mbr[0x1BE + 4], 0x0C)
+                f.seek(8192 * 512)
+                vbr = f.read(512)
+                self.assertEqual(vbr[0x52:0x5A], b'FAT32   ')
+
+            bk4 = struct.pack('<4I', 0x02E80000, 0xAAAAAAAA, 1, 0)
+            bk4 = bk4[:12] + b'BK4\x00' + b'\x42' * 64
+            part = simple_fat12({'Backup.bin': bk4, 'kemco.txt': b'kemco *\n'})
+            self.assertEqual(extract_setting_backup(part), bk4)
+
+            bad_part = simple_fat12({'Backup.bin': b'\x00' * 32})
+            with self.assertRaisesRegex(ValueError, 'BK4 header'):
+                extract_setting_backup(bad_part)
 
 
 class Qtest:

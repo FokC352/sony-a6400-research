@@ -80,9 +80,18 @@ evidence = ["E0633"]
 [[claim]]
 id = "C04"
 entities = ["mod.a6100-picture-profile"]
-status = "verified-physical"
+status = "retracted"
 text = "The ILCE-6100 Picture Profile gate was located, an opt-in unlock designed and the redirect applied to a physical ILCE-6100."
 evidence = ["E9101", "E9102"]
+superseded_by = "C16"
+note = "E9102 is a procedure only and states it was not executed on a camera; E9101's unlock receipt is a QEMU boot."
+
+[[claim]]
+id = "C16"
+entities = ["mod.a6100-picture-profile"]
+status = "verified-offline"
+text = "The ILCE-6100 Ver.1.00 Picture Profile gate was located in a captured dump and the two-byte `.dynsym` redirect was validated offline and in a `PP_UNLOCK=1` QEMU boot with an A/B drawn-menu pair. E9102 records the physical-camera procedure only; no application to a physical ILCE-6100 is recorded. E9103 (2026-11-21) states the camera still had no injection path, and E9104 (2026-11-24) later runs PhotonBin on hardware through an SD boot path but does not apply the PP redirect."
+evidence = ["E9101", "E9102", "E9103"]
 
 [[claim]]
 id = "C05"

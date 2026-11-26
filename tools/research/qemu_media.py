@@ -1,13 +1,16 @@
 """Use a declared raw SD image and verify offline playback or JPEG output."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
 import stat
+import struct
 import time
 from typing import TYPE_CHECKING
 
+from src.a6400.execution.guest_vfat import VfatImage
 from tools.research.inventory import digest
 
 if TYPE_CHECKING:
@@ -124,6 +127,302 @@ def verify_playback(fixture: Path, empty: Path, inserted: Path,
             'mae_limit': threshold}
 
 
+SDSC_MAX_BYTES = 2 * 1024 ** 3
+SDHC_MAX_BYTES = 32 * 1024 ** 3
+SDHC_ALIGN_BYTES = 512 * 1024
+
+
+def validate_uhs_sdhc_size(size_bytes: int) -> None:
+    """Enforce SDHC (>2 GiB, <=32 GiB, 512 KiB-aligned) geometry for UHS-I / XAVC S 4K."""
+    if not (SDSC_MAX_BYTES < size_bytes <= SDHC_MAX_BYTES):
+        raise ValueError(
+            f'UHS-I SDHC media requires >2 GiB and <=32 GiB capacity, got {size_bytes} bytes'
+        )
+    if size_bytes % SDHC_ALIGN_BYTES != 0:
+        raise ValueError(
+            f'SDHC capacity must be a multiple of 512 KiB, got {size_bytes} bytes'
+        )
+
+
+def create_sdhc_fat32_image(
+    path: Path,
+    *,
+    size_gib: int = 4,
+    cluster_kib: int = 32,
+    volume_label: str = 'SONY_SDHC',
+    files: dict[str, bytes] | None = None,
+) -> dict:
+    """Create a deterministic sparse MBR + FAT32 SDHC image (>2 GiB) for UHS-I / XAVC S."""
+    size_bytes = int(size_gib) * (1024 ** 3)
+    validate_uhs_sdhc_size(size_bytes)
+    if cluster_kib not in (16, 32, 64):
+        raise ValueError(f'Unsupported SDHC FAT32 cluster size: {cluster_kib} KiB')
+    label = volume_label.encode('ascii', errors='strict').ljust(11, b' ')[:11]
+
+    sector_size = 512
+    total_sectors = size_bytes // sector_size
+    part_lba = 8192  # 4 MiB boundary matching UHS AU_SIZE
+    part_sectors = total_sectors - part_lba
+    spc = (cluster_kib * 1024) // sector_size
+    reserved_sectors = 32
+    fats = 2
+
+    # Compute FAT32 table size in sectors with two fixed-point iterations
+    fat_sectors = ((part_sectors - reserved_sectors) // spc * 4 + sector_size - 1) // sector_size
+    data_sectors = part_sectors - reserved_sectors - fats * fat_sectors
+    clusters = data_sectors // spc
+    fat_sectors = ((clusters + 2) * 4 + sector_size - 1) // sector_size
+    # Pad FAT size to cluster alignment
+    fat_sectors = ((fat_sectors + spc - 1) // spc) * spc
+    data_sectors = part_sectors - reserved_sectors - fats * fat_sectors
+    clusters = data_sectors // spc
+    if clusters < 65525:
+        raise ValueError(f'Partition too small for FAT32 ({clusters} clusters)')
+
+    mbr = bytearray(sector_size)
+    # Partition 1 entry at 0x1BE: status=0x00, type=0x0C (FAT32 LBA)
+    struct.pack_into('<BBBBBBBBII', mbr, 0x1BE,
+                     0x00, 0xFE, 0xFF, 0xFF, 0x0C, 0xFE, 0xFF, 0xFF,
+                     part_lba, part_sectors)
+    mbr[0x1FE:0x200] = b'\x55\xAA'
+
+    vbr = bytearray(sector_size)
+    vbr[0:3] = b'\xEB\x58\x90'
+    vbr[3:11] = b'MSWIN4.1'
+    struct.pack_into('<HBHBHHBHHHII', vbr, 0x0B,
+                     sector_size, spc, reserved_sectors, fats,
+                     0, 0, 0xF8, 0, 63, 255, part_lba, part_sectors)
+    struct.pack_into('<IHHIHH', vbr, 0x24,
+                     fat_sectors, 0, 0, 2, 1, 6)
+    vbr[0x40] = 0x80
+    vbr[0x42] = 0x29
+    struct.pack_into('<I', vbr, 0x43, 0xA6400003)
+    vbr[0x47:0x52] = label
+    vbr[0x52:0x5A] = b'FAT32   '
+    vbr[0x1FE:0x200] = b'\x55\xAA'
+
+    fsinfo = bytearray(sector_size)
+    fsinfo[0:4] = b'RRaA'
+    fsinfo[0x1E4:0x1E8] = b'rrAa'
+    struct.pack_into('<II', fsinfo, 0x1E8, clusters - 1, 3)
+    fsinfo[0x1FE:0x200] = b'\x55\xAA'
+
+    fat_head = bytearray(sector_size)
+    struct.pack_into('<III', fat_head, 0, 0x0FFFFFF8, 0x0FFFFFFF, 0x0FFFFFFF)
+
+    cluster_bytes = spc * sector_size
+    extra_clusters: dict[int, bytes] = {}
+    next_cluster = 3
+    root_cluster = bytearray(cluster_bytes)
+    root_cluster[0:11] = label
+    root_cluster[11] = 0x08  # ATTR_VOLUME_ID
+
+    def _dir_entry(name11: bytes, attr: int, clus: int, size: int = 0) -> bytes:
+        ent = bytearray(32)
+        ent[0:11] = name11
+        ent[11] = attr
+        struct.pack_into('<H', ent, 20, (clus >> 16) & 0xFFFF)
+        struct.pack_into('<H', ent, 26, clus & 0xFFFF)
+        struct.pack_into('<I', ent, 28, size)
+        return bytes(ent)
+
+    def _short83(seg: str) -> bytes:
+        stem, _, ext = seg.upper().partition('.')
+        return stem[:8].ljust(8).encode('ascii') + ext[:3].ljust(3).encode('ascii')
+
+    if files:
+        # Build single-cluster directories + contiguous file cluster chains
+        dir_clusters: dict[tuple[str, ...], int] = {(): 2}
+        dir_buffers: dict[int, bytearray] = {2: root_cluster}
+        dir_slots: dict[int, int] = {2: 32}
+
+        def _ensure_fat_cap(c: int) -> None:
+            need = (c + 1) * 4
+            if need > len(fat_head):
+                fat_head.extend(b'\x00' * (((need - len(fat_head) + sector_size - 1) // sector_size) * sector_size))
+
+        for rel_path, payload in sorted(files.items()):
+            parts = [p for p in rel_path.strip('/').split('/') if p]
+            parent_key: tuple[str, ...] = ()
+            for depth in range(len(parts) - 1):
+                cur_key = tuple(p.upper() for p in parts[: depth + 1])
+                if cur_key not in dir_clusters:
+                    d_clus = next_cluster
+                    next_cluster += 1
+                    _ensure_fat_cap(d_clus)
+                    struct.pack_into('<I', fat_head, d_clus * 4, 0x0FFFFFFF)
+                    p_clus = dir_clusters[parent_key]
+                    p_buf = dir_buffers[p_clus]
+                    off = dir_slots[p_clus]
+                    p_buf[off : off + 32] = _dir_entry(_short83(parts[depth]), 0x10, d_clus, 0)
+                    dir_slots[p_clus] = off + 32
+                    d_buf = bytearray(cluster_bytes)
+                    d_buf[0:32] = _dir_entry(b'.          ', 0x10, d_clus, 0)
+                    d_buf[32:64] = _dir_entry(b'..         ', 0x10, 0 if p_clus == 2 else p_clus, 0)
+                    dir_clusters[cur_key] = d_clus
+                    dir_buffers[d_clus] = d_buf
+                    dir_slots[d_clus] = 64
+                    extra_clusters[d_clus] = d_buf
+                parent_key = cur_key
+
+            n_clus = max(1, (len(payload) + cluster_bytes - 1) // cluster_bytes)
+            first_c = next_cluster
+            for idx_c in range(n_clus):
+                c = first_c + idx_c
+                _ensure_fat_cap(c)
+                nxt = 0x0FFFFFFF if idx_c == n_clus - 1 else (c + 1)
+                struct.pack_into('<I', fat_head, c * 4, nxt)
+                chunk = payload[idx_c * cluster_bytes : (idx_c + 1) * cluster_bytes]
+                extra_clusters[c] = chunk.ljust(cluster_bytes, b'\x00')
+            next_cluster += n_clus
+            p_clus = dir_clusters[parent_key]
+            p_buf = dir_buffers[p_clus]
+            off = dir_slots[p_clus]
+            p_buf[off : off + 32] = _dir_entry(_short83(parts[-1]), 0x20, first_c, len(payload))
+            dir_slots[p_clus] = off + 32
+
+    struct.pack_into('<II', fsinfo, 0x1E8, max(0, clusters + 2 - next_cluster), next_cluster)
+
+    path = path.resolve()
+    with path.open('xb') as f:
+        f.truncate(size_bytes)
+        f.seek(0)
+        f.write(mbr)
+        part_off = part_lba * sector_size
+        f.seek(part_off)
+        f.write(vbr)
+        f.seek(part_off + sector_size)
+        f.write(fsinfo)
+        f.seek(part_off + 6 * sector_size)
+        f.write(vbr)
+        f.seek(part_off + 7 * sector_size)
+        f.write(fsinfo)
+        for idx in range(fats):
+            fat_off = part_off + (reserved_sectors + idx * fat_sectors) * sector_size
+            f.seek(fat_off)
+            f.write(fat_head)
+        data_off = part_off + (reserved_sectors + fats * fat_sectors) * sector_size
+        f.seek(data_off)
+        f.write(root_cluster)
+        for c, c_bytes in sorted(extra_clusters.items()):
+            f.seek(data_off + (c - 2) * cluster_bytes)
+            f.write(c_bytes)
+
+    return {
+        'path': str(path),
+        'bytes': size_bytes,
+        'partition_lba': part_lba,
+        'partition_sectors': part_sectors,
+        'cluster_bytes': spc * sector_size,
+        'clusters': clusters,
+    }
+
+
+def build_sony_exif_app1(
+    width: int,
+    height: int,
+    model: str = 'ILCE-6400',
+    thumbnail_jpeg: bytes | None = None,
+) -> bytes:
+    """Build a minimal TIFF/Exif payload (with optional IFD1 thumbnail) for libmpr & dgis_jpeg."""
+    make_b = b'SONY\x00\x00'
+    model_b = model.encode('ascii') + b'\x00'
+    if len(model_b) % 2:
+        model_b += b'\x00'
+    # IFD0 starts at offset 8: 2B count + 4*12B entries + 4B next = 54 bytes -> offset 62
+    make_off = 62
+    model_off = make_off + len(make_b)
+    exif_ifd_off = model_off + len(model_b)
+    # Exif SubIFD: 2B count + 4*12B entries + 4B next = 54 bytes
+    ifd1_off = (exif_ifd_off + 54) if thumbnail_jpeg else 0
+    tiff = bytearray()
+    tiff += b'II' + struct.pack('<HI', 42, 8)
+    tiff += struct.pack('<H', 4)
+    tiff += struct.pack('<HHII', 0x010F, 2, 5, make_off)
+    tiff += struct.pack('<HHII', 0x0110, 2, len(model) + 1, model_off)
+    tiff += struct.pack('<HHHI', 0x0112, 3, 1, 1)[:8] + struct.pack('<HH', 1, 0)
+    tiff += struct.pack('<HHII', 0x8769, 4, 1, exif_ifd_off)
+    tiff += struct.pack('<I', ifd1_off)
+    tiff += make_b + model_b
+    tiff += struct.pack('<H', 4)
+    tiff += struct.pack('<HHII', 0x9000, 7, 4, int.from_bytes(b'0230', 'little'))
+    tiff += struct.pack('<HHHHH', 0xA001, 3, 1, 0, 1)[:8] + struct.pack('<HH', 1, 0)
+    tiff += struct.pack('<HHII', 0xA002, 4, 1, int(width))
+    tiff += struct.pack('<HHII', 0xA003, 4, 1, int(height))
+    tiff += struct.pack('<I', 0)
+    if thumbnail_jpeg:
+        # IFD1: Compression=6 (JPEG), JPEGInterchangeFormat, JPEGInterchangeFormatLength
+        thumb_off = ifd1_off + 2 + 3 * 12 + 4
+        tiff += struct.pack('<H', 3)
+        tiff += struct.pack('<HHHH', 0x0103, 3, 1, 0)[:6] + struct.pack('<IH', 1, 6)[:6]
+        # Wait: TIFF entry is tag(H), type(H), count(I), value_or_offset(I):
+        del tiff[-12:]
+        tiff += struct.pack('<HHIHH', 0x0103, 3, 1, 6, 0)
+        tiff += struct.pack('<HHII', 0x0201, 4, 1, thumb_off)
+        tiff += struct.pack('<HHII', 0x0202, 4, 1, len(thumbnail_jpeg))
+        tiff += struct.pack('<I', 0)
+        tiff += thumbnail_jpeg
+    return b'Exif\x00\x00' + bytes(tiff)
+
+
+def encode_firmware_compliant_jpeg(image, *, quality: int = 92, model: str = 'ILCE-6400') -> bytes:
+    """Encode a PIL Image as baseline YCbCr 4:2:2 with Annex K DHT & Sony Exif + 160x120 thumb."""
+    import io
+
+    rgb = image.convert('RGB')
+    width, height = rgb.size
+    thumb_buf = io.BytesIO()
+    rgb.resize((160, 120)).save(
+        thumb_buf,
+        format='JPEG',
+        quality=85,
+        subsampling=1,
+        optimize=False,
+    )
+    buf = io.BytesIO()
+    rgb.save(
+        buf,
+        format='JPEG',
+        quality=quality,
+        subsampling=1,   # SOF0 H1V1 = 0x21 (4:2:2); 0x11 (4:4:4) fails with 0xFB030005
+        optimize=False,  # preserves standard ITU-T T.81 Annex K DHT (0x63a08950)
+        exif=build_sony_exif_app1(width, height, model=model, thumbnail_jpeg=thumb_buf.getvalue()),
+    )
+    return buf.getvalue()
+
+
+def extract_setting_backup(setting_part_bytes: bytes) -> bytes:
+    """Extract and validate /Backup.bin from the 20 MiB FAT12 /setting partition."""
+    image = VfatImage(setting_part_bytes, expected_size=len(setting_part_bytes))
+    matches = [
+        entry for entry in image.list_dir()
+        if not entry.is_dir and entry.display_name.casefold() == 'backup.bin'
+    ]
+    if len(matches) != 1:
+        raise ValueError(f'Expected one Backup.bin in /setting, found {len(matches)}')
+    data = image.read_file(matches[0])
+    if len(data) < 16 or data[4:8] != b'\xaa\xaa\xaa\xaa' or data[12:16] != b'BK4\x00':
+        raise ValueError('Extracted Backup.bin failed BK4 header validation')
+    load_pa = struct.unpack_from('<I', data, 0)[0]
+    if load_pa % 4 != 0 or load_pa == 0:
+        raise ValueError(f'Invalid Backup.bin preload PA: 0x{load_pa:08x}')
+    return data
+
+
+def extract_setting_backup_file(part_image: Path, output: Path) -> dict:
+    raw = part_image.read_bytes()
+    backup = extract_setting_backup(raw)
+    tmp = output.with_suffix(output.suffix + '.tmp')
+    tmp.write_bytes(backup)
+    tmp.replace(output)
+    return {
+        'output': str(output),
+        'bytes': len(backup),
+        'sha256': hashlib.sha256(backup).hexdigest(),
+        'load_pa': struct.unpack_from('<I', backup, 0)[0],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -132,6 +431,17 @@ def main() -> None:
     sd.add_argument('--sha256', required=True)
     sd.add_argument('--inputs', type=Path, required=True)
     sd.add_argument('--run-dir', type=Path, required=True)
+    sdhc = commands.add_parser('create-sdhc', help='Create a sparse SDHC FAT32 card (>2 GiB)')
+    sdhc.add_argument('--image', type=Path, required=True)
+    sdhc.add_argument('--size-gib', type=int, default=4)
+    sdhc.add_argument('--cluster-kib', type=int, default=32)
+    sdhc.add_argument('--label', default='SONY_SDHC')
+    ext_bk = commands.add_parser(
+        'extract-setting-backup',
+        help='Extract /Backup.bin from a 20 MiB /setting FAT12 partition image',
+    )
+    ext_bk.add_argument('--part-image', type=Path, required=True)
+    ext_bk.add_argument('--out', type=Path, required=True)
     media = commands.add_parser('sd-event', help='Insert or eject the predeclared card')
     media.add_argument('action', choices=('insert', 'eject'))
     media.add_argument('--qmp', type=Path, required=True)
@@ -149,6 +459,13 @@ def main() -> None:
     try:
         if args.command == 'sd-blockdev':
             print(json.dumps(sd_blockdev(args.image, args.sha256, args.inputs, args.run_dir)))
+        elif args.command == 'create-sdhc':
+            print(json.dumps(create_sdhc_fat32_image(
+                args.image, size_gib=args.size_gib,
+                cluster_kib=args.cluster_kib, volume_label=args.label,
+            ), indent=2))
+        elif args.command == 'extract-setting-backup':
+            print(json.dumps(extract_setting_backup_file(args.part_image, args.out), indent=2))
         elif args.command == 'sd-event':
             from tools.research.qemu_boot_probe import Qmp
 

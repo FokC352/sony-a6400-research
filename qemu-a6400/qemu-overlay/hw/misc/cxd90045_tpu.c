@@ -188,6 +188,14 @@ static void tpu_store_write(Cxd90045TpuState *s, hwaddr off, uint64_t v,
     }
 }
 
+static bool tpu_status_read_access(hwaddr off, unsigned size)
+{
+    unsigned ch = off / TPU_CH_STRIDE;
+
+    return ch < TPU_CHANNELS && (off % TPU_CH_STRIDE) == TPU_STATUS &&
+           (size == 1 || size == 2);
+}
+
 static uint64_t tpu_read(void *opaque, hwaddr off, unsigned size)
 {
     Cxd90045TpuState *s = opaque;
@@ -196,8 +204,11 @@ static uint64_t tpu_read(void *opaque, hwaddr off, unsigned size)
     if (tpu_rf_access(off, size)) {
         /* R1/R2: stored config, counter, and the run bit read back. */
         v = tpu_store_read(s, off, size);
+    } else if (tpu_status_read_access(off, size)) {
+        /* +0x10 TPU_STATUS read at 0x63a6dd14: 0 = counter idle, bit 7 clear. */
+        v = 0;
     } else {
-        /* R3/R4: undefined status or unlisted register: log, read 0. */
+        /* R4: unlisted register or channel: log, read 0. */
         tpu_log_unmodelled(off, false, size, 0);
         v = 0;
     }

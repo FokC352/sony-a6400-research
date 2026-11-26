@@ -30,6 +30,7 @@ unassigned file. Each page ends with a record index extracted from the files the
 | Wi-Fi and remote control | [wifi-and-remote.md](wifi-and-remote.md) |
 | CXD90045 multi-device platform | [platform-multidevice.md](platform-multidevice.md) |
 | ILCE-6400A qualification and firmware acquisition | [a6400a-acquisition.md](a6400a-acquisition.md) |
+| Captured firmware dump sets and cross-body partition identity | [firmware-dumps.md](firmware-dumps.md) |
 
 ## Use
 

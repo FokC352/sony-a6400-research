@@ -198,6 +198,16 @@ _start:
 .endif
 .endif
 .endif
+.ifdef PL310_CLEAN_BEFORE_C_OFF
+    ldr     r4, =L2X0_BASE
+    movw    r5, #0xFFFF
+    str     r5, [r4, #0x7FC]            @ premature clean while SCTLR.C == 1
+10: ldr     r5, [r4, #0x7FC]
+    tst     r5, #0xFF
+    bne     10b
+    mov     r5, #0
+    str     r5, [r4, #0x730]
+.endif
     mrc     p15, 0, r0, c1, c0, 0       @ cpu_v7_proc_fin
 .ifndef KEEP_ICACHE
     bic     r0, r0, #0x1000
@@ -211,17 +221,51 @@ _start:
 .endif
 .ifdef PL310_TEARDOWN
     ldr     r4, =L2X0_BASE
+.ifdef PL310_LOCKDOWN
+    mov     r5, #1
+    str     r5, [r4, #0x900]            @ leave D_LOCKDOWN0 active (fault)
+.endif
+.ifdef PL310_OFF_BEFORE_CLEAN
+    mov     r5, #0
+    str     r5, [r4, #0x100]            @ disable BEFORE clean+sync (fault)
+.endif
+.ifdef PL310_LINE_IDX_FLUSH
+    /* Linux outer_disable() / l2x0_flush_all: 8 ways x 512 sets via 0x7F8 */
+    mov     r6, #0
+11: mov     r7, #0
+12: lsl     r5, r6, #28
+    orr     r5, r5, r7, lsl #5
+    str     r5, [r4, #0x7F8]            @ L2X0_CLEAN_INV_LINE_IDX
+    add     r7, r7, #1
+    cmp     r7, #512
+    blo     12b
+    add     r6, r6, #1
+    cmp     r6, #8
+    blo     11b
+.else
 .ifndef PL310_NO_CLEAN
+.ifdef PL310_PARTIAL_WAY
+    mov     r5, #0x0001                 @ clean only way 0 (fault)
+.else
     movw    r5, #0xFFFF
+.endif
     str     r5, [r4, #0x7FC]            @ L2X0_CLEAN_INV_WAY
+.ifndef PL310_NO_POLL
+13: ldr     r5, [r4, #0x7FC]            @ wait for background way op == 0
+    tst     r5, #0xFF
+    bne     13b
+.endif
+.endif
 .endif
 .ifndef PL310_NO_SYNC
     mov     r5, #0
     str     r5, [r4, #0x730]            @ L2X0_CACHE_SYNC
 .endif
 .ifndef PL310_KEEP_ON
+.ifndef PL310_OFF_BEFORE_CLEAN
     mov     r5, #0
     str     r5, [r4, #0x100]            @ L2X0_CTRL = 0
+.endif
 .endif
 .endif
     mov     r0, #0
