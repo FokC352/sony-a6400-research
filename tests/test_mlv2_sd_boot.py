@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -403,6 +404,8 @@ class TestCardReadAndWorkerScripts(unittest.TestCase):
         return proc.stdout
 
     def test_card_read_fat32_exfat_fragmented_and_kill_switches(self):
+        if os.name != "nt" and not sys.platform.startswith("linux"):
+            self.skipTest(f"card_read.c needs Linux headers (sys/sysmacros.h); {sys.platform} is not Linux")
         payload = b"TAR_HEADER_" + bytes(range(256)) * 60 + b"_TAR_END"
         fat32_tot16 = _build_fat32_image([("MLV2.TAR", payload)], use_tot16=True)
         fat32_lfn_kill = _build_fat32_image([("MLV2.TAR", payload), ("disable_hook", b"1")], use_tot16=False)
