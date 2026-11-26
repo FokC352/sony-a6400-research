@@ -28,7 +28,8 @@
 # P2S_TRACE=1 (log the first 64 sensor-writer transfers).
 # USB_VBUS_TEST=1 (enable the runtime usb-vbus QMP property).
 # USB_CID_HIGH=1 (opt-in FUSB CID bit 1 high / peripheral idle, E0587).
-# DWC3_GADGET=1 (opt-in CXD90045 DWC3 gadget at 0xF020C000 and IRQ 229, E0590).
+# DWC3_GADGET (default on, E0590): CXD90045 DWC3 gadget at 0xF020C000 and IRQ 229.
+# Set DWC3_GADGET=0 to disable it.
 # WATCHDOG=1 (opt-in CXD4115 hardware watchdog at 0xF2402000, E0636; expiry follows
 # QEMU -action watchdog=, add e.g. QEMU_EXTRA="-icount shift=0,sleep=on -action watchdog=pause").
 # WORK_DMA=1 (opt-in work DMA copy channel at 0xF0102000, E0641).
@@ -337,8 +338,8 @@ fi
 if [ "${USB_CID_HIGH:-0}" = 1 ]; then
     MACHINE="$MACHINE,usb-cid-high=on"
 fi
-if [ "${DWC3_GADGET:-0}" = 1 ]; then
-    MACHINE="$MACHINE,dwc3-gadget=on"
+if [ "${DWC3_GADGET:-1}" = 0 ]; then
+    MACHINE="$MACHINE,dwc3-gadget=off"
 fi
 if [ "${PL330_DMA:-0}" = 1 ]; then
     MACHINE="$MACHINE,pl330-dma=on"
