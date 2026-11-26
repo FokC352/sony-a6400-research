@@ -4,7 +4,7 @@
 Visual milestone achieved on physical Sony ILCE-6400 (Serial 03925553, FW 2.00). Direct physical framebuffer memory mapping through `/dev/stream` (`O_RDWR | O_DSYNC`, major 249 minor 7) to OSD layer hardware double-buffers (`PA 0x23a80000` Buffer A, `PA 0x23b16000` Buffer B) renders a rock-solid, flicker-free, 16-pixel thick bright red Tally REC frame overlaid over live camera sensor video and camera UI icons at 60 FPS.
 
 ## Hardware Photo Evidence
-![Native Tally REC Border on Sony ILCE-6400](C:/Users/Administrator/.gemini/antigravity/brain/b939325a-d3f9-463f-a89d-46a34637e2f0/.user_uploaded/media_1793810550460_4192a6e9.png)
+*(Local reference capture of Native Tally REC Border on Sony ILCE-6400; image file not stored in repository.)*
 
 ## Key Technical Discoveries
 

@@ -33,11 +33,13 @@ GIFT = PROJECT_ROOT / "artifacts/tests/custom-os-gift-1/usb_gift_start"
 OTG = PROJECT_ROOT / "artifacts/tests/custom-os-usb-otg-3/usb_otg_bringup"
 VENDOR = PROJECT_ROOT / "artifacts/tests/custom-os-usbmods-2/a6400_vendor_fn.ko"
 NATIVE_AVAILABLE = os.name == "posix" and QEMU.is_file() and KERNEL_BUILD.is_dir()
+CUSTOM_OS_AVAILABLE = (PROJECT_ROOT / "custom_os/launcher/usb_gift_start.c").is_file()
 
 EXPECTED_DEVICE = "12010002ff0000404c05a80c000100000001"
 EXPECTED_CONFIG = "09021200010100c0320904000000ff000000"
 
 
+@unittest.skipUnless(CUSTOM_OS_AVAILABLE, "Optional gitignored custom_os tree absent")
 class Gate2SourceTests(unittest.TestCase):
     def test_start_helper_uses_the_start_ioctl(self):
         text = (PROJECT_ROOT / "custom_os/launcher/usb_gift_start.c").read_text()

@@ -16,7 +16,15 @@ from pathlib import Path
 from project_paths import PROJECT_ROOT
 
 sys.path.insert(0, str(PROJECT_ROOT))
-from custom_os.hybrid import gate_checks  # noqa: E402
+try:
+    from custom_os.hybrid import gate_checks  # noqa: E402
+except ImportError:
+    gate_checks = None
+
+
+def setUpModule():
+    if gate_checks is None:
+        raise unittest.SkipTest("Optional gitignored custom_os tree absent")
 
 VPHREG_HW = """\
 VPH clk=00000000 en144=01000232 osdbpp=00000000 | ch51 ctrl=00000003 st=00000000 addr=14e90000 lb=00000400 skip=00000080 lines=00239 | ch53 ctrl=00000003 addr=23a80000

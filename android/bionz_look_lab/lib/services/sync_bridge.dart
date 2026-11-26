@@ -22,12 +22,6 @@ abstract class SyncBridge {
   Future<LookCatalog> setAutoApplyPreset(String? id);
   Future<Uint8List?> loadPhotoThumbnail(String dcfName);
   Future<Uint8List?> renderPhotoPreview(String dcfName, LookPreset preset);
-  Future<PreviewRenderResult?> renderPhotoPreviewWithHistogram(
-    String dcfName,
-    LookPreset preset,
-  );
-  Future<RawEditorSession?> loadRawEditorSession(String dcfName);
-  Future<Set<String>> getGradedPhotos();
   Future<LookExportResult> exportGradedPhoto(String dcfName, LookPreset preset);
 }
 
@@ -195,63 +189,6 @@ class PlatformSyncBridge implements SyncBridge {
     } on MissingPluginException {
       return null;
     }
-  }
-
-  @override
-  Future<PreviewRenderResult?> renderPhotoPreviewWithHistogram(
-    String dcfName,
-    LookPreset preset,
-  ) async {
-    try {
-      final raw = await _method.invokeMethod<dynamic>(
-        'renderPhotoPreviewWithHistogram',
-        {
-          'dcfName': dcfName,
-          'preset': preset.toMap(),
-        },
-      );
-      if (raw is Map) {
-        final jpeg = raw['jpeg'];
-        if (jpeg is Uint8List) {
-          return PreviewRenderResult(
-            jpegBytes: jpeg,
-            histogram: HistogramData.fromMap(raw),
-          );
-        }
-      }
-    } on MissingPluginException {
-      return null;
-    }
-    return null;
-  }
-
-  @override
-  Future<RawEditorSession?> loadRawEditorSession(String dcfName) async {
-    try {
-      final raw = await _method.invokeMethod<dynamic>(
-        'loadRawEditorSession',
-        {'dcfName': dcfName},
-      );
-      if (raw is Map) {
-        return RawEditorSession.fromMap(raw);
-      }
-    } on MissingPluginException {
-      return null;
-    }
-    return null;
-  }
-
-  @override
-  Future<Set<String>> getGradedPhotos() async {
-    try {
-      final raw = await _method.invokeMethod<dynamic>('getGradedPhotos');
-      if (raw is List) {
-        return raw.map((e) => e.toString()).toSet();
-      }
-    } on MissingPluginException {
-      return const {};
-    }
-    return const {};
   }
 
   @override

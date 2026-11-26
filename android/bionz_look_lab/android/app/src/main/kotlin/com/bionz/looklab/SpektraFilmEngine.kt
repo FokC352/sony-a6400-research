@@ -242,33 +242,6 @@ object SpektraFilmEngine {
         val pixels = IntArray(n)
         src.getPixels(pixels, 0, w, 0, 0, w, h)
 
-        val linR = FloatArray(n)
-        val linG = FloatArray(n)
-        val linB = FloatArray(n)
-        for (i in 0 until n) {
-            val px = pixels[i]
-            linR[i] = srgbToLinearLut[(px ushr 16) and 0xFF]
-            linG[i] = srgbToLinearLut[(px ushr 8) and 0xFF]
-            linB[i] = srgbToLinearLut[px and 0xFF]
-        }
-        return renderLinear(linR, linG, linB, w, h, preset, fromTrueRaw = false)
-    }
-
-    /**
-     * Renders scene-referred linear RGB (14-bit RAW or linearized JPEG) through
-     * the SpektraFilm 7-stage pipeline matching shaders/spektrafilm_raw.frag.
-     */
-    fun renderLinear(
-        linR: FloatArray,
-        linG: FloatArray,
-        linB: FloatArray,
-        w: Int,
-        h: Int,
-        preset: LookPreset,
-        fromTrueRaw: Boolean = true
-    ): Bitmap {
-        val n = w * h
-        val pixels = IntArray(n)
         val stock = stockMap[preset.stockId] ?: STOCKS[1]
         val paper = paperMap[preset.paperId] ?: PAPERS[0]
 
@@ -279,30 +252,15 @@ object SpektraFilmEngine {
         val wbG = evGain * (1.0f - abs(warmthF) * 0.03f - tintF * 0.16f).coerceIn(0.45f, 2.2f)
         val wbB = evGain * (1.0f - warmthF * 0.28f + tintF * 0.08f).coerceIn(0.45f, 2.2f)
 
-        val hiShift = preset.highlights / 100.0f
-        val shShift = preset.shadows / 100.0f
-        val whShift = preset.whites / 100.0f
-        val blShift = preset.blacks / 100.0f
+        val linR = FloatArray(n)
+        val linG = FloatArray(n)
+        val linB = FloatArray(n)
 
         for (i in 0 until n) {
-            var r = max(0f, linR[i] * wbR)
-            var g = max(0f, linG[i] * wbG)
-            var b = max(0f, linB[i] * wbB)
-            if (fromTrueRaw && (hiShift < -0.01f || whShift < -0.01f)) {
-                val rawLum = 0.2126f * r + 0.7152f * g + 0.0722f * b
-                if (rawLum > 0.70f) {
-                    val pull = (-hiShift * 0.55f - whShift * 0.40f).coerceIn(0.0f, 0.95f)
-                    val over = rawLum - 0.70f
-                    val knee = 0.70f + over / (1.0f + pull * 2.4f * over)
-                    val kScale = knee / rawLum
-                    r *= kScale
-                    g *= kScale
-                    b *= kScale
-                }
-            }
-            linR[i] = r
-            linG[i] = g
-            linB[i] = b
+            val px = pixels[i]
+            linR[i] = srgbToLinearLut[(px ushr 16) and 0xFF] * wbR
+            linG[i] = srgbToLinearLut[(px ushr 8) and 0xFF] * wbG
+            linB[i] = srgbToLinearLut[px and 0xFF] * wbB
         }
 
         // Stage 2: Red-layer optical halation (quarter-resolution scatter + red bleed)
@@ -317,7 +275,8 @@ object SpektraFilmEngine {
         val dm = stock.dirMatrix
         val dirK = (preset.dirCouplers / 100.0f) * 0.65f
         val paperContrast = paper.contrast * (1.0f + preset.contrast * 0.45f / 100.0f)
-        val vibShift = preset.vibrance / 100.0f
+        val hiShift = preset.highlights / 100.0f
+        val shShift = preset.shadows / 100.0f
         val fadeLift = (preset.fade / 100.0f) * 0.085f
         val satMul = if (stock.isMonochrome) {
             0.0f
@@ -360,44 +319,25 @@ object SpektraFilmEngine {
                 b = applyPrintPaper(b.coerceIn(0f, 1.35f), 1.0f + preset.contrast * 0.45f / 100.0f, 1f, 0f)
             }
 
-            // Highlights / Shadows / Whites / Blacks tone shaping in linear light
+            // Highlights / Shadows recovery in linear tone domain
             val lum = (0.2126f * r + 0.7152f * g + 0.0722f * b).coerceIn(0f, 1.5f)
-            if (lum > 0.0005f && (abs(hiShift) > 0.005f || abs(shShift) > 0.005f ||
-                    abs(whShift) > 0.005f || abs(blShift) > 0.005f)
-            ) {
+            if (lum > 0.0005f && (abs(hiShift) > 0.005f || abs(shShift) > 0.005f)) {
                 val t = lum.coerceIn(0f, 1f)
-                val omt = 1f - t
-                val shMask = omt * omt
+                val shMask = (1f - t) * (1f - t)
                 val hiMask = t * t
-                val blMask = shMask * shMask
-                val whMask = hiMask * t
-                val targetLum = (lum +
-                    shShift * 0.24f * shMask +
-                    hiShift * 0.22f * hiMask +
-                    blShift * 0.16f * blMask +
-                    whShift * 0.20f * whMask
-                ).coerceAtLeast(0f)
-                val scale = (targetLum / lum).coerceIn(0.28f, 2.8f)
+                val targetLum = (lum + shShift * 0.24f * shMask + hiShift * 0.22f * hiMask).coerceAtLeast(0f)
+                val scale = (targetLum / lum).coerceIn(0.35f, 2.5f)
                 r *= scale
                 g *= scale
                 b *= scale
             }
 
-            // Fade black-point lift + Saturation + Skin-protected Vibrance
+            // Fade black-point lift + Saturation
             val postLum = 0.2126f * r + 0.7152f * g + 0.0722f * b
-            val effSatMul = if (!stock.isMonochrome && abs(vibShift) > 0.005f) {
-                val maxC = max(r, max(g, b))
-                val minC = min(r, min(g, b))
-                val satEst = if (maxC > 0.001f) ((maxC - minC) / maxC).coerceIn(0f, 1f) else 0f
-                val skinProt = if (r > g && g > b) 0.55f else 1.0f
-                (satMul * (1.0f + vibShift * 0.65f * (1.0f - satEst) * skinProt)).coerceIn(0.0f, 2.4f)
-            } else {
-                satMul
-            }
-            if (effSatMul != 1.0f) {
-                r = postLum + (r - postLum) * effSatMul
-                g = postLum + (g - postLum) * effSatMul
-                b = postLum + (b - postLum) * effSatMul
+            if (satMul != 1.0f) {
+                r = postLum + (r - postLum) * satMul
+                g = postLum + (g - postLum) * satMul
+                b = postLum + (b - postLum) * satMul
             }
 
             if (fadeLift > 0f) {
@@ -412,15 +352,9 @@ object SpektraFilmEngine {
             linB[i] = b.coerceIn(0f, 1f)
         }
 
-        // Stage 6: Snapseed-style Structure, Clarity (broad midtone punch) & Sharpen
-        if (preset.clarity != 0 && w >= 16 && h >= 16) {
-            applyClarity(linR, linG, linB, w, h, preset.clarity / 100.0f)
-        }
+        // Stage 6: Snapseed-style local luminance Structure (-100..+100)
         if (preset.structure != 0 && w >= 12 && h >= 12) {
             applySnapseedStructure(linR, linG, linB, w, h, preset.structure / 100.0f)
-        }
-        if (preset.sharpen > 0 && w >= 8 && h >= 8) {
-            applyUnsharpMask(linR, linG, linB, w, h, preset.sharpen / 100.0f)
         }
 
         // Stage 7: Density-dependent silver-halide grain + vignette + OETF encoding
@@ -481,64 +415,6 @@ object SpektraFilmEngine {
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         out.setPixels(pixels, 0, w, 0, 0, w, h)
         return out
-    }
-
-    fun computeHistogram(bmp: Bitmap, bins: Int = 64): Map<String, IntArray> {
-        val w = bmp.width
-        val h = bmp.height
-        val rCnt = IntArray(bins)
-        val gCnt = IntArray(bins)
-        val bCnt = IntArray(bins)
-        val lCnt = IntArray(bins)
-        if (w <= 0 || h <= 0) {
-            return mapOf("r" to rCnt, "g" to gCnt, "b" to bCnt, "l" to lCnt)
-        }
-        val pixels = IntArray(w * h)
-        bmp.getPixels(pixels, 0, w, 0, 0, w, h)
-        val step = max(1, sqrt((w * h) / 48000.0).toInt())
-        val shift = if (bins == 64) 2 else 0
-        var y = 0
-        while (y < h) {
-            val row = y * w
-            var x = 0
-            while (x < w) {
-                val px = pixels[row + x]
-                val r = (px ushr 16) and 0xFF
-                val g = (px ushr 8) and 0xFF
-                val b = px and 0xFF
-                val lum = (54 * r + 183 * g + 19 * b) ushr 8
-                if (shift == 2) {
-                    rCnt[r ushr 2]++
-                    gCnt[g ushr 2]++
-                    bCnt[b ushr 2]++
-                    lCnt[lum.coerceIn(0, 255) ushr 2]++
-                } else {
-                    rCnt[(r * (bins - 1)) / 255]++
-                    gCnt[(g * (bins - 1)) / 255]++
-                    bCnt[(b * (bins - 1)) / 255]++
-                    lCnt[(lum.coerceIn(0, 255) * (bins - 1)) / 255]++
-                }
-                x += step
-            }
-            y += step
-        }
-        var peak = 1
-        for (i in 1 until (bins - 1)) {
-            if (rCnt[i] > peak) peak = rCnt[i]
-            if (gCnt[i] > peak) peak = gCnt[i]
-            if (bCnt[i] > peak) peak = bCnt[i]
-            if (lCnt[i] > peak) peak = lCnt[i]
-        }
-        if (peak <= 1) {
-            peak = max(1, max(rCnt.maxOrNull() ?: 1, lCnt.maxOrNull() ?: 1))
-        }
-        for (i in 0 until bins) {
-            rCnt[i] = ((rCnt[i] * 255) / peak).coerceIn(0, 255)
-            gCnt[i] = ((gCnt[i] * 255) / peak).coerceIn(0, 255)
-            bCnt[i] = ((bCnt[i] * 255) / peak).coerceIn(0, 255)
-            lCnt[i] = ((lCnt[i] * 255) / peak).coerceIn(0, 255)
-        }
-        return mapOf("r" to rCnt, "g" to gCnt, "b" to bCnt, "l" to lCnt)
     }
 
     private fun hdCurve(x: Float, gamma: Float, toe: Float, shoulder: Float): Float {
@@ -617,76 +493,6 @@ object SpektraFilmEngine {
                     linG[idx] += gVal * 0.28f
                     linB[idx] += gVal * 0.04f
                 }
-            }
-        }
-    }
-
-    private fun applyClarity(
-        linR: FloatArray,
-        linG: FloatArray,
-        linB: FloatArray,
-        w: Int,
-        h: Int,
-        amount: Float
-    ) {
-        val n = w * h
-        val lum = FloatArray(n)
-        val blur = FloatArray(n)
-        for (i in 0 until n) {
-            val l = (0.2126f * linR[i] + 0.7152f * linG[i] + 0.0722f * linB[i]).coerceIn(0f, 1f)
-            lum[i] = l
-            blur[i] = l
-        }
-        val radius = max(6, min(w, h) / 28)
-        boxBlur2Pass(blur, w, h, radius)
-
-        val gain = amount * 1.15f
-        for (i in 0 until n) {
-            val l = lum[i]
-            if (l <= 0.0005f) continue
-            val detail = l - blur[i]
-            val midBell = (4.0f * l * (1.0f - l)).coerceIn(0f, 1f)
-            val targetL = (l + detail * gain * midBell).coerceIn(0f, 1f)
-            val ratio = (targetL / l).coerceIn(0.42f, 2.2f)
-            linR[i] = (linR[i] * ratio).coerceIn(0f, 1f)
-            linG[i] = (linG[i] * ratio).coerceIn(0f, 1f)
-            linB[i] = (linB[i] * ratio).coerceIn(0f, 1f)
-        }
-    }
-
-    private fun applyUnsharpMask(
-        linR: FloatArray,
-        linG: FloatArray,
-        linB: FloatArray,
-        w: Int,
-        h: Int,
-        amount: Float
-    ) {
-        val n = w * h
-        val lum = FloatArray(n)
-        for (i in 0 until n) {
-            lum[i] = (0.2126f * linR[i] + 0.7152f * linG[i] + 0.0722f * linB[i]).coerceIn(0f, 1f)
-        }
-        val gain = amount * 0.95f
-        for (y in 1 until h - 1) {
-            val row = y * w
-            val up = row - w
-            val dn = row + w
-            for (x in 1 until w - 1) {
-                val idx = row + x
-                val l = lum[idx]
-                if (l <= 0.0005f) continue
-                val avg = (
-                    lum[up + x - 1] + lum[up + x] + lum[up + x + 1] +
-                    lum[idx - 1] + lum[idx + 1] +
-                    lum[dn + x - 1] + lum[dn + x] + lum[dn + x + 1]
-                ) * 0.125f
-                val detail = (l - avg).coerceIn(-0.18f, 0.18f)
-                val targetL = (l + detail * gain).coerceIn(0f, 1f)
-                val ratio = (targetL / l).coerceIn(0.55f, 1.85f)
-                linR[idx] = (linR[idx] * ratio).coerceIn(0f, 1f)
-                linG[idx] = (linG[idx] * ratio).coerceIn(0f, 1f)
-                linB[idx] = (linB[idx] * ratio).coerceIn(0f, 1f)
             }
         }
     }

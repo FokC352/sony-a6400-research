@@ -43,11 +43,10 @@ class _LookLabScreenState extends State<LookLabScreen> {
     });
   }
 
-  Future<Uint8List?> _thumbFor(SyncedFile f) {
-    final key = '${f.dcfName}:${f.crc32Hex}';
+  Future<Uint8List?> _thumbFor(String dcfName) {
     return _thumbFutures.putIfAbsent(
-      key,
-      () => widget.bridge.loadPhotoThumbnail(f.dcfName),
+      dcfName,
+      () => widget.bridge.loadPhotoThumbnail(dcfName),
     );
   }
 
@@ -124,7 +123,7 @@ class _LookLabScreenState extends State<LookLabScreen> {
                 const SizedBox(height: 6),
                 Text(
                   autoPreset != null
-                      ? 'Active: ${autoPreset.name} (${autoPreset.stockId} • DIR ${autoPreset.dirCouplers}% • Halation ${autoPreset.halation}% • Grain ${autoPreset.grain}%)\nEvery incoming photo saves raw + auto-graded JPEG in DCIM/BionzLookLab.'
+                      ? 'Active: ${autoPreset.name} (${autoPreset.stockId} • DIR ${autoPreset.dirCouplers}% • Halation ${autoPreset.halation}% • Grain ${autoPreset.grain}%)\nEvery incoming photo saves raw + auto-graded JPEG in DCIM/BionzLookLab/Graded.'
                       : 'Active: OFF (Raw Transfer Only)\nPick a preset below or save one in the editor to auto-grade incoming photos.',
                   style: theme.textTheme.bodySmall,
                 ),
@@ -196,12 +195,6 @@ class _LookLabScreenState extends State<LookLabScreen> {
             itemCount: widget.recentFiles.length,
             itemBuilder: (ctx, idx) {
               final f = widget.recentFiles[idx];
-              final badgeColor = f.isPreview
-                  ? const Color(0xFFF59E0B)
-                  : (f.isRaw ? const Color(0xFFFF6D00) : const Color(0xFF14B8A6));
-              final badgeText = f.isPreview
-                  ? 'PREVIEW • RAW...'
-                  : (f.isRaw ? 'RAW' : 'JPG');
               return Card(
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -210,73 +203,26 @@ class _LookLabScreenState extends State<LookLabScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            FutureBuilder<Uint8List?>(
-                              future: _thumbFor(f),
-                              builder: (ctx, snap) {
-                                final bytes = snap.data;
-                                if (bytes != null && bytes.isNotEmpty) {
-                                  return Image.memory(
-                                    bytes,
-                                    fit: BoxFit.cover,
-                                    gaplessPlayback: true,
-                                  );
-                                }
-                                return Container(
-                                  color: const Color(0xFF1F2631),
-                                  child: Icon(
-                                    f.isRaw ? Icons.raw_on : Icons.photo_outlined,
-                                    size: 36,
-                                    color: Colors.white54,
-                                  ),
-                                );
-                              },
-                            ),
-                            Positioned(
-                              top: 8,
-                              left: 8,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 7,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.72),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: badgeColor.withValues(alpha: 0.75),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (f.isPreview) ...[
-                                      SizedBox(
-                                        width: 9,
-                                        height: 9,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 1.6,
-                                          color: badgeColor,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 5),
-                                    ],
-                                    Text(
-                                      badgeText,
-                                      style: TextStyle(
-                                        color: badgeColor,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.4,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                        child: FutureBuilder<Uint8List?>(
+                          future: _thumbFor(f.dcfName),
+                          builder: (ctx, snap) {
+                            final bytes = snap.data;
+                            if (bytes != null && bytes.isNotEmpty) {
+                              return Image.memory(
+                                bytes,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              );
+                            }
+                            return Container(
+                              color: const Color(0xFF1F2631),
+                              child: Icon(
+                                f.isRaw ? Icons.raw_on : Icons.photo_outlined,
+                                size: 36,
+                                color: Colors.white54,
                               ),
-                            ),
-                          ],
+                            );
+                          },
                         ),
                       ),
                       Padding(
@@ -293,9 +239,7 @@ class _LookLabScreenState extends State<LookLabScreen> {
                               ),
                             ),
                             Text(
-                              f.isPreview
-                                  ? 'Instant preview • Tap to Edit'
-                                  : '${f.sizeMb.toStringAsFixed(1)} MB • Tap to Edit',
+                              '${f.sizeMb.toStringAsFixed(1)} MB • Tap to Edit',
                               style: theme.textTheme.labelSmall,
                             ),
                           ],

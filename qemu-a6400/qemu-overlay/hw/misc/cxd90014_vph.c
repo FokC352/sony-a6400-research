@@ -239,16 +239,44 @@ static void vph_compose(VphState *s, uint32_t *dst, uint32_t W, uint32_t H,
         uint32_t base = R(AIF(ky) + 0x20), lb = R(AIF(ky) + 0x24);
         uint32_t pitch = lb + R(AIF(ky) + 0x28);
         uint32_t lines = R(AIF(ky) + 0x2C) + 1;
+        uint32_t size_reg = R(0x1420 + 0x20 * ky);
+        uint32_t yuv_w = size_reg & 0x1fffu;
+        uint32_t yuv_h = (size_reg >> 16) & 0x1fffu;
         if (base && lb && lb <= 8192 && lines < 4096) {
             g_autofree uint8_t *row = g_malloc(lb);
+            uint32_t skip = R(AIF(ky) + 0x28);
+            bool is_uyvy = (yuv_w >= 2 && lb >= yuv_w * 2) ||
+                           (yuv_w == 0 && skip == 0 && lb >= 1280 &&
+                            (lb & 1u) == 0);
+            uint32_t eff_w = yuv_w >= 2 ? yuv_w : (lb >> 1);
+            uint32_t src_lines = (is_uyvy && yuv_h > 0 && yuv_h <= lines)
+                                 ? yuv_h : lines;
             for (uint32_t y = 0; y < H; y++) {
-                uint32_t sy = (uint64_t)y * lines / H;
+                uint32_t sy = (uint64_t)y * src_lines / H;
                 address_space_read(&address_space_memory,
                                    base + (uint64_t)sy * pitch,
                                    MEMTXATTRS_UNSPECIFIED, row, lb);
-                for (uint32_t x = 0; x < W; x++) {
-                    uint8_t l = row[(uint64_t)x * lb / W];
-                    dst[y * W + x] = 0xff000000u | l << 16 | l << 8 | l;
+                if (is_uyvy) {
+                    for (uint32_t x = 0; x < W; x++) {
+                        uint32_t sx = (uint64_t)x * eff_w / W;
+                        const uint8_t *p = &row[(sx & ~1u) * 2];
+                        int cb = (int)p[0] - 128;
+                        int yv = (int)p[(sx & 1u) ? 3 : 1];
+                        int cr = (int)p[2] - 128;
+                        int r = yv + ((359 * cr + 128) >> 8);
+                        int g = yv - ((88 * cb + 183 * cr + 128) >> 8);
+                        int b = yv + ((454 * cb + 128) >> 8);
+                        uint8_t ru = r < 0 ? 0 : (r > 255 ? 255 : r);
+                        uint8_t gu = g < 0 ? 0 : (g > 255 ? 255 : g);
+                        uint8_t bu = b < 0 ? 0 : (b > 255 ? 255 : b);
+                        dst[y * W + x] = 0xff000000u | (ru << 16) |
+                                         (gu << 8) | bu;
+                    }
+                } else {
+                    for (uint32_t x = 0; x < W; x++) {
+                        uint8_t l = row[(uint64_t)x * lb / W];
+                        dst[y * W + x] = 0xff000000u | l << 16 | l << 8 | l;
+                    }
                 }
             }
         }

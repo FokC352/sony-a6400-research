@@ -123,19 +123,6 @@ class _FakeSyncBridge implements SyncBridge {
       null;
 
   @override
-  Future<PreviewRenderResult?> renderPhotoPreviewWithHistogram(
-    String dcfName,
-    LookPreset preset,
-  ) async =>
-      null;
-
-  @override
-  Future<RawEditorSession?> loadRawEditorSession(String dcfName) async => null;
-
-  @override
-  Future<Set<String>> getGradedPhotos() async => const {};
-
-  @override
   Future<LookExportResult> exportGradedPhoto(
     String dcfName,
     LookPreset preset,
@@ -174,122 +161,58 @@ void main() {
     expect(snap.recentFiles.first.crc32Hex, '01020304');
   });
 
-  test('LookPreset clamps RAW Develop & film parameters and round-trips maps', () {
+  test('LookPreset clamps parameters and round-trips maps', () {
     const base = LookPreset(id: 'p1', name: 'Portra');
     final tuned = base
         .withParam(AdjustParam.structure, 150)
         .withParam(AdjustParam.grain, -10)
-        .withParam(AdjustParam.halation, 72)
-        .withParam(AdjustParam.whites, -25)
-        .withParam(AdjustParam.blacks, 18)
-        .withParam(AdjustParam.vibrance, 40)
-        .withParam(AdjustParam.clarity, 32)
-        .withParam(AdjustParam.sharpen, 45);
+        .withParam(AdjustParam.halation, 72);
     expect(tuned.structure, 100);
     expect(tuned.grain, 0);
     expect(tuned.halation, 72);
-    expect(tuned.whites, -25);
-    expect(tuned.blacks, 18);
-    expect(tuned.vibrance, 40);
-    expect(tuned.clarity, 32);
-    expect(tuned.sharpen, 45);
 
     final decoded = LookPreset.fromMap(tuned.toMap());
     expect(decoded.id, 'p1');
     expect(decoded.structure, 100);
     expect(decoded.halation, 72);
-    expect(decoded.whites, -25);
-    expect(decoded.clarity, 32);
-    expect(decoded.sharpen, 45);
-  });
-
-  test('SyncedFile detects interim preview entries', () {
-    const prev = SyncedFile(
-      cameraId: 'a6c5b626',
-      dcfName: '_DSC1792.ARW',
-      seqId: 1,
-      sizeBytes: 350000,
-      crc32Hex: 'preview',
-      localPath: 'DCIM/BionzLookLab/_DSC1792_preview.JPG',
-      syncedAtMs: 1,
-    );
-    expect(prev.isRaw, isTrue);
-    expect(prev.isPreview, isTrue);
-    const full = SyncedFile(
-      cameraId: 'a6c5b626',
-      dcfName: '_DSC1792.ARW',
-      seqId: 1,
-      sizeBytes: 24850000,
-      crc32Hex: 'abcd1234',
-      localPath: 'DCIM/BionzLookLab/_DSC1792.ARW',
-      syncedAtMs: 2,
-    );
-    expect(full.isPreview, isFalse);
-  });
-
-  test('SyncConfig serializes arwInstantPreview and copies cleanly', () {
-    const def = SyncConfig();
-    expect(def.arwInstantPreview, isFalse);
-    final updated = def.copyWith(arwInstantPreview: true);
-    expect(updated.arwInstantPreview, isTrue);
-    final roundTrip = SyncConfig.fromMap(updated.toMap());
-    expect(roundTrip.arwInstantPreview, isTrue);
-    expect(roundTrip.ssid, def.ssid);
   });
 
   testWidgets(
-      'App shows unified single-screen UI, sheets, and GPU/fallback Look Lab editor',
+      'App shows Sync, SpektraFilm Look Lab + Snapseed editor, and Settings',
       (WidgetTester tester) async {
     final bridge = _FakeSyncBridge();
     await tester.pumpWidget(BionzLookLabApp(bridge: bridge));
     await tester.pumpAndSettle();
 
-    expect(find.text('Live Sync'), findsOneWidget);
-    expect(find.text('Auto-Apply Film Preset'), findsOneWidget);
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.text('DSC00123.ARW'), findsOneWidget);
+    expect(find.text('Start Background Sync'), findsOneWidget);
+
+    await tester.tap(find.text('Look Lab'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SpektraFilm Auto-Apply Preset'), findsOneWidget);
     expect(find.text('OFF (Raw only)'), findsOneWidget);
     expect(find.text('Kodak Portra 400'), findsOneWidget);
-    expect(find.text('Synced Photos (2)'), findsOneWidget);
-    expect(find.text('DSC00123'), findsOneWidget);
-    expect(find.text('RAW'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Sync Details & Logs'));
-    await tester.pumpAndSettle();
-    expect(find.text('Live Sync Details & Logs'), findsOneWidget);
-    expect(find.text('Start Background Sync'), findsOneWidget);
-    await tester.tap(find.byTooltip('Close'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pumpAndSettle();
-    expect(find.text('Camera & Look Lab Settings'), findsOneWidget);
-    expect(find.text('ARW Instant Preview + Background RAW'), findsOneWidget);
-    await tester.tap(find.text('ARW Instant Preview + Background RAW'));
-    await tester.pumpAndSettle();
-    expect((await bridge.getConfig()).arwInstantPreview, isTrue);
-    await tester.tap(find.byTooltip('Close'));
-    await tester.pumpAndSettle();
+    expect(find.text('DSC00123.ARW'), findsOneWidget);
 
     await tester.tap(find.text('Kodak Portra 400'));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('DSC00123'));
+    await tester.ensureVisible(find.text('DSC00123.ARW'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('DSC00123'));
+    await tester.tap(find.text('DSC00123.ARW'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Presets'), findsOneWidget);
-    expect(find.text('Film'), findsOneWidget);
-    expect(find.text('Light'), findsOneWidget);
-    expect(find.text('Color'), findsOneWidget);
-    expect(find.text('Detail'), findsOneWidget);
-    expect(find.text('Export'), findsOneWidget);
-
-    await tester.tap(find.text('Detail'));
-    await tester.pumpAndSettle();
-    expect(find.text('Structure +8'), findsWidgets);
+    expect(find.text('Structure +8'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Cancel'));
     await tester.pumpAndSettle();
-    expect(find.text('Synced Photos (2)'), findsOneWidget);
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unrestricted Background Battery'), findsOneWidget);
+    expect(find.text('Destination Storage'), findsOneWidget);
   });
 }

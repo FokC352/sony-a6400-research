@@ -573,30 +573,7 @@ static const char *header_value(const char *head, const char *name, uint32_t nam
     return 0;
 }
 
-static const char *conn_hdr(int keep_open) {
-    return keep_open ? "\r\nConnection: keep-alive\r\n\r\n" : "\r\nConnection: close\r\n\r\n";
-}
-
-static int ci_contains(const char *val, const char *needle) {
-    uint32_t n = ws_strlen(needle);
-    if (!val || !n) return 0;
-    while (*val && *val != '\r' && *val != '\n') {
-        uint32_t i;
-        int match = 1;
-        for (i = 0; i < n; i++) {
-            char a = val[i], b = needle[i];
-            if (!a || a == '\r' || a == '\n') { match = 0; break; }
-            if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
-            if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
-            if (a != b) { match = 0; break; }
-        }
-        if (match) return 1;
-        val++;
-    }
-    return 0;
-}
-
-static int send_status(ws_server *s, ws_conn *c, int keep_open) {
+static int send_status(ws_server *s, ws_conn *c) {
     char b[512];
     ws_buf o;
     ws_buf *w = &o;
@@ -640,11 +617,11 @@ static int send_status(ws_server *s, ws_conn *c, int keep_open) {
         buf_putu(&lb, w->len);
         if (lb.over || c->send(c->ctx, lenbuf, lb.len) != 0) return -1;
     }
-    if (send_str(c, conn_hdr(keep_open)) != 0) return -1;
+    if (send_str(c, "\r\nConnection: close\r\n\r\n") != 0) return -1;
     return c->send(c->ctx, b, w->len);
 }
 
-static int send_manifest(ws_server *s, ws_conn *c, uint32_t since, int keep_open) {
+static int send_manifest(ws_server *s, ws_conn *c, uint32_t since) {
     uint32_t seq, len = 0;
     char b[4096];
     ws_buf o;
@@ -692,13 +669,12 @@ static int send_manifest(ws_server *s, ws_conn *c, uint32_t since, int keep_open
         buf_putu(&lb, w->len);
         if (lb.over || c->send(c->ctx, lenbuf, lb.len) != 0) return -1;
     }
-    if (send_str(c, conn_hdr(keep_open)) != 0) return -1;
+    if (send_str(c, "\r\nConnection: close\r\n\r\n") != 0) return -1;
     return c->send(c->ctx, b, w->len);
 }
 
-static int send_error_ka(ws_conn *c, uint32_t code, const char *reason,
-                         const char *body, int keep_open) {
-    char head[224];
+static int send_error(ws_conn *c, uint32_t code, const char *reason, const char *body) {
+    char head[192];
     ws_buf b;
     buf_init(&b, head, sizeof(head));
     buf_puts(&b, "HTTP/1.1 ");
@@ -707,247 +683,25 @@ static int send_error_ka(ws_conn *c, uint32_t code, const char *reason,
     buf_puts(&b, reason);
     buf_puts(&b, "\r\nContent-Type: application/json\r\nContent-Length: ");
     buf_putu(&b, ws_strlen(body));
-    buf_puts(&b, conn_hdr(keep_open));
+    buf_puts(&b, "\r\nConnection: close\r\n\r\n");
     if (b.over) return -1;
     if (c->send(c->ctx, head, b.len) != 0) return -1;
     return c->send(c->ctx, body, ws_strlen(body));
 }
 
-static int send_error(ws_conn *c, uint32_t code, const char *reason, const char *body) {
-    return send_error_ka(c, code, reason, body, 0);
-}
-
-static int skip_bytes(ws_server *s, void *h, uint32_t count, uint32_t *crc_acc) {
+static int skip_bytes(ws_server *s, void *h, uint32_t count) {
     while (count) {
         uint32_t want = (count > s->io_cap) ? s->io_cap : count;
         int n = s->fs.read(s->fs.ctx, h, s->io, want);
         if (n <= 0) return -1;
-        if (crc_acc) *crc_acc = ws_crc32_update(s, *crc_acc, s->io, (uint32_t)n);
         count -= (uint32_t)n;
     }
     return 0;
 }
 
-static uint16_t tiff_u16(const uint8_t *p, int le) {
-    return le ? (uint16_t)(p[0] | ((uint16_t)p[1] << 8))
-              : (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
-}
-
-static uint32_t tiff_u32(const uint8_t *p, int le) {
-    return le ? ((uint32_t)p[0] | ((uint32_t)p[1] << 8) |
-                 ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24))
-              : (((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
-                 ((uint32_t)p[2] << 8) | (uint32_t)p[3]);
-}
-
-static int find_arw_preview(const uint8_t *buf, uint32_t hdr_len, uint32_t file_size,
-                            uint32_t *out_off, uint32_t *out_len) {
-    int le;
-    uint32_t ifd_q[8];
-    uint32_t visited[8];
-    uint32_t q_head = 0, q_tail = 0, vis_n = 0;
-    uint32_t best_off = 0, best_len = 0;
-
-    if (hdr_len < 12u) return -1;
-    if (buf[0] == 'I' && buf[1] == 'I') le = 1;
-    else if (buf[0] == 'M' && buf[1] == 'M') le = 0;
-    else return -1;
-    if (tiff_u16(buf + 2, le) != 42u) return -1;
-
-    ifd_q[q_tail++] = tiff_u32(buf + 4, le);
-    while (q_head < q_tail && vis_n < 8u) {
-        uint32_t ifd = ifd_q[q_head++];
-        uint32_t count, k, next_pos;
-        uint32_t jpg_off = 0, jpg_len = 0;
-        int dup = 0;
-        if (ifd == 0u || ifd + 2u > hdr_len) continue;
-        for (k = 0; k < vis_n; k++) {
-            if (visited[k] == ifd) { dup = 1; break; }
-        }
-        if (dup) continue;
-        visited[vis_n++] = ifd;
-        count = tiff_u16(buf + ifd, le);
-        for (k = 0; k < count && k < 256u; k++) {
-            uint32_t ent = ifd + 2u + k * 12u;
-            uint16_t tag;
-            uint32_t val;
-            if (ent + 12u > hdr_len) break;
-            tag = tiff_u16(buf + ent, le);
-            val = tiff_u32(buf + ent + 8u, le);
-            if (tag == 0x0201u) {
-                jpg_off = val;
-            } else if (tag == 0x0202u) {
-                jpg_len = val;
-            } else if (tag == 0x014Au) {
-                uint32_t sub_cnt = tiff_u32(buf + ent + 4u, le);
-                if (sub_cnt == 1u) {
-                    if (q_tail < 8u) ifd_q[q_tail++] = val;
-                } else if (sub_cnt >= 2u && sub_cnt <= 8u && val > 0u &&
-                           val <= hdr_len && (hdr_len - val) >= sub_cnt * 4u) {
-                    uint32_t s_i;
-                    for (s_i = 0; s_i < sub_cnt && q_tail < 8u; s_i++) {
-                        ifd_q[q_tail++] = tiff_u32(buf + val + s_i * 4u, le);
-                    }
-                }
-            } else if (tag == 0x8769u) {
-                if (q_tail < 8u) ifd_q[q_tail++] = val;
-            }
-        }
-        if (jpg_off > 0u && jpg_len >= 1024u && jpg_len <= 4194304u &&
-            jpg_off < file_size && jpg_len <= file_size - jpg_off) {
-            if (jpg_len > best_len) {
-                best_off = jpg_off;
-                best_len = jpg_len;
-            }
-        }
-        next_pos = ifd + 2u + count * 12u;
-        if (next_pos + 4u <= hdr_len) {
-            uint32_t next_ifd = tiff_u32(buf + next_pos, le);
-            if (next_ifd > 0u && q_tail < 8u) ifd_q[q_tail++] = next_ifd;
-        }
-    }
-    if (best_len == 0u) return -1;
-    *out_off = best_off;
-    *out_len = best_len;
-    return 0;
-}
-
-static int serve_preview(ws_server *s, ws_conn *c, uint32_t seq, int *keep_open) {
-    int32_t idx = ws_queue_find(s, seq);
-    ws_entry *e;
-    char path[WS_PATH_MAX];
-    void *h = 0;
-    uint32_t hdr_cap, hdr_len = 0;
-    uint32_t prev_off = 0, prev_len = 0;
-    uint32_t t0;
-    char head[384];
-    ws_buf b;
-
-    if (idx < 0) return send_error_ka(c, 404, "Not Found", "{\"error\":\"unknown_seq\"}", *keep_open);
-    e = &s->q.slot[(uint32_t)idx];
-    if (e->ext != WS_EXT_ARW) {
-        return send_error_ka(c, 404, "Not Found", "{\"error\":\"no_preview\"}", *keep_open);
-    }
-    if (ws_build_path(&s->cfg, e->index, e->ext, path) != 0) {
-        *keep_open = 0;
-        return send_error(c, 500, "Internal Server Error", "{\"error\":\"path\"}");
-    }
-    t0 = s->plat.now_ms ? s->plat.now_ms(s->plat.ctx) : 0u;
-    if (s->fs.open(s->fs.ctx, path, &h) != 0) {
-        s->errors++;
-        *keep_open = 0;
-        log_http(s, "preview_open_fail", seq);
-        return send_error(c, 503, "Service Unavailable", "{\"error\":\"open_failed\"}");
-    }
-    hdr_cap = (s->io_cap < 65536u) ? s->io_cap : 65536u;
-    if (hdr_cap > e->size) hdr_cap = e->size;
-    while (hdr_len < hdr_cap) {
-        int n = s->fs.read(s->fs.ctx, h, s->io + hdr_len, hdr_cap - hdr_len);
-        if (n <= 0) break;
-        hdr_len += (uint32_t)n;
-    }
-    if (find_arw_preview(s->io, hdr_len, e->size, &prev_off, &prev_len) != 0) {
-        s->fs.close(s->fs.ctx, h);
-        return send_error_ka(c, 404, "Not Found", "{\"error\":\"no_preview\"}", *keep_open);
-    }
-
-    if (prev_off < hdr_len) {
-        uint32_t avail = hdr_len - prev_off;
-        uint32_t in_buf = (prev_len <= avail) ? prev_len : avail;
-        uint32_t left;
-        if (avail < 2u || s->io[prev_off] != 0xFFu || s->io[prev_off + 1u] != 0xD8u) {
-            s->fs.close(s->fs.ctx, h);
-            return send_error_ka(c, 404, "Not Found", "{\"error\":\"no_preview\"}", *keep_open);
-        }
-        buf_init(&b, head, sizeof(head));
-        buf_puts(&b, "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: ");
-        buf_putu(&b, prev_len);
-        buf_puts(&b, "\r\nX-Preview-Size: ");
-        buf_putu(&b, prev_len);
-        buf_puts(&b, "\r\nX-File-Size: ");
-        buf_putu(&b, e->size);
-        buf_puts(&b, "\r\nX-File-Name: ");
-        buf_puts(&b, e->name);
-        buf_puts(&b, "\r\nX-WS-Protocol: 1");
-        buf_puts(&b, conn_hdr(*keep_open));
-        if (b.over || c->send(c->ctx, head, b.len) != 0) {
-            s->fs.close(s->fs.ctx, h);
-            *keep_open = 0;
-            return -1;
-        }
-        if (c->send(c->ctx, s->io + prev_off, in_buf) != 0) {
-            s->fs.close(s->fs.ctx, h);
-            *keep_open = 0;
-            return -1;
-        }
-        left = prev_len - in_buf;
-        while (left) {
-            uint32_t want = (left > s->io_cap) ? s->io_cap : left;
-            int n = s->fs.read(s->fs.ctx, h, s->io, want);
-            if (n <= 0 || c->send(c->ctx, s->io, (uint32_t)n) != 0) {
-                s->fs.close(s->fs.ctx, h);
-                *keep_open = 0;
-                return -1;
-            }
-            left -= (uint32_t)n;
-        }
-    } else {
-        uint32_t first_want = (prev_len < s->io_cap) ? prev_len : s->io_cap;
-        uint32_t first_len = 0, left;
-        if (skip_bytes(s, h, prev_off - hdr_len, 0) != 0) {
-            s->fs.close(s->fs.ctx, h);
-            *keep_open = 0;
-            return send_error(c, 503, "Service Unavailable", "{\"error\":\"read_failed\"}");
-        }
-        while (first_len < first_want) {
-            int n = s->fs.read(s->fs.ctx, h, s->io + first_len, first_want - first_len);
-            if (n <= 0) break;
-            first_len += (uint32_t)n;
-        }
-        if (first_len < 2u || s->io[0] != 0xFFu || s->io[1] != 0xD8u) {
-            s->fs.close(s->fs.ctx, h);
-            return send_error_ka(c, 404, "Not Found", "{\"error\":\"no_preview\"}", *keep_open);
-        }
-        buf_init(&b, head, sizeof(head));
-        buf_puts(&b, "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: ");
-        buf_putu(&b, prev_len);
-        buf_puts(&b, "\r\nX-Preview-Size: ");
-        buf_putu(&b, prev_len);
-        buf_puts(&b, "\r\nX-File-Size: ");
-        buf_putu(&b, e->size);
-        buf_puts(&b, "\r\nX-File-Name: ");
-        buf_puts(&b, e->name);
-        buf_puts(&b, "\r\nX-WS-Protocol: 1");
-        buf_puts(&b, conn_hdr(*keep_open));
-        if (b.over || c->send(c->ctx, head, b.len) != 0 ||
-            c->send(c->ctx, s->io, first_len) != 0) {
-            s->fs.close(s->fs.ctx, h);
-            *keep_open = 0;
-            return -1;
-        }
-        left = prev_len - first_len;
-        while (left) {
-            uint32_t want = (left > s->io_cap) ? s->io_cap : left;
-            int n = s->fs.read(s->fs.ctx, h, s->io, want);
-            if (n <= 0 || c->send(c->ctx, s->io, (uint32_t)n) != 0) {
-                s->fs.close(s->fs.ctx, h);
-                *keep_open = 0;
-                return -1;
-            }
-            left -= (uint32_t)n;
-        }
-    }
-
-    s->fs.close(s->fs.ctx, h);
-    s->last_activity_ms = s->plat.now_ms ? s->plat.now_ms(s->plat.ctx) : 0u;
-    log_http(s, "preview_served", seq);
-    log_http(s, "preview_ms", (uint32_t)(s->last_activity_ms - t0));
-    return 0;
-}
-
 static int serve_file(ws_server *s, ws_conn *c, uint32_t seq,
                       uint8_t have_range, uint32_t range_start, uint32_t range_end,
-                      uint8_t have_end, int *keep_open) {
+                      uint8_t have_end) {
     int32_t idx = ws_queue_find(s, seq);
     ws_entry *e;
     char path[WS_PATH_MAX];
@@ -957,10 +711,9 @@ static int serve_file(ws_server *s, ws_conn *c, uint32_t seq,
     uint32_t start, end, total;
     int n;
 
-    if (idx < 0) { *keep_open = 0; return send_error(c, 404, "Not Found", "{\"error\":\"unknown_seq\"}"); }
+    if (idx < 0) return send_error(c, 404, "Not Found", "{\"error\":\"unknown_seq\"}");
     e = &s->q.slot[(uint32_t)idx];
     if (ws_build_path(&s->cfg, e->index, e->ext, path) != 0) {
-        *keep_open = 0;
         return send_error(c, 500, "Internal Server Error", "{\"error\":\"path\"}");
     }
     if (e->crc_state != WS_CRC_KNOWN) {
@@ -977,7 +730,6 @@ static int serve_file(ws_server *s, ws_conn *c, uint32_t seq,
         if (range_start >= total) {
             char hdr[256];
             ws_buf rb;
-            *keep_open = 0;
             buf_init(&rb, hdr, sizeof(hdr));
             buf_puts(&rb, "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */");
             buf_putu(&rb, total);
@@ -987,14 +739,21 @@ static int serve_file(ws_server *s, ws_conn *c, uint32_t seq,
         start = range_start;
         if (have_end && range_end + 1u < total) end = range_end + 1u;
     }
+    /* Partial/resumed transfers need an upfront full-file CRC; full transfers compute it in one streaming pass. */
+    if (e->crc_state != WS_CRC_KNOWN && (have_range || start != 0u || end != total)) {
+        if (compute_entry_crc(s, e) != 0) {
+            s->errors++;
+            log_http(s, "serve_crc_fail", seq);
+            return send_error(c, 503, "Service Unavailable", "{\"error\":\"read_failed\"}");
+        }
+    }
     if (s->fs.open(s->fs.ctx, path, &h) != 0) {
         s->errors++;
-        *keep_open = 0;
         log_http(s, "serve_open_fail", seq);
         return send_error(c, 503, "Service Unavailable", "{\"error\":\"open_failed\"}");
     }
     {
-        uint8_t stream_crc = (end == total && e->crc_state != WS_CRC_KNOWN) ? 1u : 0u;
+        uint8_t stream_crc = (!have_range && start == 0u && end == total && e->crc_state != WS_CRC_KNOWN) ? 1u : 0u;
         uint32_t crc_acc = 0xFFFFFFFFu;
         uint32_t t0 = s->plat.now_ms ? s->plat.now_ms(s->plat.ctx) : 0u;
         uint32_t read_ms = 0u, crc_ms = 0u, send_ms = 0u;
@@ -1012,25 +771,24 @@ static int serve_file(ws_server *s, ws_conn *c, uint32_t seq,
         else buf_puts(&b, "pending");
         buf_puts(&b, "\r\nX-File-Name: ");
         buf_puts(&b, e->name);
-        buf_puts(&b, "\r\nX-WS-Protocol: 1");
+        buf_puts(&b, "\r\nX-WS-Protocol: 1\r\n");
         if (have_range) {
-            buf_puts(&b, "\r\nContent-Range: bytes ");
+            buf_puts(&b, "Content-Range: bytes ");
             buf_putu(&b, start);
             buf_putc(&b, '-');
             buf_putu(&b, end - 1u);
             buf_putc(&b, '/');
             buf_putu(&b, total);
+            buf_puts(&b, "\r\n");
         }
-        buf_puts(&b, conn_hdr(*keep_open));
+        buf_puts(&b, "Connection: close\r\n\r\n");
         if (b.over || c->send(c->ctx, head, b.len) != 0) {
             s->fs.close(s->fs.ctx, h);
-            *keep_open = 0;
             return -1;
         }
-        if (start && skip_bytes(s, h, start, stream_crc ? &crc_acc : 0) != 0) {
+        if (start && skip_bytes(s, h, start) != 0) {
             s->fs.close(s->fs.ctx, h);
             s->errors++;
-            *keep_open = 0;
             return -1;
         }
         {
@@ -1044,7 +802,7 @@ static int serve_file(ws_server *s, ws_conn *c, uint32_t seq,
                     read_ms += (uint32_t)(p1 - p0);
                     p0 = p1;
                 }
-                if (n <= 0) { s->fs.close(s->fs.ctx, h); s->errors++; *keep_open = 0; return -1; }
+                if (n <= 0) { s->fs.close(s->fs.ctx, h); s->errors++; return -1; }
                 if (stream_crc) crc_acc = ws_crc32_update(s, crc_acc, s->io, (uint32_t)n);
                 if (s->plat.now_ms) {
                     uint32_t p1 = s->plat.now_ms(s->plat.ctx);
@@ -1053,7 +811,6 @@ static int serve_file(ws_server *s, ws_conn *c, uint32_t seq,
                 }
                 if (c->send(c->ctx, s->io, (uint32_t)n) != 0) {
                     s->fs.close(s->fs.ctx, h);
-                    *keep_open = 0;
                     return -1;
                 }
                 if (s->plat.now_ms) {
@@ -1081,19 +838,10 @@ static int serve_file(ws_server *s, ws_conn *c, uint32_t seq,
     return 0;
 }
 
-static uint32_t next_ready_unacked(const ws_server *s) {
-    uint32_t seq;
-    for (seq = s->q.ack + 1u; seq <= s->q.head; seq++) {
-        const ws_entry *e = &s->q.slot[ws_slot_of(s, seq)];
-        if (e->seq == seq && e->ready) return seq;
-    }
-    return 0u;
-}
-
 static int handle_ack(ws_server *s, ws_conn *c, uint32_t seq, const char *body, uint32_t body_len) {
     int32_t idx;
     ws_entry *e;
-    uint32_t want_crc = 0, want_size = 0, expected;
+    uint32_t want_crc = 0, want_size = 0;
     int has_crc = 0, has_size = 0;
     char out[96];
     ws_buf b;
@@ -1144,14 +892,6 @@ static int handle_ack(ws_server *s, ws_conn *c, uint32_t seq, const char *body, 
             return c->send(c->ctx, out, b.len);
         }
         return send_error(c, 404, "Not Found", "{\"error\":\"unknown_seq\"}");
-    }
-    expected = next_ready_unacked(s);
-    if (expected != 0u && seq != expected) {
-        buf_init(&b, out, sizeof(out));
-        buf_puts(&b, "{\"error\":\"non_contiguous_ack\",\"expected\":");
-        buf_putu(&b, expected);
-        buf_puts(&b, "}");
-        return send_error(c, 409, "Conflict", out);
     }
     e = &s->q.slot[(uint32_t)idx];
     if (has_size && want_size != e->size)
@@ -1210,18 +950,16 @@ static void parse_range(const char *v, uint8_t *have, uint32_t *start,
     }
 }
 
-static int wait_event(ws_server *s, ws_conn *c, uint32_t since, int *keep_open) {
+static int wait_event(ws_server *s, ws_conn *c, uint32_t since) {
     uint32_t waited = 0;
     uint32_t start_head = s->q.head;
     uint32_t start_events = s->events;
     int woke = 0;
     while (waited < WS_EVENT_TIMEOUT_MS) {
         int r = c->wait ? c->wait(c->ctx, WS_EVENT_SLICE_MS) : 0;
-        if (r < 0) { *keep_open = 0; return -1; }
-        if (s->plat.should_stop && s->plat.should_stop(s->plat.ctx)) {
-            *keep_open = 0;
+        if (r < 0) return -1;
+        if (s->plat.should_stop && s->plat.should_stop(s->plat.ctx))
             return send_error(c, 503, "Service Unavailable", "{\"error\":\"stopping\"}");
-        }
         if (c->idle) c->idle(c->ctx);
         waited += WS_EVENT_SLICE_MS;
         if (s->q.head != start_head || s->events != start_events) { woke = 1; break; }
@@ -1239,88 +977,67 @@ static int wait_event(ws_server *s, ws_conn *c, uint32_t since, int *keep_open) 
         buf_puts(&b, ",\"woke\":");
         buf_puts(&b, woke ? "true" : "false");
         buf_puts(&b, "}");
-        if (b.over) { *keep_open = 0; return -1; }
-        if (send_str(c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ") != 0) {
-            *keep_open = 0;
+        if (b.over) return -1;
+        if (send_str(c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ") != 0)
             return -1;
-        }
         {
             char lenbuf[12];
             ws_buf lb;
             buf_init(&lb, lenbuf, sizeof(lenbuf));
             buf_putu(&lb, b.len);
-            if (lb.over || c->send(c->ctx, lenbuf, lb.len) != 0) { *keep_open = 0; return -1; }
+            if (lb.over || c->send(c->ctx, lenbuf, lb.len) != 0) return -1;
         }
-        if (send_str(c, conn_hdr(*keep_open)) != 0) { *keep_open = 0; return -1; }
+        if (send_str(c, "\r\nConnection: close\r\n\r\n") != 0) return -1;
         return c->send(c->ctx, out, b.len);
     }
 }
 
-typedef struct ws_http_rx {
-    char     buf[WS_REQ_MAX];
-    uint32_t len;
-} ws_http_rx;
-
-static int ws_http_serve_one(ws_server *s, ws_conn *c, ws_http_rx *rx,
-                             int allow_keepalive, int *keep_open, int is_first) {
-    uint32_t head_len = 0;
+int ws_http_serve(ws_server *s, ws_conn *c) {
+    char req[WS_REQ_MAX];
+    uint32_t len = 0, head_len = 0;
     int n, found = 0;
-    const char *line, *sp1, *sp2, *ver, *conn_val;
+    const char *line, *sp1, *sp2;
     char method[8];
     char target[96];
     char prebody[256];
-    uint32_t prebody_len = 0, extra = 0;
+    uint32_t prebody_len = 0;
     uint32_t i;
     const char *range;
     uint8_t have_range = 0, have_end = 0;
     uint32_t range_start = 0, range_end = 0;
     uint32_t seq = 0;
     const char *content_length;
-    int want_ka = 0;
-    int rc;
-#define WS_FAIL(code) do { *keep_open = 0; s->errors++; if (s->plat.log) s->plat.log(s->plat.ctx, "http_fail", (code)); return -1; } while (0)
+#define WS_FAIL(code) do { s->errors++; if (s->plat.log) s->plat.log(s->plat.ctx, "http_fail", (code)); return -1; } while (0)
 
-    *keep_open = 0;
-    while (1) {
-        for (i = 0; i + 3u < rx->len; i++) {
-            if (rx->buf[i] == '\r' && rx->buf[i + 1] == '\n' &&
-                rx->buf[i + 2] == '\r' && rx->buf[i + 3] == '\n') {
+    while (len + 1u < sizeof(req)) {
+        n = c->recv(c->ctx, req + len, (uint32_t)(sizeof(req) - 1u - len));
+        if (n <= 0) WS_FAIL(1);
+        len += (uint32_t)n;
+        req[len] = 0;
+        for (i = 0; i + 3u < len; i++) {
+            if (req[i] == '\r' && req[i + 1] == '\n' && req[i + 2] == '\r' && req[i + 3] == '\n') {
                 head_len = i + 4u;
                 found = 1;
                 break;
             }
         }
         if (found) break;
-        if (rx->len + 1u >= sizeof(rx->buf)) break;
-        n = c->recv(c->ctx, rx->buf + rx->len, (uint32_t)(sizeof(rx->buf) - 1u - rx->len));
-        if (n <= 0) {
-            if (!is_first && rx->len == 0u) return 0;
-            WS_FAIL(1);
-        }
-        rx->len += (uint32_t)n;
-        rx->buf[rx->len] = 0;
     }
-    if (!found || head_len < 8u) {
-        rx->len = 0;
+    if (!found || head_len < 8u)
         return send_error(c, 400, "Bad Request", "{\"error\":\"short_request\"}");
+    /* Bytes received after the head belong to the current request body. */
+    if (len > head_len) {
+        prebody_len = len - head_len;
+        if (prebody_len > sizeof(prebody)) prebody_len = sizeof(prebody);
+        ws_memcpy(prebody, req + head_len, prebody_len);
     }
-    extra = rx->len - head_len;
-    if (extra > 0u) {
-        prebody_len = (extra > sizeof(prebody)) ? (uint32_t)sizeof(prebody) : extra;
-        ws_memcpy(prebody, rx->buf + head_len, prebody_len);
-    }
-    /* Bound header scans to the current request head (replaces trailing LF with NUL). */
-    rx->buf[head_len - 1u] = 0;
 
-    line = rx->buf;
+    line = req;
     sp1 = line;
     while (*sp1 && *sp1 != ' ') sp1++;
     sp2 = (*sp1) ? sp1 + 1 : sp1;
     while (*sp2 && *sp2 != ' ') sp2++;
-    if (!*sp1 || !*sp2) {
-        rx->len = 0;
-        return send_error(c, 400, "Bad Request", "{\"error\":\"bad_line\"}");
-    }
+    if (!*sp1 || !*sp2) return send_error(c, 400, "Bad Request", "{\"error\":\"bad_line\"}");
     if ((uint32_t)(sp1 - line) >= sizeof(method)) WS_FAIL(2);
     for (i = 0; line + i < sp1; i++) method[i] = line[i];
     method[i] = 0;
@@ -1328,28 +1045,14 @@ static int ws_http_serve_one(ws_server *s, ws_conn *c, ws_http_rx *rx,
     for (i = 0; sp1 + 1 + i < sp2; i++) target[i] = sp1[1 + i];
     target[i] = 0;
 
-    ver = sp2 + 1;
-    want_ka = ws_strneq(ver, "HTTP/1.1", 8) ? 1 : 0;
-    conn_val = header_value(rx->buf, "Connection", 10);
-    if (conn_val) {
-        if (ci_contains(conn_val, "close")) want_ka = 0;
-        else if (ci_contains(conn_val, "keep-alive")) want_ka = 1;
-    }
-
-    range = header_value(rx->buf, "Range", 5);
+    range = header_value(req, "Range", 5);
     parse_range(range, &have_range, &range_start, &have_end, &range_end);
 
     if (ws_streq(method, "GET") && ws_streq(target, "/status")) {
-        *keep_open = allow_keepalive && want_ka;
-        if (extra) { ws_memcpy(rx->buf, rx->buf + head_len, extra); rx->len = extra; rx->buf[extra] = 0; }
-        else rx->len = 0;
-        return send_status(s, c, *keep_open);
+        return send_status(s, c);
     }
     if (ws_streq(method, "GET") && ws_streq(target, "/")) {
-        *keep_open = allow_keepalive && want_ka;
-        if (extra) { ws_memcpy(rx->buf, rx->buf + head_len, extra); rx->len = extra; rx->buf[extra] = 0; }
-        else rx->len = 0;
-        return send_error_ka(c, 200, "OK", "{\"service\":\"wifisync\",\"protocol\":1}", *keep_open);
+        return send_error(c, 200, "OK", "{\"service\":\"wifisync\",\"protocol\":1}");
     }
     if (ws_streq(method, "GET") && ws_strneq(target, "/events", 7)) {
         uint32_t since = 0;
@@ -1359,10 +1062,7 @@ static int ws_http_serve_one(ws_server *s, ws_conn *c, ws_http_rx *rx,
             const char *pv = find_key(q, q + ws_strlen(q), "since", 5);
             if (pv) ws_parse_u32(pv, &since);
         }
-        *keep_open = allow_keepalive && want_ka;
-        if (extra) { ws_memcpy(rx->buf, rx->buf + head_len, extra); rx->len = extra; rx->buf[extra] = 0; }
-        else rx->len = 0;
-        return wait_event(s, c, since, keep_open);
+        return wait_event(s, c, since);
     }
     if (ws_streq(method, "GET") && ws_strneq(target, "/manifest", 9)) {
         uint32_t since = 0;
@@ -1372,51 +1072,23 @@ static int ws_http_serve_one(ws_server *s, ws_conn *c, ws_http_rx *rx,
             const char *pv = find_key(q, q + ws_strlen(q), "since", 5);
             if (pv) ws_parse_u32(pv, &since);
         }
-        *keep_open = allow_keepalive && want_ka;
-        if (extra) { ws_memcpy(rx->buf, rx->buf + head_len, extra); rx->len = extra; rx->buf[extra] = 0; }
-        else rx->len = 0;
-        return send_manifest(s, c, since, *keep_open);
-    }
-    if (ws_strneq(target, "/preview/", 9)) {
-        if (!ws_streq(method, "GET")) {
-            rx->len = 0;
-            return send_error(c, 405, "Method Not Allowed", "{\"error\":\"method\"}");
-        }
-        if (ws_parse_u32(target + 9, &seq) != 0) {
-            rx->len = 0;
-            return send_error(c, 400, "Bad Request", "{\"error\":\"seq\"}");
-        }
-        *keep_open = allow_keepalive && want_ka;
-        if (extra) { ws_memcpy(rx->buf, rx->buf + head_len, extra); rx->len = extra; rx->buf[extra] = 0; }
-        else rx->len = 0;
-        return serve_preview(s, c, seq, keep_open);
+        return send_manifest(s, c, since);
     }
     if (ws_strneq(target, "/file/", 6)) {
-        if (!ws_streq(method, "GET")) {
-            rx->len = 0;
+        if (!ws_streq(method, "GET"))
             return send_error(c, 405, "Method Not Allowed", "{\"error\":\"method\"}");
-        }
-        if (ws_parse_u32(target + 6, &seq) != 0) {
-            rx->len = 0;
+        if (ws_parse_u32(target + 6, &seq) != 0)
             return send_error(c, 400, "Bad Request", "{\"error\":\"seq\"}");
-        }
-        *keep_open = allow_keepalive && want_ka;
-        if (extra) { ws_memcpy(rx->buf, rx->buf + head_len, extra); rx->len = extra; rx->buf[extra] = 0; }
-        else rx->len = 0;
-        return serve_file(s, c, seq, have_range, range_start, range_end, have_end, keep_open);
+        return serve_file(s, c, seq, have_range, range_start, range_end, have_end);
     }
     if (ws_strneq(target, "/ack/", 5)) {
         char body[256];
         uint32_t blen = 0;
-        if (!ws_streq(method, "POST")) {
-            rx->len = 0;
+        if (!ws_streq(method, "POST"))
             return send_error(c, 405, "Method Not Allowed", "{\"error\":\"method\"}");
-        }
-        if (ws_parse_u32(target + 5, &seq) != 0) {
-            rx->len = 0;
+        if (ws_parse_u32(target + 5, &seq) != 0)
             return send_error(c, 400, "Bad Request", "{\"error\":\"seq\"}");
-        }
-        content_length = header_value(rx->buf, "Content-Length", 14);
+        content_length = header_value(req, "Content-Length", 14);
         if (content_length) {
             uint32_t want = 0;
             if (ws_parse_u32(content_length, &want) == 0) {
@@ -1432,39 +1104,10 @@ static int ws_http_serve_one(ws_server *s, ws_conn *c, ws_http_rx *rx,
                 body[blen] = 0;
             }
         }
-        rx->len = 0;
         return handle_ack(s, c, seq, body, blen);
     }
-    rx->len = 0;
-    rc = send_error(c, 404, "Not Found", "{\"error\":\"no_route\"}");
-    return rc;
+    return send_error(c, 404, "Not Found", "{\"error\":\"no_route\"}");
 #undef WS_FAIL
-}
-
-int ws_http_serve(ws_server *s, ws_conn *c) {
-    ws_http_rx rx;
-    int keep_open = 0;
-    rx.len = 0;
-    rx.buf[0] = 0;
-    return ws_http_serve_one(s, c, &rx, 0, &keep_open, 1);
-}
-
-int ws_http_serve_conn(ws_server *s, ws_conn *c, uint32_t max_reqs) {
-    ws_http_rx rx;
-    uint32_t count = 0;
-    uint32_t limit = max_reqs ? max_reqs : 1u;
-    int keep_open = 1;
-    rx.len = 0;
-    rx.buf[0] = 0;
-    while (keep_open && count < limit) {
-        int rc;
-        keep_open = 0;
-        rc = ws_http_serve_one(s, c, &rx, (count + 1u < limit), &keep_open, count == 0u);
-        if (rc != 0) return rc;
-        if (count > 0u && !keep_open && rx.len == 0u) break;
-        count++;
-    }
-    return 0;
 }
 
 /* ------------------------------------------------------------- init */

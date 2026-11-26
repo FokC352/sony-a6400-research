@@ -3,6 +3,18 @@
 **Declared stimulus:** opt-in, default-off `gate-force-probe=on` (`GATE_FORCE_PROBE=1`) one-shot patches the exact av-cam step-26 producer cbz at PA `0x03874fd0` to a NOP (`cond. PROBE gate-force`), not a fix.
 **Declared stimulus:** opt-in, default-off `entry-force-probe=on` (`ENTRY_FORCE_PROBE=1`) makes the first av-cam entry take the r0 = 1 path while the camera-control state is 240 (`cond. PROBE entry-force`), not a fix.
 
+## Playback/Capture Codecs, UHS-I U3 SDHC, Zero-Unmodelled MMIO, `ILCE-6400A` `IDT_CAM`, `IMX284` P2S & `PL310` Handover Guard (2026-11-26 / E0715)
+
+Opt-in machine and device models (`zma1-jpeg-decode=on`, `movie-codec-hle=on`, `still-capture=on`, `sd-uhs-u3=on`, `clkrst-model=on`, `pmic-reset=on`, `PERSIST_EMMC_OVERLAY=...`) plus core fixes in `sony_a6400.c`, `cxd90045_jpeg.c`, `cxd90014_sa.c`, `cxd90045_cam.c`, `cxd90014_vph.c`, `cxd90014_p2s.c`, `cxd90045_hdmi_cec.c`, `hw/sd/sd.c`, `hw/sd/sdhci.c`, and `handover_guard.c` complete the hardware/protocol contracts for `qemu-a6400:F01` and Custom OS (`kexec`) emulation safety while keeping default `-M sony-a6400` baselines intact:
+- **Codecs & Display:** Pure-C baseline `SOF0` `4:2:2`/`4:2:0` JPEG decode (`op=0x11`) and ECS encode (`op=0x1B`), `RC0` DRAM-to-DRAM `UYVY` resize (`0xF3881000`), `VPH` `ch51`/`ch52` packed `UYVY` BT.601 RGB888 scanout, active `0xF3030000` `ARW 2.3` `cRAW2` 16-byte block compression (IRQ `88`), `FE-AIF` RCRAW IRQs `70..72`, post-boot GPIO-driven Sub-Micro CAIF shutter frames, and `SFRS`/`DVENC` movie HLE.
+- **UHS-I `U3` SDHC (`mmca10: p1`):** `CMD11` 1.8V switch, `SCR[33]` (`sd->scr[3] = 0x02`) `CMD23` support bit, `CMD19` `SDR104` tuning (`[MMCP][mmc_mmcp_exec_tuning] For F_SDH30`), `ACMD13` `U3` SSR (`sd_status[14] = 0x39`), and `cxd90045.mmc0-vendor` (`0xF0300100..0xF03004FF`) mount 4 GiB SDHC FAT32 cards cleanly in live `mmc_drv.ko`.
+- **MMIO Coverage, Clock/Reset, PMIC & Custom OS (`kexec`) Safety:** Retires all remaining `E0705` unmodelled MMIO pairs (`0` distinct unmodelled lines in live full-peripheral boot), adds verified `0x10`-stride `STAT/SET/CLR` clock/reset banks (`0xF280`/`0xF290`/`0xF2A0..0xF2A32`), `ZMA0`/`RC0`/`SA4` PBL IP, `MISCREG` `0xF2915040` `SWRESET`/`XRSTREQ` + `GPIO P10.5` (`cfg.poff=10,5`) power-off, and `G13` outer-L2 (`PL310`) teardown checks in `handover_guard` (`9/9` PASS).
+- **Natural Step 42, `ILCE-6400A` `IDT_CAM`, HDMI & `IMX284` P2S:** Stateful sub-micro TLV `0x0A` lens-rail latching advances `av-cam` naturally past step 26 to step 42 (`0x0102`) with `GATE_FORCE_PROBE=0` and `ENTRY_FORCE_PROBE=0`; fixing 256-byte SPI Slot-C (`+128`) retires `ILCE-6400A` `0x63909ba8` (`'S-Ele Refresh ng'`) with `IDT_CAM` sustained bars live-view; sub-micro `Slot A[29]` `BIT(6)` reports HDMI HPD; `P2S` Ch 0/1 correlates transfers against all 13 `IMX284` mode columns. See [E0715](../docs/evidence/0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md).
+
+## Virtual Touchscreen, Peripherals & 8-Model Compatibility (2026-11-25 / E0700)
+
+Opt-in machine properties (`peripherals=on`, or individual `touchscreen=on`, `bcm4339=on`, `hdmi-cec=on`, `audio-io=on`, `emount-lens=selp1650|sigma1850|sel2470gm|fe50f18`) and 8 dedicated `CXD90045` machine definitions (`sony-a6400`, `sony-a6400a`, `sony-zve10`, `sony-a6100`, `sony-a6600`, `sony-a7c`, `sony-a7m3`, `sony-a7rm4a`, plus `camera-model=...`) are now implemented in `qemu-overlay/` while leaving default `-M sony-a6400` baselines unchanged. `rear_panel.py` enables `TOUCHSCREEN=1` by default and exposes `POST /touch` and `GET /hdmi.png`; paired `MenuTouchFull.mod` OFF vs ON pure-touch tab taps and horizontal swipes are verified on live `ILCE-6400` firmware. See [E0700](../docs/evidence/0700-qemu-touchscreen-peripherals-and-multimodel.md).
+
 ## PL011 UART3 at 0xF2003000 (2026-11-21 / L0098)
 
 The stock kernel's udif table (VA `0x604DB3D4`, name pointer `0x6044A054` =
@@ -33,6 +45,166 @@ baseline (qemu sha256 `204b4d08…734de7`), exactly the eight ID reads retire
 offset), and the final sequencer state is identical (index 42, step
 `0x897F`, status/mirror `0x0102`, top/b5_top/b5_opd 1, 43 steps). Console and
 all other devices are untouched.
+
+## 0xF2920000 OTG and av-cam A/E rule windows (2026-11-21 / L0100)
+
+The F-0099 contract splits the `0xF2920000` 64 KiB block across three owners:
+the kernel FUSB/OTG driver (`0x0000..0x2FFF`, udif "otg" size `0x3000`),
+av-cam sub-block A (`0xA000`) and av-cam sub-block E (`0xE000`). A fresh
+120 s certified-env baseline boot of `loop/builds/L0098` (qemu sha256
+`5708b5f9…f43d9`, log sha256 `8a2ddf22…2837e`) logs the same 26 catch-all
+pairs as F-0099: 15 in these three windows (11 distinct offsets) and 11 in
+the unresolved `0x292C000` page.
+
+`sony_a6400.c` now maps a local per-offset rule block at priority -600 in
+three windows: `0xF2920000` (`0x3000`), `0xF292A000` (`0x1000`) and
+`0xF292E000` (`0x1000`). RF (read back the last write) is used only where
+F-0099 shows a read-after-write: OTG `+0x40/+0x50/+0x100`
+(`0x602AD5BC/5E4`, `0x602AD5EC/694`, `0x602AD748/76C`) and A `+0x10`
+(`0x63CEEF86..AE`). Z0 (read 0) covers OTG `+0x10` (VBUS/CID status,
+`0x602AD2AC..`), A `+0x44/+0x70/+0x74/+0x80` (write-only config and
+`0x63CEF038/054` status getters) and E `+0x08/+0x18` (write-only, stored via
+`0x63D99230`). Writes are stored for every offset. An offset without a rule
+inside a mapped window still logs both ways in the `cxd90045.*.unmodelled`
+format with the `0xF0000000` base, so the windows are not blanket zeroes.
+The unresolved `0xF292C000` page was not mapped by L0100; L0102 maps it
+after F-0101 showed it live (next section).
+
+A fresh 120 s post-change boot (qemu sha256 `b1bd997d…3f3702`, log sha256
+`de8a3e15…c85e4`) has 0 catch-all pairs in all three windows and the
+identical unresolved C-page 11 pairs. Distinct catch-all pairs fall
+730 -> 715 (-15) and the out-of-block set is unchanged at 704 pairs; the
+`stub_regs` count is unchanged (4736). The final sequencer state is identical
+(index 42, step `0x897F`, 0 mismatches, identity and step-table controls
+true). The oracle's own scorer returns admissible with
+`unmodelled_distinct 715`. qtest (`tests/test_qemu_f292.py`) passes 18/18:
+all four RF words read back, all seven Z0 words read 0 after a write, ruled
+offsets are silent, and one unruled offset in each window
+(`+0x44`, `+0xA100`, `+0xE100`) plus the out-of-scope C page still log.
+
+## 0xF292C000 HDMI TX rule window (2026-11-21 / L0102)
+
+F-0101 showed the `0x292C000` page is live: 11 distinct `(read|write, offset)`
+pairs / 41 accesses in a certified boot. `sony_a6400.c` now maps a fourth
+local per-offset rule window `0xF292C000..0xF292CFFF` at priority -600
+(`cxd90045.f292-c`) with one Z0 rule per observed offset and no RF rule,
+because the page has no read-follows-write: the ten write offsets run at PC
+`0x5F519BEC` / LR `0x5F519BE8` and are never read; `+0x160` is a 21-read
+poll at PC `0x5F519B34` / LR `0x5F519F94`, never written, so 0 is the
+observed catch-all value (F-0101). Writes are stored for every offset; an
+unruled offset in the page still logs both ways as
+`cxd90045.f292-c.unmodelled` with the `0xF0000000` base.
+
+A fresh 120 s certified-env boot of `loop/builds/L0102` (qemu sha256
+`59eaf180…79c82`, model sha256 `11929b07…bd148`, log sha256
+`9a210aea…a3511`) has 0 catch-all pairs in the page and 704 distinct
+catch-all pairs (715 -> 704: exactly the 11 page pairs, nothing added).
+The final sequencer state is identical (index 42, step `0x897F`, status and
+mirror `0x0102`, top/b5_top/b5_opd 1, 43 steps, 0 mismatches, identity and
+step-table controls true). qtest (`tests/test_qemu_f292c.py`) passes 16/16:
+all 11 page offsets read 0 after a write, the shared rule block's RF path
+still reads back the last write at OTG `+0x40` (code-path control; no page
+offset is RF), and an unruled `+0x200` still logs read and write.
+
+## 0xF3030000 RCRAW/IDT compressor page (2026-11-21 / L0105)
+
+The `0xF3030000..0xF303FFFF` page is the IDT/RCRAW hardware compressor
+block (E0629 names `0xF30310B0`, `0xF3031570`, `0xF303159C`, `0xF30315A0`,
+`0xF30317B0`, `0xF30317C0..0xF30317CC`). The brief counted **112** pairs
+because the oracle's `unmodelled_top` list is capped at 200 entries (L0102
+score: 112 F303 entries = 13 reads + 99 writes). The full `-d unimp` log of
+the certified 120 s boot is the ground truth: **547 distinct pairs / 9471
+accesses** in the page, i.e. 532 write offsets and 15 read offsets, 13 of
+which are written too (534 distinct offsets). A fresh boot of the baseline
+`loop/builds/L0102` (qemu sha256 `59eaf180…79c82`, model `11929b07…bd148`,
+`qemu-d.log` sha256 `3584debc…bbb93`) reproduces those 547 pairs exactly;
+`loop/scratch/L0105/before-pairs.txt` lists every offset, count, size and
+write value.
+
+A gdbstub first-hit pass names every reader (Z3,
+`loop/runs/L0105/readwatch-120/watch.json`, 15/15, state still index 42) and
+a matching writer pass names the writers (Z2,
+`loop/runs/L0105/writewatch-120/watch.json`, 13/13). The page's readers are
+`0xF3030000/004` (`0x63787F6A/7A`, the register self-test at `0x63787F70/80`),
+`0xF3030084` (`0x63787F96`/LR `0x63773487`, never written),
+`0xF303000C` (`0x63787B2E`, RMW with `0x63787B34`), `0xF3030220`
+(`0x63787FEA`, never written), the bulk status words `0xF3031090/94`
+(`0x63B3FFF0/F4`), `0xF30310A8/AC` (`0x63B3AFF8/FA`), `0xF30310B8`
+(`0x6378801A`), `0xF30310C0/C4` (`0x63B3CA9A/A0`), `0xF30310F8`
+(`0x63B4EAAC`), and `0xF30317C0/C8` (`0x63B48C5C/60`). The 512-word bulk
+block `0xF3031000..0xF30317FC` is written by `0x63788006`/LR `0x63B50B0F`;
+the scattered config words `0xF3030104/108/110/144/148/204/208/304/308/404/408/504/508/604/608`
+by `0x63787B4E..0x63787C7A` with LR `0x63CE77xx`/`0x63B50493`, and
+`0xF3030008/030` by the self-test at `0x63787F8A/A2`.
+
+`sony_a6400.c` now maps one local per-offset rule window
+`0xF3030000..0xF303FFFF` at priority -600 (`cxd90045.f303`), above the
+`cxd90045.unmodelled` catch-all (-1000); the CAMPIG windows end below it.
+There is one rule for every one of the 534 distinct offsets: 12 RF where a
+read follows a write (`+0x004/00C/1090/1094/10A8/10AC/10B8/10C0/10C4/10F8/17C0/17C8`)
+and 522 ZERO for the two read-only status words and the 520 non-RF write
+offsets (0 is the certified catch-all read reply). Writes are stored for
+every offset. An unruled offset inside the window still logs both ways as
+`cxd90045.f303.unmodelled` with the `0xF0000000` base, so the window is not
+a blanket zero.
+
+A fresh 120 s boot of `loop/builds/L0105` (qemu sha256 `dea94742…517e5`,
+model sha256 `b91db92f…7dfd`, log sha256 `59b6a6a3…8ac5`) has **0**
+catch-all pairs in the page and **0 added** pairs elsewhere. Against the
+same-run baseline, distinct catch-all pairs fall **680 -> 133** (exactly
+the 547 page pairs retire; no other page changes); against the accepted
+L0102 oracle score of 704 the expected page-free count is 157. The final
+sequencer state is identical (index 42, step `0x897F`, status/mirror
+`0x0102`, top/b5_top/b5_opd 1, 43 steps, 0 mismatches, identity and
+step-table controls true). qtest (`tests/test_qemu_rcraw.py`) passes 41/41:
+all 12 RF words read back the exact write, all 25 sampled ZERO words read 0
+after a write, ruled offsets are silent, and an unruled `+0x1800` still
+logs read and write.
+
+## 0xF3040000 page rule window (2026-11-21 / L0108)
+
+A fresh 120 s certified-env boot of the baseline `loop/builds/L0105` (qemu
+sha256 `dea94742…517e5`, model `b91db92f…7dfd`, `qemu-d.log` sha256
+`1857c00b…7b3f`) logs **17** distinct `cxd90045.unmodelled` (read|write,
+offset) pairs / 67 accesses in PA `0xF3040000..0xF304FFFF`: 4 read offsets
+and 13 write offsets, 3 of which are both (`+0x108/110/120`).
+`loop/scratch/L0108/page-pairs.txt` lists every offset, count, size and write
+value. The AIF group at `0xF3041000` (2 channels, `0x800` bytes) belongs to
+the live-view pipeline and is not touched by the pairs.
+
+A gdbstub first-hit pass names the readers (Z3,
+`loop/runs/L0108/watch-120/watch.json` plus the late `+0x004` read in
+`readwatch-004/watch.json`) and the writers (Z2). Readers: `+0x004`
+(`0x637884F2`/LR `0x63788201`, never written), `+0x108`
+(`0x637883A6`/LR `0x63CE78FF`), `+0x110` (`0x637883C6`/LR `0x637882A5`) and
+`+0x120` (`0x637883F0`/LR `0x637885D3`, the repeated poll). Writers:
+`+0x100` (`0x6378839A`/LR `0x6378818B`), `+0x108` (`0x637883AC`/LR
+`0x63CE78FF`), `+0x110` (`0x637883CC`/LR `0x637882A5`), `+0x11C`
+(`0x637883E2`/LR `0x6378817F`), `+0x120` (`0x637883F6`/LR `0x637885D3`),
+`+0x124` (`0x63788422`/LR `0x63788279`), the address words
+`+0x128..+0x138` (`0x6378842E..0x6378845E`, LR `0x63CE79xx`), `+0x13C`
+(`0x6378846A`/LR `0x63CE7A1B`) and `+0x008` (`0x63788506`/LR `0x63788297`).
+
+`sony_a6400.c` maps one local per-offset rule window
+`0xF3040000..0xF304FFFF` at priority -600 (`cxd90045.f304`), above the
+`cxd90045.unmodelled` catch-all (-1000) and below the live-view AIF group at
+`0xF3041000` (-300), which keeps its register block. There is one rule for
+each of the 14 distinct offsets: 3 RF where a read follows a write
+(`+0x108/110/120`) and 11 ZERO (`+0x004` plus the 10 write-only words; 0 is
+the certified catch-all read reply). Writes are stored for every offset. An
+unruled offset inside the window still logs both ways as
+`cxd90045.f304.unmodelled` with the `0xF0000000` base, so the window is not a
+blanket zero.
+
+A fresh 120 s boot of `loop/builds/L0108` (qemu sha256 `e16e40ae…f3da`,
+model sha256 `c154be84…292a`, log sha256 `4b8dc7a1…4ead`) has **0**
+catch-all pairs in the page and **0 added** pairs anywhere: distinct catch-all
+pairs fall **157 -> 140** and every other page keeps its exact pair set. The
+final sequencer state is identical (index 42, step `0x897F`, status/mirror
+`0x0102`, top/b5_top/b5_opd 1, 43 steps; 0 mismatches). qtest
+(`tests/test_qemu_f304.py`) passes 18/18: all 3 RF words read back the exact
+write, all 11 ZERO words read 0 after a write, ruled offsets are silent, and
+the unruled `+0x1800` still logs read and write.
 
 ## Opt-in bus error in the reserved first MiB (2026-11-19 / E0647)
 
@@ -834,3 +1006,10 @@ TIMEOUT=110 bash qemu-a6400/run.sh
 Records: [E0521](../docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md),
 [E0522](../docs/evidence/0522-qemu-a6400-smp-four-cores-and-cxd4115-timers.md).
 Receipts: `artifacts/qemu-a6400/e0521/`, `artifacts/qemu-a6400/e0522/`.
+
+## L0111 (route device-model, coverage)
+
+The 13 write-only pairs at 0xF3C04208..0xF3C0422C and 0xF3C08280..0xF3C0828C (F-0109) are now Z0 rows
+(`CAM_ZERO`) in `camcore_rules_f3c0`, so they read 0 and accept writes inside the already-mapped f3c0 window. No
+new window and no change to `sony_a6400.c`. Static check: `qemu-a6400/tests/test_qemu_f3c0.py`. The boot check and
+oracle numbers are in `loop/scratch/L0111/check.txt` and the L0111 `LEAD-RESULT.json`.

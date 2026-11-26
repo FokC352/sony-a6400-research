@@ -6,9 +6,9 @@
 area = "imaging-pipeline"
 title = "Imaging pipeline: color, RAW, RCRAW and recording paths"
 scope = """
-av-cam CC 3D LUT and gamma, the Arrivederci/ARRI color work, debayer/PSF/detail stages, RAW develop, IMX284, Open Gate and high-bit-depth paths, AIF DMA and the RCRAW probes."""
+av-cam CC 3D LUT and gamma, the Arrivederci/ARRI color work, debayer/PSF/detail stages, RAW develop, IMX284, Open Gate and high-bit-depth paths, AIF DMA, the RCRAW probes, and the candidate mobile GPU 36-exposure ARW roll pipelines (SpektraFilm and fotufilm-engine)."""
 evidence_span = "see record index"
-reviewed = "2026-11-26"
+reviewed = "2026-11-24"
 records = [
   "E0505",
   "E0555",
@@ -24,15 +24,18 @@ records = [
   "0683-arri-shoulder-and-fujifilm-simulations.md",
   "0686-photo-movie-modes-and-dual-variant-presets.md",
   "0687-photo-movie-fixes.md",
-  "E0695",
-  "E0696",
-  "E0697",
-  "E0698",
-  "E0699",
-  "E0700",
-  "E0701",
-  "E0702",
-  "E0703",
+  "E0688",
+  "E0689",
+  "E0720",
+  "E0721",
+  "E0722",
+  "E0723",
+  "E0724",
+  "E0725",
+  "E0726",
+  "E0727",
+  "E0728",
+  "E9105",
 ]
 
 [[entity]]
@@ -63,88 +66,27 @@ aliases = ["Open Gate 3:2", "ZIMA_AVC", "AIF", "SET_RAW_EXTERNAL_OUTPUT"]
 summary = "Feasibility of 3:2 Open Gate, 4K/6K low-fps, 10-bit and RAW/YCC paths, the AIF DMA channel map and the 8-bit ZIMA_AVC ceiling."
 
 [[entity]]
-id = "img.sele-refresh"
-kind = "function"
-name = "S-Ele refresh counter and Lost CAMOUT_V latch"
-aliases = ["refresh_cnt", "0x64367AF0", "0x644B02B9", "Lost CAMOUT_V"]
-summary = "av-cam S-Ele refresh body at 0x639077DC. The only increment of 0x64367AF0 is 0x639078C4, armed by latch 0x644B02B9 or state bits 0x81. Bit 0x40 of 0x6434FD7E skips the fault store at 0x63907870."
-
-[[entity]]
-id = "img.camout-v-check"
-kind = "function"
-name = "CAMOUT frame commit check and Lost CAMOUT_V"
-aliases = ["Lost CAMOUT_V", "0x63907D00", "0x643679A8", "camout_vfc"]
-summary = "CAMOUT supervisor 0x63907D00, called only from 0x6393275E. It reports Lost CAMOUT_V when p[0] == ((*(0x643679A8)+1) & 0xFFFFFF), *(0x643679DC) != p[0], and imaging->byte[0x514] == 0, then sets 0x644B02B9. No vertical geometry compare exists in it."
-
-[[entity]]
-id = "img.runtime-imaging-object"
-kind = "address"
-name = "ImagingMain singleton 0x643691FC and the 0x645C1798 pointer graph"
-aliases = ["0x643691FC", "0x645C1798", "0x6420128C", "0x64200A48", "rt_t14"]
-summary = "The CAMOUT supervisor receives the ImagingMain singleton 0x643691FC as r2. rt_t14 0x6420128C, rt_t10 0x64200EFC and the mode object 0x64200A48 occur once each, as slots of the pointer table at 0x645C1798, and are registered at runtime."
-
-[[entity]]
-id = "img.size-rows"
-kind = "field"
-name = "size_rows mode records 0x63E24F70"
-aliases = ["size_rows", "0x63E24F70", "0x63E25430", "0x63E2547C"]
-summary = "19 records, stride 0x4C, base 0x63E24F70. Record 16 and 17 are byte-identical: +0x1C horizontal 6000, +0x24 extra lines 20, +0x3C V_ACTIVE 3376. The only static consumer 0x63CF0018 copies fields verbatim into rt_t14."
-
-[[entity]]
-id = "img.sgc-timing"
-kind = "device"
-name = "SGC1/SGC2 hvcycle and rt_t10/rt_t14/rt_t18/rt_t1c"
-aliases = ["SGC1", "SGC2", "hvcycle", "0xF3120220", "rt_t10", "rt_t14"]
-summary = "ImagerDrvParam timing tables and the SGC1 parameter block at 0x64339DF8. H/V at +0x38/+0x3C are packed into MMIO 0xF3120220. No literal compare with 3392, 3442, 3447, or 3480."
-
-[[entity]]
-id = "img.fe-rcv"
-kind = "field"
-name = "FE records and rcv_desc vertical fields"
-aliases = ["fe_rec_0a", "fe_rec_19", "rcv_desc", "0x63E14E94", "0x63E19720"]
-summary = "4K 24p/25p FE selectors return fe_rec_0a and fe_rec_19. The 66 patched vertical halfwords have no 3392/3442 compare. rcv vertical halfwords live once in 0x63E19720."
-
-[[entity]]
-id = "img.dmm-config"
-kind = "source"
-name = "DmmConfig.bin movie pools and the av-cam canvas table"
-aliases = ["DmmConfig.bin", "0x63DF199C", "0x2EF9200"]
-summary = "DmmConfig.bin rule-5 slots and the av-cam canvas at 0x63DF199C. The large rule-5 slot holds a 6000-wide frame through dy=+624. The canvas rows are 2160 lines, not 3376."
-
-[[entity]]
-id = "img.fe-band"
-kind = "field"
-name = "FE band register file and the 21-register offset table"
-aliases = ["0x6454AC44", "0x6376ECFC", "FE band", "0x438", "0x43C"]
-summary = "0x6376ECFC copies 21 words from rec+0x190+4i into the FE stage register file through the offset table at 0x6454AC44. Each word is V|H<<16 (bits 13:0 V, 29:16 H) and pairs an end line 3441..3445 with an unpatched start word 0x00090032 (V=50, H=9). The band apply 0x63CD1D1C read-modify-writes +0x438/+0x43C from an object fed by rec+0x000..0x012."
-
-[[entity]]
-id = "img.sgc-trim"
-kind = "function"
-name = "SgcDev::UpdateWindow trim and phase servo 0x6376910C"
-aliases = ["0x6376910C", "UpdateWindow", "0xF312032C", "0xF3120438"]
-summary = "Trim/phase applier with a 32:8 servo (0x63CCFA54 = r0 & -r1 after >>2). Consumes its one-shot trim at exit, writes only phase and period words, and has no start, enable or abort register. Its two static callers are mode/timing apply wrappers."
-
-[[entity]]
-id = "img.camout-publish"
-kind = "address"
-name = "CAMOUT frame publish side (p = *(0x643691FC+4))"
-aliases = ["0x643691FC", "p[0]", "0x645CAA40", "0x639303D0"]
-summary = "The (vfc, frc) pair read by the commit and the watchdog has no ARM writer: no store reaches p[0]/p[1]/p[8] or the CTX cells, and 0x639303D0 is invoked only through the registered callback slot u32(0x645CAA40) = 0x639303D1. The publish side is therefore outside av-cam.bin."
-
-[[entity]]
-id = "img.imx284-window"
-kind = "device"
-name = "IMX284 Y window registers 0x000A-0x000D"
-aliases = ["Y_START", "Y_SIZE", "0x000A", "0x000C", "IMX284"]
-summary = "Mode 16/17 copy reglist column 11 into sensor registers 0x000A/0x000B (Y_START) and 0x000C/0x000D (Y_SIZE). Rows 0x001D-0x0020 are a shutter word, not a 3396-line clamp."
-
-[[entity]]
 id = "img.rcraw"
 kind = "process"
 name = "RCRAW block (0xF3031xxx) and its probes"
 aliases = ["RCRAW_EN", "0xF30317C8", "RCRAW_SET 0x63B2D560"]
 summary = "RCRAW line/block calculation, quantization selector, global enable gate and AIF0/1 W1/W2 registers, probed in Unicorn, QEMU and on the camera."
+
+[[entity]]
+id = "app.android-spektrafilm"
+kind = "host"
+name = "CinemaHUD Android SpektraFilm engine (candidate)"
+aliases = ["SpektraFilm", "CinemaHUD Android", "ARW2 GPU", "film roll"]
+related = ["img.cc-lut", "img.detail-psf"]
+summary = "Two-tier Android film simulation architecture: live-view 3D .cube preview in android/cinemahud/shaders/monitor.frag plus a candidate 3-pass NDK Vulkan compute engine for developing 36-exposure 24 MP ARW 2.3 rolls via SpektraFilm's spectral-spatial model."
+
+[[entity]]
+id = "app.mobile-fotufilm"
+kind = "host"
+name = "Mobile fotufilm-engine GPU darkroom (candidate)"
+aliases = ["fotufilm-engine", "fotufilm", "FotufilmHalide", "FilmTileMetalBuilder"]
+related = ["img.cc-lut", "img.detail-psf", "app.android-spektrafilm"]
+summary = "Apache-2.0 Swift/C++/Halide film simulation architecture (DhaliwalX/fotufilm-engine) for developing 36-exposure 24 MP BIONZ X ARW 2.3 rolls on iOS Metal and Android Vulkan GPUs."
 
 [[claim]]
 id = "C01"
@@ -225,353 +167,69 @@ evidence = ["E0612:live"]
 
 [[claim]]
 id = "C12"
-entities = ["img.recording-paths"]
+entities = ["app.android-spektrafilm", "img.detail-psf"]
 status = "verified-offline"
-text = "The A7 III squeezed 3:2 Open Gate technique (`reglist` col 11 Y_START/Y_SIZE, 65 vertical fields in `fe_rec_0a`/`fe_rec_19`, and lockstep `h*v` timing tables across `timing_ntsc`/`timing_pal` and runtime `.bss` `rt_t14`) maps to live ILCE-6400 `av-cam.bin` (`dd8f8d0c...`) and passes Unicorn verification for `test1`, `test4` (+156), `test3` (+312), `test2` (+624), and exact `putback`; physical camera testing awaits explicit GO."
-evidence = ["E0695"]
+text = "Upstream SpektraFilm (3bb2c2d) executes no runtime ODE or PDE solvers, reducing photochemical development to 81-band (380-780 nm) spectral contractions, 1D/2D/3D LUTs, 3-sublayer Poisson-Binomial grain draws and Gaussian/exponential convolutions; Sony ARW 2.3 cRAW (Compression=32767) stores independent 128-bit (16-byte) even/odd row blocks, and CinemaHUD Android already supports 2..65 3D .cube live-view LUT preview in shaders/monitor.frag."
+evidence = ["E0601:arw", "E0688"]
 
 [[claim]]
 id = "C13"
-entities = ["img.recording-paths"]
-status = "verified-physical"
-text = "On physical ILCE-6400 (`dd8f8d0c...`), live RAM tests proved: `Y_START % 4 == 0` flips Bayer parity to magenta (`dy=156`), `test1` (+624 sensor only) and `timing4` (+160 timing only) run smoothly, `shrink` (dy=-160 across all 158 fields) runs at full FPS with `S-Ele refresh_cnt=0`, while `plus24` (dy=+24, `rcv_vtot=3471 < 3480`) triggers low FPS (`refresh_cnt=27`). The camera was restored to `STOCK`. The DMM-allocation cause suggested from that matrix is refuted by E0697."
-evidence = ["E0696", "E0697"]
+entities = ["app.android-spektrafilm"]
+status = "inference"
+text = "Replacing desktop spektrafilm-rs's 8-10 full-frame f32 buffers and 162 per-pixel pow loops with a 3-pass NDK Vulkan compute pipeline (GPU uvec4 ARW2 unpack + 64x32 RCD demosaic, RGBA16F mip-pyramid scatter/halation/DIR convolutions, and a once-per-roll 65^3 + 49^3 3D LUT pair) fits a 36-exposure 24 MP roll inside ~323 MB full-frame (~114 MB 4-strip) peak memory on Adreno, Mali and Xclipse GPUs."
+evidence = ["E0688"]
 
 [[claim]]
 id = "C14"
-entities = ["img.dmm-config", "img.recording-paths"]
+entities = ["app.mobile-fotufilm", "img.detail-psf"]
 status = "verified-offline"
-text = "DmmConfig.bin has no 6000/3376/3392/3442 slot size. Rule-5 slot 0x2EF9200 (49,254,912 bytes) still holds 6000x4000x2. The av-cam canvas at 0x63DF199C is 3840x2160-class. DMM is not the dy=+24 ceiling. 0x63DDF414 is not the canvas table in av-cam.bin dd8f8d0c."
-evidence = ["E0697"]
+text = "DhaliwalX/fotufilm-engine (87a3f46af0, v1.14, Apache-2.0 code + CC BY-SA 4.0 47 stocks) runs no iterative chemical reaction-diffusion PDE solver; it implements closed-form C1 Hermite curves, competitive Hill DIR coupler release with a 3x3 [14, 8, 3] um gap-transmission matrix and decimated Gaussian diffusion, Nelson two-Gaussian screened adjacency, 13.5 MB 17-level Jarvis (exp(-r/1.45 um)) crystal dye-cloud summed-area grain tiles, optional 13-level polarized optical LayeredTransport, and a bundled Sony_ILCE-6400 dual-illuminant 3x3 profile delta (requiring spectralProfileID aliases for ILCE-6100, ILCE-6600, ZV-E10, ILCE-7C, and ILCE-7RM4A)."
+evidence = ["E0601:arw", "E0689"]
 
 [[claim]]
 id = "C15"
-entities = ["img.fe-rcv", "img.recording-paths"]
+entities = ["app.mobile-fotufilm"]
 status = "verified-offline"
-text = "FE selectors 0x63771D78 and 0x63771DE4 are labels in 0x63771C78 and return fe_rec_0a 0x63E14E94 and fe_rec_19 0x63E15E54 for drive keys 0x1F and 0x89. No instruction compares those records to 3392, 3442, 3447, or 3480. The 4K copier at 0x63764578 reads FE+0x28 (3096, unpatched) and FE+0x2A (3392+dy)."
-evidence = ["E0697"]
+text = "In fotufilm-engine@87a3f46af0 with halide/Halide@58868f0c, iOS Metal develops 24 MP in 0.95 s on iPhone 16 Pro using 60 x 0.4 MP tiles (maximumTilePixels = 512,000, 5.37x faster than 2 MP tiles due to per-stage VM page faults) while leaving FOTUFILM_AOT_WINDOWED_HOST pooling, command-buffer coalescing, and fused GPUShared schedules disabled (0) on iOS; Android Vulkan (FotufilmHalideLinux.cpp; FotufilmHalideAndroidGPU.cpp is unlinkable dead code) issues ~47 separate vkQueueSubmit + vkQueueWaitIdle drains per tile, dereferences raw VkBuffer handles as MemoryRegion* in halide_vulkan_wrap_vk_buffer, omits runtime HL_VK_ALLOC_CONFIG='0:1:0:0:256' Mali uniform padding, defaults to 4.0 MP tiles without halation_fields, falls back to CPU for LibRaw AHD, grain-tile synthesis and LayeredTransport, and rebuilds 13.5 MB grain SAT + 3x33^3 LUT caches whenever per-shot EXIF shutterSeconds shifts reciprocity."
+evidence = ["E0689"]
 
 [[claim]]
 id = "C16"
-entities = ["img.imx284-window", "img.recording-paths"]
-status = "verified-offline"
-text = "Mode 16 and 17 both select reglist column 11. That column is stored unmodified into IMX284 0x000A/0x000B (Y_START) and 0x000C/0x000D (Y_SIZE). The only column-11 value 3396 is Y_SIZE itself. 0x001D-0x0020 are zero in every column and are a shutter word, not a 3396-line clamp. The former labels 0x0025/0x001E/0x0027/0x001B are the next staging record's address."
-evidence = ["E0697"]
+entities = ["app.mobile-fotufilm", "img.cc-lut"]
+status = "inference"
+text = "Combining a GPU ARW 2.3 16-byte block unpack + shared-memory RCD demosaic + fused 3x3 matrix kernel, uniform reciprocity log-exposure offsets (preserving 100% roll cache residency), 256 MB pooled Metal / single-VkCommandBuffer batched Vulkan 0.5 MP fused tiles, and selective Float16 exposure/halation/grain storage (keeping LogExposure, Curves, FilmDensity and FilmTiles SATs in Float32) bounds a 36-exposure 24 MP roll within ~198-342 MB dirty memory (~18-38 s projected flagship wall time), while lut_bridge.fit_cube_to_isp fits a 33^3 stock .cube onto BIONZ X's 5x9x9 RefAdr[0] LUT for EVF framing."
+evidence = ["E0505", "E0689"]
 
 [[claim]]
 id = "C17"
-entities = ["img.sele-refresh"]
+entities = ["img.rcraw", "img.recording-paths"]
 status = "verified-offline"
-text = "S-Ele refresh_counter 0x64367AF0 has one increment, at 0x639078C4. It runs when latch 0x644B02B9 is set or state byte 0x6434D9AB has bits 0x81. Lost CAMOUT_V is a vfc mismatch, not a height compare. If the counter is above 10 and bit 0x40 of 0x6434FD7E is clear, 0x63907870 executes str r7, [r7]. RCV and SDVGA overflow flags do not increment the counter."
-evidence = ["E0697"]
-
-[[claim]]
-id = "C18"
-entities = ["img.sgc-timing", "img.recording-paths"]
-status = "verified-offline"
-text = "SGC1/SGC2 do not compare the frame against 3392, 3442, 3447, or 3480. hvcycle at 0xF3120220 is packed from BSS 0x64339DF8+0x38/+0x3C, which is outside the 158-entry open-gate patch. rt_t10+0x12 and rt_t18 track h1 when the boot populators run, but plus24 left timing stock and timing4 passed without rewriting them, so those fields are not the plus24 ceiling."
-evidence = ["E0697"]
-
-[[claim]]
-id = "C19"
-entities = ["img.sele-refresh", "img.sgc-timing", "img.fe-rcv", "img.recording-paths"]
-status = "refuted"
-superseded_by = "C21"
-text = "plus24 raises the 66 FE halfwords, V_ACTIVE, and the six rcv halfwords and arms the S-Ele latch; shrink, test1, and timing4 do not. The latch source is Lost CAMOUT_V or a CamCore error. The SGC H/V words that become hvcycle are not in the static patch, so a mode re-entry may keep the stock vertical period under the taller FE frame. Which latch source fired, and whether those BSS words stayed stock, is not proven offline."
-evidence = ["E0696", "E0697"]
-
-[[claim]]
-id = "C20"
-entities = ["img.camout-v-check", "img.sele-refresh"]
-status = "verified-offline"
-text = "Lost CAMOUT_V is a frame-commit consistency watchdog, not a geometry compare. 0x63907D00 is called only from 0x6393275E and logs 0x63F2B2E3 at 0x63907E66, then sets latch 0x644B02B9 at 0x63907E6A via helper 0x63907B74 (pool 0x00BA873D). The emit condition is p[0] == ((*(0x643679A8)+1) & 0xFFFFFF) and *(0x643679DC) != p[0] and imaging->byte[0x514] == 0. No immediate in the function is a vertical size, and a whole-image immediate sweep finds no compare against 3376/3392/3396/3400/3416/3442/3445/3447/3456/3480. The only true video-height compare is cmp.w #0x870 (2160)."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C21"
-entities = ["img.camout-v-check", "img.fe-rcv", "img.recording-paths"]
-status = "verified-physical"
-text = "The open-gate vertical ceiling is direction-only, not a line budget. Re-derived FE maximum vertical halfword (+0x190) and rcv_b_vtot per case: stock 3445/3447 margin 35 PASS, shrink 3285/3287 margin 195 PASS, test1 3445/3447 margin 35 PASS, timing4 3445/3447 margin 195 PASS, plus24 3469/3471 margin 11 FAIL, test4 3605/3607 margin 35 FAIL. test4 leaves the same 35-line margin as stock against 2x1820=3640 and still loses CAMOUT_V, so the 3480 budget theory is refuted. Every upward move of the FE/RCV set fails, the equal downward move passes, and sensor-only or timing-only moves pass. FE_max minus sensor Y_SIZE is 49 in every case where both move together."
-evidence = ["E0696", "E0698"]
-
-[[claim]]
-id = "C22"
-entities = ["img.imx284-window", "img.recording-paths"]
-status = "verified-offline"
-text = "IMX284 is exonerated for plus24. In the 125-row reglist, column 11 differs from column 10 in exactly rows 10-13 (0x000A-0x000D); no register encodes a line count, VMAX, crop height, MIPI Y_OUT_SIZE, EBD position, or SLVS packet count; the applicator 0x6379D618 is a bare strb. Stock column 11 already ends at row 3738, above 3480, and test1 puts Y_SIZE 4020 through the same four bytes and passes. 3480 is 2x1740, the host vertical period of timing_rom_ntsc[16]/[17] at 0x63E2598C/0x63E259A4, not a sensor clamp."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C23"
-entities = ["img.fe-rcv", "img.recording-paths"]
-status = "verified-offline"
-text = "The FE records are lists of 20-byte crop rectangles, and the first halfword of every pair is horizontal, not a height: fe_rec_0a +0x14 3016 pairs with rcv 0x63E19752 6032, +0x264 3012 pairs with 0x63E197AE 6024, and 0x63E1979C is 6000. 0x63CCBFD0 adds its 2928 delta to horizontal outputs only. Therefore +0x028 3096, +0x252/+0x256 1506 and +0x264 3012 are not unpatched heights, and +0x2C8/+0x2CE are dy-independent scalars. The selector is 0x63771C78 over a 16-record table at 0x63E12F14, stride 0x540; key 0x1F/0x89 with variant 0x0A/0x19 returns 0x63E14E94/0x63E15E54."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C24"
-entities = ["img.fe-rcv", "img.recording-paths"]
-status = "verified-offline"
-text = "The 66-offset FE set covers every vertical halfword in both records; every unpatched non-zero halfword is horizontal, a delta, a mask, or a sentinel. The FE consumer module 0x63CC0000-0x63CE8000 resolves no literal at or above 0xE0000000, and the only device base on that chain is 0xF3120000. No 0xF300xxxx or 0xF301xxxx write with record-derived data exists in a literal-resolved path; a computed 0xF3xxxxxx plus field address inside 0x63CD3xxx is not excluded."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C25"
-entities = ["img.fe-rcv", "img.runtime-imaging-object"]
-status = "verified-offline"
-text = "The rcv_desc unit at 0x63E19720 (0xC0 bytes, next unit 0x63E197E0) holds 3396/3392/3376/3447 plus their horizontal partners 6032/6048/6000/6024 and margins 52/48/10/16/2/4. Three independent searches found zero references to the block or its fields: no PC-relative materialisation, no absolute u32 pointer, no resolved literal. It is reached only as base plus index, so the six rcv_desc writes in the 158-entry table have no proven consumer."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C26"
-entities = ["img.size-rows", "img.runtime-imaging-object", "img.sgc-timing"]
-status = "refuted"
-superseded_by = "C43"
-text = "size_rows is 19 records at 0x63E24F70 with stride 0x4C; records 16 and 17 are byte-identical (+0x1C 6000, +0x24 20, +0x3C 3376). The only static consumer 0x63CF0018 copies fields verbatim into rt_t14 with no arithmetic, compare, or clamp. rt_t14 0x6420128C, rt_t10 0x64200EFC and the mode object 0x64200A48 occur once each, as slots of the pointer table at 0x645C1798, and are registered at runtime through 0x63AC209C and 0x63CEF540; no reference of any kind to rt_t14, rt_t10, rt_t18 or rt_t1c exists elsewhere in this image. The height lists at 0x6454AB60 (3360..3392, 3472..3488) have no static reader."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C27"
-entities = ["img.camout-v-check", "img.sgc-timing", "img.fe-rcv"]
-status = "refuted"
-superseded_by = "C42"
-text = "Three explanations survive for the upward-only ceiling and none is separable offline. R1: a consumer compares an FE/RCV vertical total against a stock-valued copy, so dy greater than 0 makes the difference negative or pushes the end edge past the stock bottom, most likely in the unread rcv_desc unit. R2: a buffer or descriptor sized at the stock geometry is overrun by dy greater than 0 and under-filled by dy less than 0. R3: the SGC2 measurement window closes one-sidedly, because the low 14 bits of 0xF3120318 are hardware-measured and 0x6376910C re-derives the limits as measured plus trim, so a guard of the form measured < programmed fails only when the measured vertical position grows."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C28"
-entities = ["img.sele-refresh"]
-status = "verified-offline"
-text = "refresh_cnt 0x64367AF0 counts S-Ele recovery/restart cycles, not geometry events. 0x6390785A compares it with 10; at 11 or more the body logs 0x63F2B29B FW: S-Ele Refresh ng force exception and executes the deliberate NULL store 0x63907870. plus24 reaching 27 is therefore a restart storm, which is the low-FPS symptom rather than the geometry limit."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C29"
-entities = ["img.sgc-timing", "img.camout-v-check"]
-status = "verified-offline"
-text = "SGC units are 0xF3120000 and 0xF3121000 with SGC1/SGC2/SGC3 at +0x200/+0x300/+0x400. The only writer of hvcyc 0xF3120220 is 0x63CD46F8 with ((H-1)<<16)|((V>>1)-1), sourced from the SGC1 block +0x38/+0x3C, which 0x638B8CE8 fills from imaging +0x98/+0x9C. 0x6376A9E0 caches five inputs and returns without writing when all five match, so the timing set is event-driven and never per-frame. hq and vq are bits[29:16] and bits[13:0] of 0xF3120318, read only at the log site 0x63907E3C, so they carry no decision. 0xF3120318/0x031C/0x0338 have no software writer, and 0x6376910C re-derives the high-half limits at 0x032C/0x0330/0x0334/0x033C/0x035C as measured plus trim, with the only /8 decimations in the path."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C30"
-entities = ["img.sgc-timing"]
-status = "verified-offline"
-text = "0x638B8CE8 writes SGC1 block +0x40 from imaging +0xA0 but writes neither +0x41 nor +0x42; the only other block writer is the memcpy at 0x638B6124. Both bytes are read at 0x638B6894 and forwarded into the window registers 0xF3120264 and 0xF312026C, so they are the one remaining SGC-side place where a stock-valued window could persist while the FE/RCV heights move. Their producer is unidentified."
-evidence = ["E0698"]
-
-[[claim]]
-id = "C31"
-entities = ["img.camout-v-check", "img.fe-rcv", "img.recording-paths"]
-status = "verified-physical"
-text = "plus8 (dy = +8, minimal Bayer-aligned upward step, FE 3400, rcv_b_vtot 3455, timing stock) triggers S-Ele Refresh with noreboot (refresh_cnt = 39, side_cnt = 2, sticky = 0x01, rcv_ovf = 0, sdvga_ovf = 0, uptime monotonic). There is no numeric wall above stock; the upward ceiling is the stock geometry itself."
-evidence = ["E0699"]
-
-[[claim]]
-id = "C32"
-entities = ["img.camout-v-check", "img.fe-rcv", "img.size-rows"]
-status = "verified-physical"
-text = "plus24_norcv (sensor +24, fe_rec_0a/19 +24, size_rows[16,17]+0x3c +24, rt_t14+0x50 3400, rcv_desc stock) fails with refresh_cnt = 44 (rcv_ovf = 0, sdvga_ovf = 0), whereas plus24_rcvonly (sensor +24 and 6 rcv_desc +24, fe_rec + size_rows stock) passes at full smooth FPS with refresh_cnt = 0 in Movie 4K 24p (vfc 55323 -> 60253). This refutes R1 (rcv_desc mismatch) and isolates the upward Lost CAMOUT_V trigger 100% to the fe_rec + size_rows write group."
-evidence = ["E0699"]
-
-[[claim]]
-id = "C33"
-entities = ["img.sgc-timing"]
-status = "verified-physical"
-text = "During Movie 4K 24p (plus24_rcvonly watch 60), sgc1_HV switches (858,1750) -> (862,1740) and SGC1 block bytes +0x40..+0x42 (PA 0x04339E38..0x04339E3A) switch (0x00,0x00,0x00) -> (0x01,0x1d,0x1b) (29, 27), returning to zero in MSC. These are small mode-dependent byte offsets for 0xF3120264/0x026C rather than stock vertical line counts."
-evidence = ["E0699"]
-
-[[claim]]
-id = "C34"
-entities = ["img.camout-v-check", "img.fe-rcv", "img.imx284-window"]
-status = "verified-physical"
-text = "Binary search across the 66 FE offsets under plus24 (sensor +24, size_rows/rt_t14/rcv_desc/timing stock, noreboot on) showed every failing prefix down to [0..1): [0..33) ref=20, [0..16) severe stutter requiring battery pull, [0..8) ref=53, [0..4) ref=32, [0..2) ref=19, and [0..1) (only fe_rec +0x002 3442->3466) FAIL with refresh_cnt = 17. Crucially, the exact complement [1..66) (+0x002 kept stock 3442, all other 65 FE fields +24) ALSO failed with refresh_cnt = 22 (rcv_ovf = 0, sdvga_ovf = 0). Therefore neither +0x002 alone nor inter-field FE inconsistency is the sole fault: any FE stage raised above stock stalls CAMOUT_V, implying the upstream sensor/CAMIN stream into FE is still capped at stock vertical lines."
-evidence = ["E0699"]
-
-[[claim]]
-id = "C35"
-entities = ["img.fe-band", "img.fe-rcv", "img.camout-v-check"]
-status = "verified-offline"
-text = "The two independently fatal FE subsets converge on the same registers. 0x63CCF5C6 maps rec+0x002 to out+0x43C and rec+0x00A to out+0x44C, then 0x63CD1D8C (bl 0x63CCFFD8) copies out+0x438..0x45F into the FE band object +0x20..0x47, so rec+0x002 lands at band +0x24 and rec+0x00A at +0x34; neither enters the 21-register table because that table reads out+0x088+4i = rec+0x190+4i. The band apply 0x63CD1D1C reads +0x438 (0x63CD0F84) and rewrites +0x43C (0x63CD0FB0) with the delta carried in that same object, so raising either rec+0x002 or rec+0x190+4i moves +0x438/+0x43C. That is why plus24_fe[0..1) and plus24_fe[1..66) are each fatal."
-evidence = ["E0700"]
-
-[[claim]]
-id = "C36"
-entities = ["img.fe-band"]
-status = "verified-offline"
-text = "The FE band register file is programmed by 0x6376ECFC from the 21-dword offset table at 0x6454AC44 (0x420 0x428 0x42c 0x430 0x434 0x438 0x43c 0x440 0x444 0x448 0x44c 0x450 0x454 0x490 0x458 0x45c 0x488 0x48c 0x408 0x40c 0x3c80) with source rec+0x190+4i. Each word is V|H<<16 with V in bits[13:0] and H in bits[29:16] (proven by the slicing at 0x63CD0FA0/0x63CD0FA2). The end words are V 3441..3445 paired with the unpatched start word 0x00090032 (V=50, H=9), and 3441-50=3391 matches the FE active height 3392. Records idx 5/8/12 carry 4108/4024/4111, so 3442 is not an FE-format limit."
-evidence = ["E0700"]
-
-[[claim]]
-id = "C37"
-entities = ["img.fe-rcv"]
-status = "verified-offline"
-text = "fe_rec+0x002 and +0x00A are V coordinates of crop corners, not totals or active heights. The first 20 bytes read {H=3232,V=3442,dx=36,dy=50,H=3196,V=3392,dx=48,dy=58,H=3184,V=3376} and 3232-36=3196 and 3442-50=3392 close exactly, so the triple is corner A, delta, corner B. The 66-offset set moves both V coordinates by dy and leaves dy=50, so the relation is preserved in every all-or-none case; record self-consistency is therefore not the cause, and plus24_fe[0..2) preserves it (3466-50=3416) yet still fails."
-evidence = ["E0700"]
-
-[[claim]]
-id = "C38"
-entities = ["img.imx284-window", "img.recording-paths"]
-status = "verified-offline"
-text = "The IMX284 programming path is transparent but Y_SIZE is not the frame length. 0x6379D618 is the only reglist applicator and is called from one site only, 0x6379F3FA inside C_ImagerCtrl_IMX284::SetMode (0x6379F380, vtable slot 0x028, typeinfo at 0x63F10AE4), never per frame; all dynamic sensor writes go through 0x6379F27C to 0x63CF0320 strb with no mask; the 124-entry list 0x6454CF54 re-sends the live staging cells, and the second reglist 0x64200EB4 is BSS-zero with a never-materialised slot. However column 0 (6000x4000 still) writes Y_SIZE=1132, stock column 11's window bottom 342+3396=3738 exceeds every FE/RCV total, and no register in the 125-row programme or the send lists encodes a line total, VMAX, Y_OUT_SIZE, EBD position or SLVS count. test1 therefore shows a window change is harmless, not that the sensor emitted more lines."
-evidence = ["E0700"]
-
-[[claim]]
-id = "C39"
-entities = ["img.recording-paths"]
-status = "verified-offline"
-text = "The CAMIN/SLVS receiver has no static line cap. In 0x63798C00-0x6379B000 (GCS2RXLINK, CSI-2 Rx, SubLVDS, ComboPHY) there is no movw/movt immediate in 3000..3700; the link blocks 0xF3E00000 and 0xFC0F0000 are written only with lane/PLL constants and lane-struct bytes; and the only frame check, 0x63799ACC, accumulates +0x7C/+0xB0/+0xB8 and compares against a runtime expected value from *(global+0xC0), which would raise rcv_ovf that stayed 0 in every failing run. The one unconstrained candidate is the SGC-adjacent window 0xF3122000/0xF3123000 +0x144/+0x148/+0x160 written by 0x63799C8C, reached only through 0x63799D04 which has no static caller."
-evidence = ["E0700"]
-
-[[claim]]
-id = "C40"
-entities = ["img.sgc-timing", "img.sgc-trim"]
-status = "verified-physical"
-text = "SGC1/SGC2/SGC3 are exonerated for the FE stall. The live sgc1_win bytes are a verbatim copy of one timing_rom_ntsc record: 0x63E2598C = H 862, V 1740, c/d/e = 1/29/27 for mode 16 and 0x63E259A4 = H 827, V 1740, 1/29/17 for mode 17, with the MSC record 0x63E2592C = 858/1750/0/0/0; the triple 01 1D 1B occurs exactly four times in the image, all in that table. 0x6376910C is a trim and phase servo that writes no start, enable or abort register, consumes its one-shot trim at exit, and has two static callers inside mode/timing apply wrappers. 0x63CE6630..0x63CE677C is a read-only snapshot of the separate 0xF3021100/0xF3021200 unit with no restore writer. Every live run holds the same mode 16/17 and therefore byte-identical SGC state, while plus24_fe[0..1) fails and plus24_rcvonly passes."
-evidence = ["E0699", "E0700"]
-
-[[claim]]
-id = "C41"
-entities = ["img.camout-publish", "img.camout-v-check"]
-status = "verified-offline"
-text = "The CAMOUT publish side is outside av-cam.bin. p[0], p[1], p[8] and the three CTX cells have no ARM writer: no store through any of 205 PIC-resolved 0x643691FC bases, no effective-address store to 0x64369200/04/08, and no 32-bit literal of those cells; CTX is BSS-zero in the file. The commit 0x639303D0 has no static caller, and its Thumb entry appears once as data at u32(0x645CAA40) = 0x639303D1 in a table of function pointers. The watchdog caller 0x639325C4 has no static referrer. So (vfc, frc) is published across the CAMOUT boundary and the ARM side only snapshots and compares it."
-evidence = ["E0700"]
-
-[[claim]]
-id = "C42"
-entities = ["img.fe-band", "img.camout-publish", "img.sgc-trim"]
-status = "inference"
-text = "Three candidates survive for the stock-valued FE vertical reference, none separable offline. R4: the FE band clamp, because 0x6376910C compares lo(+0x438)/lo(+0x43C) against lo(+0x428) and lo(+0x42C), which are programmed from rec+0x194 (0, not in the 66-offset set) and rec+0x198 (3441, in the set), so the pair scales asymmetrically and any over-limit request rewrites the band. R5: a stock-valued copy of the FE vertical geometry on the publish side of the CAMOUT boundary. R6: the SGC-adjacent receiver window 0xF3122000/0xF3123000 +0x144/+0x160 written from a struct whose base is not statically closed."
-evidence = ["E0700"]
-
-[[claim]]
-id = "C43"
-entities = ["img.size-rows", "img.fe-band"]
-status = "verified-offline"
-text = "Correction to C26 and E0698 section 7. 0x6454AB60 does have a reader, 0x6376E518 (called from 0x63CD0C66): it walks a 19-entry struct byte-offset table (0x0D20, 0x0D28, ..., 0x0DA0, 0x150CC, ...) copying [r1+r3+0x3D8] to [r0+offset], so the words read as 3360/3368/3372/3376/.../3472/3480 are offsets 0x0D20..0x0D98 and the 3480 VMAX datum is retracted. 0x63E58000 is a diagnostic (value, MMIO address) dump block read by the formatter 0x63BC3EE8 to 0x63BC52B4. 0x64547D38/0x64547D3C are the low halves of the APL DMA addresses 0xF3850D30/0xF3950D30. The size_rows facts in C26 stand: 19 records at 0x63E24F70, stride 0x4C, records 16/17 byte-identical, only consumer 0x63CF0018 a verbatim copy into rt_t14."
-evidence = ["E0700"]
-
-[[claim]]
-id = "C44"
-entities = ["img.fe-band", "img.camout-v-check"]
-status = "verified-physical"
-text = "plus24_r4 (plus24 plus fe_rec_0a+0x194 at PA 0x03E15028 and fe_rec_19+0x194 at PA 0x03E15FE8 set 0 -> 24 with noreboot enabled) produced no image at all in Movie 4K 24p and required a battery pull. This refutes R4 (asymmetric +0x428/+0x42C band clamp pair) live, leaving only R5 (external CAMOUT publish / true frame-length producer outside av-cam.bin) and R6 (0xF3122000/0xF3123000 +0x144/+0x148/+0x160)."
-evidence = ["E0701"]
-
-[[claim]]
-id = "C45"
-entities = ["img.fe-band", "img.camout-v-check"]
-status = "verified-offline"
-text = "The FE band register is (end:start) and the active height is end-start+1. 0x63CDC30C (pointer 0x63CDC30D at 0x64517DF8) writes base+0x143A4 = (rec+0x198<<16)|(rec+0x19C & 0xFFFF): idx 6 gives 3441/50 -> 3392 = its own +0x00A, idx 5 (stock still) gives 4107/84 -> 4024 = its own +0x00A, and plus24 gives 3465/50 -> 3416, exactly the requested band. The patch therefore moves only the end coordinate, and the ten start dwords (0x194, 0x19C, 0x1A4, 0x1AC, 0x1B4, 0x1C8, 0x1D0, 0x1D8, 0x1DC, 0x1E0) are deliberately excluded. Because shipped still records drive end=4107 with no field outside the 66 offsets, the FE register set accepts 4024 lines and a 3445 register-capacity ceiling is refuted."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C46"
-entities = ["img.imx284-window", "img.recording-paths"]
-status = "verified-offline"
-text = "No reglist column carries a ~4000-line readout. In the 13-column dump the largest Y_SIZE is 3396 (column 11); columns 9/10/11 differ from each other in exactly rows 10-13, so 708/2780/3396 are one knob. The five modes whose size_rows V is 4000 (drive keys 0x0B, 0x37, 0x68, 0x4E, 0x2F) select columns 0/1/2, which carry the untouched boot default 106/1132, identical to the staging initial bytes 0x645A1F24=0x04 and 0x645A1DAC=0x6C. The still class is a 53-register switch (0x0000 0x0C->0x04, 0x0001 0x41->0x04, the 0x002C-0x0033 and 0x0038-0x0043 groups, 0x006F, 0x08F1, 0x0924, 0x0ABA and others), so the still line count is sensor-internal and a row-10-13 patch cannot express it. The 65 unreferenced staging cells are mode-invariant and the 344-hit sweep of 0x6379B000-0x637A3000 finds only two readers of 0x63F109E1 and no VMAX/EBD/Y_OUT_SIZE/OP register."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C47"
-entities = ["img.fe-rcv"]
-status = "verified-offline"
-text = "The 66-offset set is complete for vertical ends. All 16 records at 0x63E12F14 (stride 0x540) were dumped: idx 6 and idx 9 are 4K 24p and 25p (same drive key, two variants, never simultaneous) and differ in 75 halfwords all outside the 66 set. Per-record census of halfwords in 3000..5000 shows the still records have 38 of 41 inside the set, and the three outside (+0x258, +0x268, +0x2CE) cannot be heights because idx 0 has 442 active lines with +0x258=3576 and +0x2C8 splits 868/15100 between 24p and 25p. +0x20E is not a height ratio across records (5818*4024/3392=6902 but the still records carry 13781/13185). The fields that differ between a 4024-line and a 3392-line record but are unpatched are the band starts (+0x006 84 vs 50, +0x00E 96 vs 58, and the +0x19C/+0x1A4/+0x1AC/+0x1B4/+0x1C8 group 84 vs 50), the half-scale path +0x052-+0x0D2 (1196 vs 2388) and +0x0D6/+0x0DE (598 vs 396)."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C48"
-entities = ["img.recording-paths", "img.fe-band", "img.runtime-imaging-object"]
-status = "verified-offline"
-text = "The ILCE-6400 4K vertical contract is a family constant, not a per-body quirk. Reference 6400, ILCE-6400A 1.01 (hash 3029a174) and ZV-E10 2.03 (bc6cba98) are byte-identical on fe_rec_0a, on the 16-record idx 5/8/12 and idx 6/9 values, on the reglist col10-vs-col11 row set [10,11,12,13], on timing rows [16]/[17] (862,1740,1,29,27) and (827,1740,1,29,17), on the 0x6454AC44 band offset table, and on the Lost CAMOUT_V and S-Ele Refresh ng strings; all 19 timing rows have h1 == h2 on all three. Every occurrence of the packed band words 0x03370D75, 0x03270D71, 0x00090032, 0x03200D71, 0x02F20D73 lies inside the FE record table, so no second stock copy exists. ILCE-7M3 is also a CXD90045 body (E0477), and no 7M3 image is present locally."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C49"
-entities = ["img.imx284-window"]
-status = "verified-offline"
-text = "The IMX284 driver does make one height decision but never writes a sensor register from it. 0x6379F00C at 0x6379F034..0x6379F048 compares a caller-supplied u16 against h16(size_rows[idx]+0x3C) for drive keys {0x0B,0x37,0x68,0x4E,0x2F} and branches to 0x6379E3DC (request <= V_active) or 0x6379E43C (request > V_active); both only set [this+0x42C] to 2 or 1 and call 0x63CE80EC or 0x63CE80BC. Row 0's staging byte 0x6442F220 also aliases a u16 counter array at 0x6442F232..0x6442F23A, so row 0 is a bad patch target."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C50"
-entities = ["img.fe-band", "img.camout-publish"]
-status = "inference"
-text = "With the FE registers proven capable of 4024 lines, the 66-offset set proven complete for vertical ends, and the band arithmetic proven consistent under plus24, the one-sided stock reference must be either a runtime-built register image or a component outside av-cam.bin. Two carriers remain: the 0x370-byte per-channel image programmed by 0x6375FFAC to 0xF3851100/0x1200/0x1300/0x1400 (and the 0xF3951xxx/0xF3A51xxx twins), whose field layout coincides with the FE record over +0x000..+0x36C and which carries +0x258->0xF38513A8, +0x2C8->0xF3851418 and +0x2CE->0xF385141E with an unclosed producer; and the 19-word scatter 0x6376E518 from out+0x3D8 into unit offsets 0xD08, 0xD20-0xD40, 0xD90-0xDA0, 0x15034 and 0x150CC-0x150D8, whose source writer has no STR imm12=0x3D8 site and no 0x4C copy idiom in the image."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C51"
-entities = ["img.sgc-timing", "img.recording-paths"]
-status = "verified-offline"
-text = "R6 is refuted and 0x63799D04 does have a static entry. The function starts at 0x63799D04 with ldr r2,[r1] before its push, so prologue inventories miss it. Its only static transfer is a b.w tail call at 0x63CF0628 inside the 4-byte thunk 0x63CF0626, reached from InterfaceCtrl::SetTransfer 0x6379FD48 (dead: caller passes sel=0xFF) and SetImgIfRequest 0x6379FDF0 (vtable slot 0x6451955C). The chain is SetImgIfRequest -> thunk -> MIF_SetMIFDrive 0x63799D04 -> MIF_SetVirtualChannel 0x63799C64 -> MIF_SetMIFMode 0x63799C8C. Values come from the constant ROM table 0x63E25D24 (38 records, stride 0x14, second half at 0x63E25EA0); mode 16 is index 16 = record 0x63E25E64. All five consumed fields (+0x0C, +0x0D, +0x0E, +0x10, +0x12) are zero in every one of the 38 records, so the stock writes to 0xF3122000/0x3000 +0x138/+0x144/+0x148/+0x160 are 0 on both channels. 0x63799C8C has no compare and no abort path, and the block has no in-image reader."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C52"
-entities = ["img.sgc-timing", "img.fe-band"]
-status = "verified-offline"
-text = "R6 cannot be the differentiator for a second reason: build_patch_plan overlap with the descriptor table 0x63E25D24..0x63E2601C is 0 for all eight steps (152 slots each, min VA 0x63E14E96, max VA 0x6454C597). The table is therefore byte-identical in plus24_rcvonly (PASS) and plus24_fe[0..1) (FAIL), so a value read from it cannot separate them. The same argument closes the 0xF3122000/0x3000 field set as a stock-valued vertical reference: it is programmed from an unpatched constant table whose mode-16 fields are all zero."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C53"
-entities = ["img.camout-publish", "img.fe-band"]
-status = "open"
-text = "R5 is the only candidate left from E0700 and is not closed. p[0], p[1], p[8] and the CTX cells have no ARM writer, 0x639303D0 is reachable only through the callback slot u32(0x645CAA40)=0x639303D1, and there is no second copy of the FE vertical contract in the image. The two remaining concrete carriers are the 0x370-byte per-channel register image programmed by 0x6375FFAC to 0xF3851100/0x1200/0x1300/0x1400 (fields +0x258->0xF38513A8, +0x2C8->0xF3851418, +0x2CE->0xF385141E, producer unclosed) and the 19-word scatter 0x6376E518 from out+0x3D8 into unit offsets 0xD08, 0xD20-0xD40, 0xD90-0xDA0, 0x15034, 0x150CC-0x150D8 (source writer not found: no STR imm12=0x3D8 site, no 0x4C copy idiom)."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C54"
-entities = ["img.camout-publish"]
-status = "verified-offline"
-text = "0x645CAA40 is not a registrar-built callback table: it is slot 9386 (byte offset 0x92A8) of one flat u32 array at 0x645C1798 (file 0x00FFB798) ending exactly at EOF 0x645CC4E8, 11,092 slots. The ORIL header field [5]=0x635C60B4 points at {0, 0x644F1000, 0x000D0798} and 0x644F1000+0xD0798=0x645C1798, so the declared ram region ends at the array base; the same shape exists in the other build. 0x639303D1 occurs once in the file (0x01004A40) as the slot's link-time initial value; no movw/movt builds any array address, no literal equals 0x645CAA40, and the only two sites touching offset 0x92A8 (0x638F8A94, 0x639337D4) load it into formatters, never store and never blx."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C55"
-entities = ["img.camout-publish", "img.recording-paths"]
-status = "verified-offline"
-text = "Nothing in the shipped ARM software publishes or invokes CAMOUT. No branch reaches 0x639325C4 or 0x639303D0, no u32 literal equals either entry, and no table slot holds them; the only data pointer to 0x639325C5 is a PIC-computed address at 0x639330C4/0x63933506 passed to formatter 0x63D0F560. liro.ko validates the ORIL header and blx-calls entry(pre)=0x635C6044 without touching the data table, and im.elf is the launcher of /system/av-cam.bin. No .ko (liro, upm, mcmn_drv, mag, dmm, stream, stream2, osal_uipc, osal_utm, utimer) and no blob (dfe_app, dfe_dat, idt_cam, sa_dfdet, ssboot, bootin.elf, bonobo.bin, lif_app.bin, ldr_drv.bin) contains CAMOUT, CAMIN, vfc, frc, S-Ele or any CAMOUT address, and no module holds a stock height as a data word. The commit body also writes BSS cell 0x64369138, distinct from p[0]/p[1]."
-evidence = ["E0702"]
-
-[[claim]]
-id = "C56"
-entities = ["img.fe-band", "img.camout-publish"]
-status = "verified-physical"
-text = "Single-page SIGBUS-guarded 32-bit MMIO reads of 0xF38513A8/3B8/418/41C and 0xF39513A8/3B8/418/41C (via devmem_policy.py GO on 0xF3851000 and 0xF3951000) returned 0 in MSC and (0x3F, 0x3F, 0x38, 0x3A) on both channels during plus8 in Movie 4K 24p (ref=4..26, vfc=15687..15855), with zero SIGBUS and monotonic uptime. They hold small configuration constants (63, 56, 58), not a stock vertical height reference. Offline verification of [[parent+0x8C]]+0x3D8 (0x63CCDB08 -> 0x63CD0C66 -> 0x6376E518) shows it is fe_rec+0x4E0..+0x528, which likewise holds only small/sub-scaled scalars (2376/2008, 2730/2730, 352) and no stock vertical limit."
-evidence = ["E0703"]
+text = "In ILCE-6100 av-cam.bin (58b2118d...), RCRAW_EN (0x643EE0F4) and RDRAW_EN (0x643EE4B0) only drive FOPD (0x63777380) and AIF W0/W1 (0x63DC4D94/0x63DC4DA0); AIF0 W2 (0xF3002480 via 0x63DC4DA6 -> 0x63777064) is separately gated by 0x643EDF60 (S_SetFOPD 0x63B483C0 <- 0x6393BDA8 <- SyncGetPrcFlow 0x63B2E80C and DFS 0x6455F1B0 in {2, 3}), and CalcSdevOutSize (0x63DBEFBA) hard-caps SyncGetPrcFlow/Astra output at 640x360, 640x426, or 640x480."
+evidence = ["E9105"]
 
 [[frontier]]
 id = "F01"
 title = "From RCRAW enable to an actual RAW/high-bit-depth recording"
 state = "open"
 entities = ["img.rcraw", "img.recording-paths"]
-evidence = ["E0634", "E0635", "E0621"]
-next = "RCRAW_EN persists, but no RAW or >8-bit recording is produced yet; the external-output gate and AIF write paths remain to be qualified on hardware."
+evidence = ["E0634", "E0635", "E0621", "E9105"]
+next = "Static proof (E9105) rules out both RCRAW_EN (FOPD/W0) and SyncGetPrcFlow/AIF0 W2 (CalcSdevOutSize <= 640x480) as full-sensor video RAW paths. Next: qualify SET_RAW_EXTERNAL_OUTPUT (0x63BEFFA0, 0x2044/0x2042 IPC, 0x00BF0274 gate) and IMX284/IDT 0xF3000200..0xF3000422 capture in Unicorn/QEMU and on real hardware."
 
 [[frontier]]
 id = "F02"
-title = "Which latch arms S-Ele when the open-gate height grows"
-state = "done"
-entities = ["img.sele-refresh", "img.camout-v-check"]
-evidence = ["E0696", "E0697", "E0698"]
-next = "Closed by E0698: the latch source is Lost CAMOUT_V at 0x63907E6A, with rcv_ovf 0x044B02CA and sdvga_ovf 0x044B02C9 both zero in the E0696 trace. The SGC H/V words do track the patched period, so they were not the ceiling."
+title = "Android Vulkan SpektraFilm darkroom prototype in CinemaHUD"
+state = "not-started"
+entities = ["app.android-spektrafilm"]
+evidence = ["E0688"]
+next = "Implement a clean-room NDK Vulkan / Rust compute prototype in android/cinemahud/ (without GPL-3.0 code, loading CC BY-SA 4.0 stock profiles with attribution), validate CIEDE2000 < 0.3 in deterministic lut_mode against gray-ramp/ColorChecker baselines, and benchmark 36-frame ARW2 batch latency and AThermal_getThermalHeadroom pacing on the Xiaomi 14 (Adreno 750)."
 
 [[frontier]]
 id = "F03"
-title = "Which stock-valued vertical limit rejects every dy greater than 0"
-state = "done"
-entities = ["img.fe-band", "img.camout-publish", "img.sgc-trim", "img.fe-rcv", "img.imx284-window"]
-evidence = ["E0698", "E0699", "E0700", "E0701", "E0702", "E0703"]
-next = "Closed by E0702 + E0703: all in-image av-cam.bin carriers (R1 rcv_desc, R2/R4 band clamp, R3 SGC, R6 0xF3122000, 0xF3851xxx/0xF3951xxx, and [[parent+0x8C]]+0x3D8 = fe_rec+0x4E0..+0x528) are ruled out. The upward dy > 0 Lost CAMOUT_V ceiling is enforced on the external CAM front-end side across the ORIL boundary (R5), outside shipped ARM software."
-
-[[frontier]]
-id = "F04"
-title = "Long-term: unlock >3396 vertical lines in 2-channel 4K 24p (Path C)"
-state = "open"
-entities = ["img.recording-paths", "img.camout-publish", "img.imx284-window"]
-evidence = ["E0620", "E0702", "E0703"]
-next = "Long-term plan (deferred while pursuing Path A <=3396-line 3:2 video): determine why IMX284 2-channel 11-bit video mode (m=16/17, w4=0x00020000 at 0x63E24B94) caps at 3396 lines across the CAM front-end ORIL boundary, and compare against ILCE-7M3 (IMX410 3 extra OB bytes + h1!=h2)."
+title = "Mobile fotufilm-engine Metal & batched-Vulkan 36-exposure ARW2 roll prototype"
+state = "not-started"
+entities = ["app.mobile-fotufilm"]
+evidence = ["E0688", "E0689"]
+next = "Prototype halide-vulkan-command-batching.patch (single-VkCommandBuffer barrier batching + external MemoryRegion AHardwareBuffer wrapping + HL_VK_ALLOC_CONFIG='64:4:0:0:256'), unlock iOS Metal buffer pooling + exact_stages tile fusion, add GPU ARW 2.3 unpack + RCD demosaic and uniform reciprocity offsets, verify RMSE <= 1e-4 / CIEDE2000 < 0.3 via fotufilm-parity, and benchmark 36 x 24 MP ARW rolls on iOS Metal and Adreno 750 / Mali Vulkan."
 
 [[hazard]]
 id = "H01"
@@ -579,17 +237,3 @@ title = "Color matrix RAM patches persist"
 effect = "The a6400 color matrix table at 0x6444a044 is saved to /setting/Backup.* on power-off, so RAM patches become persistent."
 rule = "Restore original matrix values before power-off unless a persistent change is intended and authorized."
 evidence = ["E0555"]
-
-[[hazard]]
-id = "H02"
-title = "S-Ele refresh fault store reboots the camera"
-effect = "When refresh_counter is above 10 and bit 0x40 of PA 0x0434FD7E is clear, 0x63907870 stores through r7==0 and the camera reboots."
-rule = "A live open-gate height test that can arm the S-Ele latch needs the existing noreboot bit set first, and must clear it again before the session ends."
-evidence = ["E0696", "E0697"]
-
-[[hazard]]
-id = "H03"
-title = "Any upward open-gate FE/RCV step loses CAMOUT_V"
-effect = "plus24 (+24) and test4 (+160, with lockstep timing) both lost CAMOUT_V and raised refresh_cnt, while shrink (-160), test1 (sensor only) and timing4 (timing only) stayed clean. The ceiling is the stock FE/RCV geometry itself, not the 3480 line budget: test4 kept the stock 35-line margin and still failed."
-rule = "Treat dy greater than 0 as unverified until F03 names the stock-valued limit. Do not spend a live run on +160-class steps; bisect from +8 with noreboot set."
-evidence = ["E0698"]

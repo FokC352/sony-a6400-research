@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
-import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -19,14 +18,10 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import java.io.File
-import java.io.IOException
-import java.net.Inet4Address
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArraySet
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -36,9 +31,6 @@ class WifiSyncForegroundService : Service() {
     private val running = AtomicBoolean(false)
     private val syncSignal = Object()
     private var workerThread: Thread? = null
-    private val postProcessExecutor = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "WiFiSyncPostProc")
-    }
 
     private lateinit var store: SyncStore
     private lateinit var connectivityManager: ConnectivityManager
@@ -116,11 +108,6 @@ class WifiSyncForegroundService : Service() {
 
     override fun onDestroy() {
         stopSyncLoop()
-        postProcessExecutor.shutdown()
-        try {
-            postProcessExecutor.awaitTermination(5, TimeUnit.SECONDS)
-        } catch (_: InterruptedException) {
-        }
         super.onDestroy()
     }
 
@@ -196,7 +183,7 @@ class WifiSyncForegroundService : Service() {
         }
         val cfg = SyncConfig.load(this)
         registerWifiSuggestion(cfg)
-        registerNetworkCallback(cfg)
+        registerNetworkCallback()
         acquireWifiLock()
 
         updateState {
@@ -269,75 +256,21 @@ class WifiSyncForegroundService : Service() {
         }
     }
 
-    private fun hostSubnetPrefix(host: String): String {
-        val lastDot = host.lastIndexOf('.')
-        return if (lastDot > 0) host.substring(0, lastDot + 1) else host
-    }
-
-    private fun hasMatchingSubnet(lp: LinkProperties?, prefix: String): Boolean {
-        if (lp == null || prefix.isEmpty()) return false
-        for (la in lp.linkAddresses) {
-            val addr = la.address
-            if (addr is Inet4Address && (addr.hostAddress ?: "").startsWith(prefix)) {
-                return true
-            }
-        }
-        return false
-    }
-
-    private fun isCameraWifiNetwork(
-        network: Network,
-        cfg: SyncConfig,
-        lp: LinkProperties? = connectivityManager.getLinkProperties(network),
-        caps: NetworkCapabilities? = connectivityManager.getNetworkCapabilities(network)
-    ): Boolean {
-        if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) return false
-        val sameSubnet = hasMatchingSubnet(lp, hostSubnetPrefix(cfg.host))
-        val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        return if (cfg.host == SyncConfig.DEFAULT_HOST) {
-            sameSubnet || !validated
-        } else {
-            sameSubnet || true
-        }
-    }
-
-    private fun tryBindCameraNetwork(
-        network: Network,
-        cfg: SyncConfig,
-        lp: LinkProperties? = connectivityManager.getLinkProperties(network),
-        caps: NetworkCapabilities? = connectivityManager.getNetworkCapabilities(network)
-    ) {
-        if (!isCameraWifiNetwork(network, cfg, lp, caps)) return
-        if (boundCameraNetwork == network) return
-        val sameSubnet = hasMatchingSubnet(lp, hostSubnetPrefix(cfg.host))
-        val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-        boundCameraNetwork = network
-        log("Bound Wi-Fi network $network (subnet=$sameSubnet validated=$validated)")
-        wakeWorker()
-    }
-
-    private fun registerNetworkCallback(cfg: SyncConfig) {
+    private fun registerNetworkCallback() {
         unregisterNetworkCallback()
-        @Suppress("DEPRECATION")
-        for (net in connectivityManager.allNetworks) {
-            tryBindCameraNetwork(net, cfg)
-            if (boundCameraNetwork != null) break
-        }
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                tryBindCameraNetwork(network, cfg)
-            }
-
-            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
-                tryBindCameraNetwork(network, cfg, lp = linkProperties)
-            }
-
-            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                tryBindCameraNetwork(network, cfg, caps = networkCapabilities)
+                val caps = connectivityManager.getNetworkCapabilities(network)
+                val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+                if (!hasInternet || boundCameraNetwork == null) {
+                    boundCameraNetwork = network
+                    log("Bound Wi-Fi network $network (internet=$hasInternet)")
+                    wakeWorker()
+                }
             }
 
             override fun onLost(network: Network) {
@@ -401,56 +334,11 @@ class WifiSyncForegroundService : Service() {
         }
     }
 
-    private fun drainVerifiedStaging() {
-        val root = File(filesDir, "verified")
-        val camDirs = root.listFiles() ?: return
-        for (camDir in camDirs) {
-            if (!camDir.isDirectory) continue
-            val camId = camDir.name
-            val staged = camDir.listFiles() ?: continue
-            for (vf in staged) {
-                if (!vf.isFile) continue
-                postProcessExecutor.execute {
-                    try {
-                        if (!store.isSynced(camId, vf.name)) {
-                            val t0 = System.nanoTime()
-                            val savedPath = CameraHttpClient.publishToMediaStore(this, vf, vf.name)
-                            val pubMs = (System.nanoTime() - t0) / 1_000_000L
-                            val crcHex = CameraHttpClient.computeFileCrc32Hex(vf)
-                            val record = SyncedFileRecord(
-                                cameraId = camId,
-                                dcfName = vf.name,
-                                seqId = 0,
-                                sizeBytes = vf.length(),
-                                crc32Hex = crcHex,
-                                localPath = savedPath,
-                                syncedAtMs = System.currentTimeMillis()
-                            )
-                            store.recordSynced(record)
-                            postTransferHook.onFileVerified(record, vf)
-                            updateState {
-                                syncedCount = store.totalCount()
-                                recentFiles = store.recentFiles()
-                                hookName = postTransferHook.name
-                            }
-                            log("Recovered ${vf.name} (pub=${pubMs}ms) -> $savedPath")
-                        }
-                    } catch (t: Throwable) {
-                        log("Recovery failed (${vf.name}): ${t.message}")
-                    } finally {
-                        vf.delete()
-                    }
-                }
-            }
-        }
-    }
-
     private fun runSyncLoop() {
-        drainVerifiedStaging()
         var backoffMs = 1000L
         while (running.get()) {
             val cfg = SyncConfig.load(this)
-            val client = CameraHttpClient(cfg.host, cfg.port, requireBoundNetwork = true) { boundCameraNetwork }
+            val client = CameraHttpClient(cfg.host, cfg.port) { boundCameraNetwork }
             try {
                 val status = client.fetchStatus()
                 backoffMs = 1000L
@@ -487,7 +375,7 @@ class WifiSyncForegroundService : Service() {
                                 store.updateWatermark(status.cameraId, nextAck)
                                 continue
                             }
-                            transferOneFile(client, status.cameraId, entry, cfg)
+                            transferOneFile(client, status.cameraId, entry)
                         }
                     } finally {
                         releaseTransferWakeLock()
@@ -523,78 +411,33 @@ class WifiSyncForegroundService : Service() {
     private fun transferOneFile(
         client: CameraHttpClient,
         cameraId: String,
-        entry: ManifestEntry,
-        cfg: SyncConfig
+        entry: ManifestEntry
     ) {
-        if (cfg.arwInstantPreview && entry.name.endsWith(".ARW", ignoreCase = true)) {
-            val prevT0 = System.nanoTime()
-            try {
-                val prevBytes = client.downloadPreview(entry.seqId)
-                if (prevBytes != null) {
-                    LookLabImageIO.putCachedPreviewBytes(entry.name, prevBytes)
-                    val prevMs = (System.nanoTime() - prevT0) / 1_000_000L
-                    val stem = entry.name.substringBeforeLast('.', entry.name)
-                    val previewName = "${stem}_preview.JPG"
-                    val interimRecord = SyncedFileRecord(
-                        cameraId = cameraId,
-                        dcfName = entry.name,
-                        seqId = entry.seqId,
-                        sizeBytes = prevBytes.size.toLong(),
-                        crc32Hex = "preview",
-                        localPath = "${android.os.Environment.DIRECTORY_DCIM}/BionzLookLab/$previewName",
-                        syncedAtMs = System.currentTimeMillis()
-                    )
-                    updateState {
-                        recentFiles = listOf(interimRecord) + recentFiles.filter { it.dcfName != entry.name }
-                    }
-                    postProcessExecutor.execute {
-                        try {
-                            val savedPrev = CameraHttpClient.publishBytesToMediaStore(
-                                this,
-                                prevBytes,
-                                previewName
-                            )
-                            log("Saved instant preview $previewName (${prevBytes.size} B, ${prevMs} ms) -> $savedPrev")
-                        } catch (t: Throwable) {
-                            log("Preview publish failed ($previewName): ${t.message}")
-                        }
-                    }
-                }
-            } catch (t: Throwable) {
-                log("Instant preview skipped (${entry.name}): ${t.message}")
-            }
-        }
-
         val partDir = File(filesDir, "parts/$cameraId")
         val partFile = File(partDir, "${entry.name}.part")
-        val autoPreset = LookPresetStore(this).getAutoApplyPreset()
         val startedNs = System.nanoTime()
         var lastProgressNs = 0L
         log("Downloading ${entry.name} (${entry.sizeBytes} B, seq=${entry.seqId})")
 
-        val progressCb: (Long, Long) -> Unit = { rx, total ->
+        val dl = client.downloadWithResume(entry, partFile) { rx, total ->
             val nowNs = System.nanoTime()
-            if (rx >= total || nowNs - lastProgressNs >= 100_000_000L) {
-                lastProgressNs = nowNs
-                val elapsedSec = maxOf((nowNs - startedNs) / 1e9, 0.05)
-                val mbs = rx / (1024.0 * 1024.0) / elapsedSec
-                val pct = if (total > 0L) (rx.toDouble() / total.toDouble()).coerceIn(0.0, 1.0) else 0.0
-                updateState {
-                    activeFile = entry.name
-                    progress = pct
-                    speedMbps = mbs
-                }
+            if (rx < total && nowNs - lastProgressNs < 100_000_000L) return@downloadWithResume
+            lastProgressNs = nowNs
+            val elapsedSec = maxOf((nowNs - startedNs) / 1e9, 0.05)
+            val mbs = (rx - 0L) / (1024.0 * 1024.0) / elapsedSec
+            val pct = if (total > 0L) (rx.toDouble() / total.toDouble()).coerceIn(0.0, 1.0) else 0.0
+            updateState {
+                activeFile = entry.name
+                progress = pct
+                speedMbps = mbs
             }
         }
 
-        if (autoPreset == null && !partFile.isFile) {
-            val (dl, savedPath) = client.downloadToMediaStoreDirect(this, entry, progressCb)
-            val dlMs = (System.nanoTime() - startedNs) / 1_000_000L
-            val elapsedSec = maxOf(dlMs / 1000.0, 0.01)
-            val finalMbs = dl.sizeBytes / (1024.0 * 1024.0) / elapsedSec
+        val elapsedSec = maxOf((System.nanoTime() - startedNs) / 1e9, 0.01)
+        val finalMbs = (dl.sizeBytes - dl.resumedFromBytes) / (1024.0 * 1024.0) / elapsedSec
 
-            val nextAck = client.postAck(entry.seqId, dl.sizeBytes, dl.crc32Hex)
-            store.updateWatermark(cameraId, nextAck)
+        try {
+            val savedPath = CameraHttpClient.publishToMediaStore(this, partFile, entry.name)
 
             val record = SyncedFileRecord(
                 cameraId = cameraId,
@@ -605,68 +448,22 @@ class WifiSyncForegroundService : Service() {
                 localPath = savedPath,
                 syncedAtMs = System.currentTimeMillis()
             )
-            postProcessExecutor.execute {
-                LookLabImageIO.invalidateCache(entry.name)
-                store.recordSynced(record)
-                updateState {
-                    syncedCount = store.totalCount()
-                    recentFiles = store.recentFiles()
-                    speedMbps = finalMbs
-                    hookName = postTransferHook.name
-                }
+            store.recordSynced(record)
+            postTransferHook.onFileVerified(record, partFile)
+
+            val nextAck = client.postAck(entry.seqId, dl.sizeBytes, dl.crc32Hex)
+            store.updateWatermark(cameraId, nextAck)
+
+            updateState {
+                syncedCount = store.totalCount()
+                recentFiles = store.recentFiles()
+                speedMbps = finalMbs
+                hookName = postTransferHook.name
             }
-            log("Synced ${entry.name} [${String.format(Locale.US, "%.2f", finalMbs)} MB/s] direct dl=${dlMs}ms CRC=${dl.crc32Hex}")
-            return
-        }
-
-        val dl = client.downloadWithResume(entry, partFile, progressCb)
-        val dlMs = (System.nanoTime() - startedNs) / 1_000_000L
-        val elapsedSec = maxOf(dlMs / 1000.0, 0.01)
-        val finalMbs = (dl.sizeBytes - dl.resumedFromBytes) / (1024.0 * 1024.0) / elapsedSec
-
-        val verifiedDir = File(filesDir, "verified/$cameraId")
-        verifiedDir.mkdirs()
-        val verifiedFile = File(verifiedDir, entry.name)
-        verifiedFile.delete()
-        if (!partFile.renameTo(verifiedFile)) {
-            throw IOException("Failed to stage verified file ${entry.name}")
-        }
-
-        val nextAck = client.postAck(entry.seqId, dl.sizeBytes, dl.crc32Hex)
-        store.updateWatermark(cameraId, nextAck)
-
-        postProcessExecutor.execute {
-            try {
-                val pubT0 = System.nanoTime()
-                val savedPath = CameraHttpClient.publishToMediaStore(this, verifiedFile, entry.name)
-                val pubMs = (System.nanoTime() - pubT0) / 1_000_000L
-                val record = SyncedFileRecord(
-                    cameraId = cameraId,
-                    dcfName = entry.name,
-                    seqId = entry.seqId,
-                    sizeBytes = dl.sizeBytes,
-                    crc32Hex = dl.crc32Hex,
-                    localPath = savedPath,
-                    syncedAtMs = System.currentTimeMillis()
-                )
-                LookLabImageIO.invalidateCache(entry.name)
-                store.recordSynced(record)
-                val gradeT0 = System.nanoTime()
-                postTransferHook.onFileVerified(record, verifiedFile)
-                val gradeMs = (System.nanoTime() - gradeT0) / 1_000_000L
-                updateState {
-                    syncedCount = store.totalCount()
-                    recentFiles = store.recentFiles()
-                    speedMbps = finalMbs
-                    hookName = postTransferHook.name
-                }
-                val resumedTag = if (dl.resumedFromBytes > 0L) " (resumed from ${dl.resumedFromBytes})" else ""
-                log("Synced ${entry.name} [${String.format(Locale.US, "%.2f", finalMbs)} MB/s] dl=${dlMs}ms pub=${pubMs}ms grade=${gradeMs}ms CRC=${dl.crc32Hex}$resumedTag")
-            } catch (t: Throwable) {
-                log("Post-process failed (${entry.name}): ${t.message}")
-            } finally {
-                verifiedFile.delete()
-            }
+            val resumedTag = if (dl.resumedFromBytes > 0L) " (resumed from ${dl.resumedFromBytes})" else ""
+            log("Synced ${entry.name} [${String.format(Locale.US, "%.2f", finalMbs)} MB/s] CRC=${dl.crc32Hex}$resumedTag")
+        } finally {
+            partFile.delete()
         }
     }
 

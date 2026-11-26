@@ -219,23 +219,23 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-21",
+    as_of="2026-11-26",
     latest=EvidenceRef(
-        evidence_id="E9103",
-        path="docs/evidence/9103-a6100-mod-loader-port.md",
-        date="2026-11-21",
-        title="Mod Loader v2 (MLCR) & Film Simulations ported to ILCE-6100; multi-target SMOD v2 for ILCE-6400",
+        evidence_id="E9105",
+        path="docs/evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md",
+        date="2026-11-26",
+        title="ILCE-6100 RCRAW / AIF0 W2 and S_SetFOPD Gate Chain Mapped for F01",
         demonstrated=(
-            "Offline Picture Profile gate analysis + opt-in PP_UNLOCK=1 overlay (E9101), procedure record (E9102), "
-            "and MLV2_TARGET=a6100 Mod Loader v2 QEMU execution with folder navigation, Film Simulations / Studio GUI, "
-            "FilmSimLive picker, and FilmTexture SMOD v2 builds targeting both ILCE-6100 1.00 and ILCE-6400 2.00."
+            "Static disassembly of captured ILCE-6100 av-cam.bin (58b2118d...) proves RCRAW_EN (0x643EE0F4) / "
+            "RDRAW_EN (0x643EE4B0) only drive FOPD (0x63777380) and AIF W0/W1, while AIF0 W2 (0xF3002480) is gated by "
+            "0x643EDF60 <- S_SetFOPD (0x63B483C0) <- SyncGetPrcFlow (0x63B2E80C) and DFS clock state (0x6455F1B0 in {2,3}), "
+            "with CalcSdevOutSize (0x63DBEFBA) hard-capped at <= 640x480; mapped SET_RAW_EXTERNAL_OUTPUT (0x63BEFFA0)."
         ),
         boundary=(
-            "ILCE-6100 Picture Profile unlock and MLCR port are verified in offline dumps and QEMU (no physical a6100 flash "
-            "write); ILCE-6400 Ver. 2.00 film-simulation addresses are binary/offline-verified against captured av-cam.bin "
-            "and libObj.so without a live hardware camera test."
+            "Offline static analysis only; qualifying SET_RAW_EXTERNAL_OUTPUT (0x2044/0x2042 IPC, 0x00BF0274 gate) and "
+            "IMX284/IDT 0xF3000200..0xF3000422 capture in Unicorn/QEMU and on real hardware remains open (F01)."
         ),
-        tier="OFFLINE + QEMU + ARMv7 SMOD v2",
+        tier="OFFLINE STATIC ANALYSIS",
     ),
     headline="ILCE-6400A SD boot & 10 mods | ILCE-6100 MLCR & Film Sims | L3 OSD surface",
     cards=(

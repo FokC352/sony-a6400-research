@@ -23,8 +23,10 @@
 #include "hw/arm/boot.h"
 #include "hw/arm/machines-qom.h"
 #include "hw/core/loader.h"
+#include "qemu/bswap.h"
 #include "qemu/error-report.h"
 #include "system/reset.h"
+#include "system/runstate.h"
 #include "hw/core/boards.h"
 #include "hw/core/irq.h"
 #include "hw/core/split-irq.h"
@@ -38,6 +40,9 @@
 #include "hw/misc/cxd90014_sio.h"
 #include "hw/misc/cxd90014_adc.h"
 #include "hw/misc/cxd90045_cam.h"
+#include "hw/misc/cxd90045_i2c.h"
+#include "hw/misc/cxd90045_jpeg.h"
+#include "hw/misc/cxd90045_peripherals.h"
 #include "hw/core/sysbus.h"
 #include "system/block-backend-global-state.h"
 #include "system/blockdev.h"
@@ -113,7 +118,13 @@
 #define CXD90045_EMMC0_SPI       (227 - 32)
 #define CXD90045_MMC0_BASE       0xF0300000ULL
 #define CXD90045_MMC0_SPI        (218 - 32)
+#define CXD90045_MMC1_BASE       0xF0301000ULL
+#define CXD90045_MMC1_SPI        (221 - 32)
+#define CXD90045_MMC2_BASE       0xF0302000ULL
+#define CXD90045_MMC2_SPI        (224 - 32)
+#define CXD90045_EFUSE_CHIPID    0xF2915000ULL
 #define CXD90045_SD_MODEREAD     0xF2915010ULL
+#define CXD90045_ASV_BASE        0xF2927000ULL
 #define CXD90045_XDMAC0_BASE     0xF0000000ULL
 #define CXD90045_XDMAC0_SPI_BASE (189 - 32)
 #define CXD90045_XDMAC1_BASE     0xF0010000ULL
@@ -145,6 +156,246 @@ static const MemoryRegionOps cxd90045_crcdc_ops = {
     .write = cxd90045_crcdc_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
+
+/*
+ * Opt-in stateful CRCDC clock model (E0423): cxd900x0_update_crdm writes 1 to
+ * [0xF2A31000 + 0x30], executes dsb, and polls bit 0 until it clears (0),
+ * logging "CRCDC timeout" if bit 0 stays 1.  Off by default so historical
+ * boot-scorer counts on the legacy +0x30 -> 0x1 stub do not change.
+ */
+typedef struct CxdCrcdcModel {
+    MemoryRegion mmio;
+    uint32_t regs[0x400];
+} CxdCrcdcModel;
+
+static bool sony_a6400_crcdc_model;
+
+static uint64_t cxd90045_crcdc_model_read(void *opaque, hwaddr offset,
+                                          unsigned size)
+{
+    CxdCrcdcModel *s = opaque;
+    size_t idx = offset >> 2;
+
+    if (offset == 0x30) {
+        return s->regs[0x30 >> 2] & ~1U;
+    }
+    if (idx < ARRAY_SIZE(s->regs)) {
+        return s->regs[idx];
+    }
+    return 0;
+}
+
+static void cxd90045_crcdc_model_write(void *opaque, hwaddr offset,
+                                       uint64_t value, unsigned size)
+{
+    CxdCrcdcModel *s = opaque;
+    size_t idx = offset >> 2;
+
+    if (offset == 0x30) {
+        s->regs[0x30 >> 2] = (uint32_t)value & ~1U;
+        return;
+    }
+    if (idx < ARRAY_SIZE(s->regs)) {
+        s->regs[idx] = (uint32_t)value;
+    }
+}
+
+static const MemoryRegionOps cxd90045_crcdc_model_ops = {
+    .read = cxd90045_crcdc_model_read,
+    .write = cxd90045_crcdc_model_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static void cxd90045_crcdc_model_reset(void *opaque)
+{
+    CxdCrcdcModel *s = opaque;
+
+    memset(s->regs, 0, sizeof(s->regs));
+    /* av-cam 0x63a6f224 base-clock ratio word ([0xF2A31190] & 0xFF == 0x3F) */
+    s->regs[0x190 >> 2] = 0x3FU;
+}
+
+static void cxd90045_create_crcdc_model(MemoryRegion *sysmem, int priority)
+{
+    CxdCrcdcModel *s = g_new0(CxdCrcdcModel, 1);
+
+    cxd90045_crcdc_model_reset(s);
+    memory_region_init_io(&s->mmio, NULL, &cxd90045_crcdc_model_ops, s,
+                          "cxd90045.crcdc-model", 0x1000);
+    memory_region_add_subregion_overlap(sysmem, CXD90045_CRCDC_BASE, &s->mmio,
+                                        priority);
+    qemu_register_reset(cxd90045_crcdc_model_reset, s);
+}
+
+static bool sony_get_crcdc_model(Object *obj, Error **errp)
+{
+    return sony_a6400_crcdc_model;
+}
+
+static void sony_set_crcdc_model(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "crcdc-model is a startup option");
+        return;
+    }
+    sony_a6400_crcdc_model = enabled;
+}
+
+static bool sony_a6400_pl310;
+
+static bool sony_get_pl310(Object *obj, Error **errp)
+{
+    return sony_a6400_pl310;
+}
+
+static void sony_set_pl310(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "pl310 is a startup option");
+        return;
+    }
+    sony_a6400_pl310 = enabled;
+}
+
+/*
+ * CXD90045 PL310 (L2C-310 @ 0xF8002000) register extensions overlaid on stock
+ * QEMU l2x0 when pl310=on:
+ *   - +0x004 CACHE_TYPE: read-only 0x1C100100 (avoids upstream arm_l2x0.c
+ *     mutating s->cache_type on reads)
+ *   - +0x200..+0x227: Sony kernel L2 PMU & interrupt registers (0x60120DF4..)
+ *   - +0x900..+0x93F: 8-CPU D/I way-lockdown registers (16 words, R/W)
+ *   - +0xF40..+0xF83: DEBUG_CTRL (+0x00), PREFETCH_CTRL (+0x20), POWER_CTRL
+ */
+typedef struct CxdPl310Ext {
+    MemoryRegion cache_type_mr;
+    MemoryRegion pmu_irq_mr;
+    MemoryRegion lockdown_mr;
+    MemoryRegion ctrl_ext_mr;
+    uint32_t pmu_irq[0x28 >> 2];
+    uint32_t lockdown[16];
+    uint32_t ctrl_ext[0x44 >> 2];
+} CxdPl310Ext;
+
+static uint64_t cxd90045_pl310_ctype_read(void *opaque, hwaddr off, unsigned sz)
+{
+    return 0x1C100100ULL;
+}
+
+static void cxd90045_pl310_ctype_write(void *opaque, hwaddr off, uint64_t v,
+                                       unsigned sz)
+{
+}
+
+static const MemoryRegionOps cxd90045_pl310_ctype_ops = {
+    .read = cxd90045_pl310_ctype_read,
+    .write = cxd90045_pl310_ctype_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static uint64_t cxd90045_pl310_pmu_read(void *opaque, hwaddr off, unsigned sz)
+{
+    CxdPl310Ext *s = opaque;
+    return (off >> 2) < ARRAY_SIZE(s->pmu_irq) ? s->pmu_irq[off >> 2] : 0;
+}
+
+static void cxd90045_pl310_pmu_write(void *opaque, hwaddr off, uint64_t v,
+                                     unsigned sz)
+{
+    CxdPl310Ext *s = opaque;
+    if (off == 0x20) { /* +0x220 INT_CLEAR (W1C on +0x21C INT_RAW_STATUS) */
+        s->pmu_irq[0x1C >> 2] &= ~(uint32_t)v;
+        s->pmu_irq[0x18 >> 2] = s->pmu_irq[0x1C >> 2] & s->pmu_irq[0x14 >> 2];
+        return;
+    }
+    if ((off >> 2) < ARRAY_SIZE(s->pmu_irq)) {
+        s->pmu_irq[off >> 2] = (uint32_t)v;
+    }
+}
+
+static const MemoryRegionOps cxd90045_pl310_pmu_ops = {
+    .read = cxd90045_pl310_pmu_read,
+    .write = cxd90045_pl310_pmu_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static uint64_t cxd90045_pl310_lock_read(void *opaque, hwaddr off, unsigned sz)
+{
+    CxdPl310Ext *s = opaque;
+    return (off >> 2) < ARRAY_SIZE(s->lockdown) ? s->lockdown[off >> 2] : 0;
+}
+
+static void cxd90045_pl310_lock_write(void *opaque, hwaddr off, uint64_t v,
+                                      unsigned sz)
+{
+    CxdPl310Ext *s = opaque;
+    if ((off >> 2) < ARRAY_SIZE(s->lockdown)) {
+        s->lockdown[off >> 2] = (uint32_t)v;
+    }
+}
+
+static const MemoryRegionOps cxd90045_pl310_lock_ops = {
+    .read = cxd90045_pl310_lock_read,
+    .write = cxd90045_pl310_lock_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static uint64_t cxd90045_pl310_ext_read(void *opaque, hwaddr off, unsigned sz)
+{
+    CxdPl310Ext *s = opaque;
+    return (off >> 2) < ARRAY_SIZE(s->ctrl_ext) ? s->ctrl_ext[off >> 2] : 0;
+}
+
+static void cxd90045_pl310_ext_write(void *opaque, hwaddr off, uint64_t v,
+                                     unsigned sz)
+{
+    CxdPl310Ext *s = opaque;
+    if ((off >> 2) < ARRAY_SIZE(s->ctrl_ext)) {
+        s->ctrl_ext[off >> 2] = (uint32_t)v;
+    }
+}
+
+static const MemoryRegionOps cxd90045_pl310_ext_ops = {
+    .read = cxd90045_pl310_ext_read,
+    .write = cxd90045_pl310_ext_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static void cxd90045_pl310_ext_reset(void *opaque)
+{
+    CxdPl310Ext *s = opaque;
+    memset(s->pmu_irq, 0, sizeof(s->pmu_irq));
+    memset(s->lockdown, 0, sizeof(s->lockdown));
+    memset(s->ctrl_ext, 0, sizeof(s->ctrl_ext));
+}
+
+static void cxd90045_create_pl310_ext(MemoryRegion *sysmem)
+{
+    CxdPl310Ext *s = g_new0(CxdPl310Ext, 1);
+
+    memory_region_init_io(&s->cache_type_mr, NULL, &cxd90045_pl310_ctype_ops, s,
+                          "cxd90045.pl310-ctype", 4);
+    memory_region_init_io(&s->pmu_irq_mr, NULL, &cxd90045_pl310_pmu_ops, s,
+                          "cxd90045.pl310-pmu", 0x28);
+    memory_region_init_io(&s->lockdown_mr, NULL, &cxd90045_pl310_lock_ops, s,
+                          "cxd90045.pl310-lockdown", 0x40);
+    memory_region_init_io(&s->ctrl_ext_mr, NULL, &cxd90045_pl310_ext_ops, s,
+                          "cxd90045.pl310-ext", 0x44);
+    memory_region_add_subregion_overlap(sysmem, 0xF8002004ULL,
+                                        &s->cache_type_mr, 1);
+    memory_region_add_subregion_overlap(sysmem, 0xF8002200ULL,
+                                        &s->pmu_irq_mr, 1);
+    memory_region_add_subregion_overlap(sysmem, 0xF8002900ULL,
+                                        &s->lockdown_mr, 1);
+    memory_region_add_subregion_overlap(sysmem, 0xF8002F40ULL,
+                                        &s->ctrl_ext_mr, 1);
+    qemu_register_reset(cxd90045_pl310_ext_reset, s);
+}
 
 static uint64_t cxd90045_l2c_stub_read(void *opaque, hwaddr offset, unsigned size)
 {
@@ -1036,6 +1287,7 @@ static void sony_set_f30a_fill(Object *obj, bool enabled, Error **errp)
 #define CXD90045_LOWMEM_ABORT_SIZE 0x1000ULL
 
 static bool sony_a6400_lowmem_abort;
+static bool sony_a6400_strict_bus_abort;
 
 static MemTxResult cxd90045_lowmem_abort_read(void *opaque, hwaddr addr,
                                               uint64_t *data, unsigned size,
@@ -1074,7 +1326,9 @@ static void sony_a6400_create_lowmem_abort(MemoryRegion *sysmem, ARMCPU **cpus,
                           "cxd90045.lowmem-abort", CXD90045_LOWMEM_ABORT_SIZE);
     memory_region_add_subregion_overlap(sysmem, CXD90045_LOWMEM_ABORT_BASE,
                                         mr, 10);
-    create_unimplemented_device("cxd90045.unassigned", 0, 1ULL << 32);
+    if (!sony_a6400_strict_bus_abort) {
+        create_unimplemented_device("cxd90045.unassigned", 0, 1ULL << 32);
+    }
     for (unsigned c = 0; c < ncpu; c++) {
         CPU(cpus[c])->ignore_memory_transaction_failures = false;
     }
@@ -1092,6 +1346,20 @@ static void sony_set_lowmem_abort(Object *obj, bool enabled, Error **errp)
         return;
     }
     sony_a6400_lowmem_abort = enabled;
+}
+
+static bool sony_get_strict_bus_abort(Object *obj, Error **errp)
+{
+    return sony_a6400_strict_bus_abort;
+}
+
+static void sony_set_strict_bus_abort(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "strict-bus-abort is a startup option");
+        return;
+    }
+    sony_a6400_strict_bus_abort = enabled;
 }
 
 static void sony_set_work_dma(Object *obj, bool enabled, Error **errp)
@@ -1138,6 +1406,7 @@ typedef struct CxdDdrbControl {
     uint32_t status;
     uint32_t mode;
     uint32_t limit[2];
+    bool allow_self_refresh;
 } CxdDdrbControl;
 
 static bool sony_a6400_ddrb_control;
@@ -1213,6 +1482,12 @@ static void cxd90045_ddrb_write(void *opaque, hwaddr offset, uint64_t value,
             s->status = 0;
             return;
         }
+        /* SRAM power-down stub (0xFE020000, cxd900x0_cpu_suspend) self-refresh */
+        if (s->allow_self_refresh && (value == 0xEAu || value == 0x1AEu)) {
+            s->mode = (uint32_t)value & 0xFFu;
+            s->status |= DDRB_MODE_DONE;
+            return;
+        }
         break;
     case DDRB_STATUS_CLEAR:
         s->status &= ~(value & (DDRB_RANK_DONE | DDRB_MODE_DONE));
@@ -1260,14 +1535,15 @@ static const VMStateDescription vmstate_cxd_ddrb = {
     }
 };
 
-static void cxd90045_create_ddrb(MemoryRegion *sysmem)
+static void cxd90045_create_ddrb_at(MemoryRegion *sysmem, hwaddr base,
+                                    const char *name, bool self_refresh)
 {
     CxdDdrbControl *s = g_new0(CxdDdrbControl, 1);
 
     cxd90045_ddrb_reset(s);
-    memory_region_init_io(&s->mmio, NULL, &cxd90045_ddrb_ops, s,
-                          "cxd90045.ddrb", 0x21c);
-    memory_region_add_subregion_overlap(sysmem, CXD90045_DDRB_BASE, &s->mmio, 0);
+    s->allow_self_refresh = self_refresh;
+    memory_region_init_io(&s->mmio, NULL, &cxd90045_ddrb_ops, s, name, 0x21c);
+    memory_region_add_subregion_overlap(sysmem, base, &s->mmio, 0);
     qemu_register_reset(cxd90045_ddrb_reset, s);
     vmstate_register(NULL, 0, &vmstate_cxd_ddrb, s);
 }
@@ -1312,11 +1588,33 @@ static void sony_set_zve10_menu_boot(Object *obj, bool enabled, Error **errp)
     sony_a6400_zve10_menu_boot = enabled;
 }
 
-#define CXD90045_KERNEL_LOAD     0x00108000ULL
-#define CXD90045_INITRD_LOAD     0x00700000ULL
-#define CXD90045_INITRD_MAX      0x00800000ULL
-#define CXD90045_BOOT_PARAMS     0x00103000ULL
-#define CXD90045_BOOT_PARAMS_MAX (CXD90045_KERNEL_LOAD - CXD90045_BOOT_PARAMS)
+/* Standard ARMv7 Linux ATAGS/DTB boot contract for custom kernels/OSes. */
+static bool sony_a6400_linux_boot;
+
+static bool sony_get_linux_boot(Object *obj, Error **errp)
+{
+    return sony_a6400_linux_boot;
+}
+
+static void sony_set_linux_boot(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "linux-boot is a startup-only policy");
+        return;
+    }
+    sony_a6400_linux_boot = enabled;
+}
+
+#define CXD90045_KERNEL_LOAD       0x00108000ULL
+#define CXD90045_INITRD_LOAD       0x00700000ULL
+#define CXD90045_INITRD_MAX        0x00800000ULL
+#define CXD90045_LINUX_KERNEL_MAX  0x02000000ULL
+#define CXD90045_LINUX_DTB_LOAD    0x0FF00000ULL
+#define CXD90045_LINUX_DTB_MAX     0x00100000ULL
+#define CXD90045_LINUX_INITRD_LOAD 0x10000000ULL
+#define CXD90045_LINUX_INITRD_MAX  0x08000000ULL
+#define CXD90045_BOOT_PARAMS       0x00103000ULL
+#define CXD90045_BOOT_PARAMS_MAX   (CXD90045_KERNEL_LOAD - CXD90045_BOOT_PARAMS)
 
 /*
  * Boot stubs in the reserved first megabyte (memrsv=1M@0), standing in for
@@ -1426,7 +1724,7 @@ static void cxd90045_spi_targets(uint32_t *words, unsigned ncpu)
     }
 }
 
-static void sony_a6400_write_stubs(unsigned ncpu)
+static void sony_a6400_write_stubs(unsigned ncpu, bool linux_dtb)
 {
     uint32_t blob0[20 + 56];
     uint32_t smp[11];
@@ -1441,6 +1739,8 @@ static void sony_a6400_write_stubs(unsigned ncpu)
         /* ARM immediate encoding: mov pc, #0x138000. */
         blob0[13] = cpu_to_le32(0xe3a0f94e);
         blob0[19] = cpu_to_le32(0x100); /* adapted kernel uses Linux ATAGS */
+    } else if (sony_a6400_linux_boot && linux_dtb) {
+        blob0[19] = cpu_to_le32(CXD90045_LINUX_DTB_LOAD);
     }
     cxd90045_spi_targets(&blob0[20], ncpu);
     rom_add_blob_fixed("sony_a6400.stub0", blob0, sizeof(blob0),
@@ -1513,19 +1813,117 @@ static void sony_a6400_menu_atags(MachineState *machine, uint32_t initrd_size)
     rom_add_blob_fixed("sony_a6400.menu_atags", tags, count * 4, 0x100);
 }
 
+/*
+ * Standard ARMv7 Linux ATAGS for custom kernels and OS images (linux-boot=on):
+ * placed at 0x00103000 (CXD90045_BOOT_PARAMS) instead of "kemco ...",
+ * advertising both CXD90045 DRAM banks (1024 MiB @ 0x00000000, 1016 MiB @
+ * 0x80000000, E0416), optional initrd @ 0x10000000, NUL-terminated cmdline,
+ * and ATAG_NONE.
+ */
+static void sony_a6400_linux_atags(MachineState *machine, uint32_t initrd_size)
+{
+    const char *cmdline = machine->kernel_cmdline ? machine->kernel_cmdline : "";
+    size_t cmd_words = (strlen(cmdline) + 1 + 3) / 4;
+    size_t count = 5 + 4 + 4 + (initrd_size ? 4 : 0) + 2 + cmd_words + 2;
+
+    if (count * 4 > CXD90045_BOOT_PARAMS_MAX) {
+        error_report("sony-a6400: linux-boot ATAGS exceed reserved space");
+        exit(1);
+    }
+
+    g_autofree uint32_t *tags = g_new0(uint32_t, count);
+    uint32_t *p = tags;
+
+    *p++ = cpu_to_le32(5);
+    *p++ = cpu_to_le32(0x54410001); /* ATAG_CORE */
+    *p++ = 0;
+    *p++ = 0;
+    *p++ = 0;
+
+    *p++ = cpu_to_le32(4);
+    *p++ = cpu_to_le32(0x54410002); /* ATAG_MEM #0 (RAM bank 0: 1024 MiB) */
+    *p++ = cpu_to_le32((uint32_t)CXD90045_RAM0_SIZE);
+    *p++ = cpu_to_le32((uint32_t)CXD90045_RAM0_BASE);
+
+    *p++ = cpu_to_le32(4);
+    *p++ = cpu_to_le32(0x54410002); /* ATAG_MEM #1 (RAM bank 1: 1016 MiB) */
+    *p++ = cpu_to_le32((uint32_t)CXD90045_RAM1_SIZE);
+    *p++ = cpu_to_le32((uint32_t)CXD90045_RAM1_BASE);
+
+    if (initrd_size > 0) {
+        *p++ = cpu_to_le32(4);
+        *p++ = cpu_to_le32(0x54420005); /* ATAG_INITRD2 */
+        *p++ = cpu_to_le32((uint32_t)CXD90045_LINUX_INITRD_LOAD);
+        *p++ = cpu_to_le32(initrd_size);
+    }
+
+    *p++ = cpu_to_le32(2 + cmd_words);
+    *p++ = cpu_to_le32(0x54410009); /* ATAG_CMDLINE */
+    memcpy(p, cmdline, strlen(cmdline) + 1);
+    p += cmd_words;
+
+    *p++ = 0; /* ATAG_NONE */
+    *p++ = 0;
+    g_assert((size_t)(p - tags) == count);
+
+    rom_add_blob_fixed("sony_a6400.linux_atags", tags, count * 4,
+                       CXD90045_BOOT_PARAMS);
+}
+
+static void sony_a6400_linux_load_dtb(const char *dtb_path)
+{
+    g_autofree gchar *dtb_data = NULL;
+    gsize dtb_len = 0;
+    g_autoptr(GError) gerr = NULL;
+
+    if (!g_file_get_contents(dtb_path, &dtb_data, &dtb_len, &gerr)) {
+        error_report("sony-a6400: could not read DTB '%s': %s",
+                     dtb_path, gerr ? gerr->message : "read error");
+        exit(1);
+    }
+    if (dtb_len < 40 || dtb_len > CXD90045_LINUX_DTB_MAX) {
+        error_report("sony-a6400: invalid DTB '%s' size %" G_GSIZE_FORMAT
+                     " (expected 40..%" PRIu64 " bytes)",
+                     dtb_path, dtb_len, (uint64_t)CXD90045_LINUX_DTB_MAX);
+        exit(1);
+    }
+    if ((uint32_t)ldl_be_p(dtb_data) != 0xD00DFEEDU) {
+        error_report("sony-a6400: invalid DTB '%s': bad FDT magic 0x%08x "
+                     "(expected 0xd00dfeed)",
+                     dtb_path, (uint32_t)ldl_be_p(dtb_data));
+        exit(1);
+    }
+    rom_add_blob_fixed("sony_a6400.linux_dtb", dtb_data, dtb_len,
+                       CXD90045_LINUX_DTB_LOAD);
+}
+
 static void sony_a6400_load_boot_contract(MachineState *machine,
                                           ARMCPU **cpus, unsigned ncpu)
 {
     const char *append = machine->kernel_cmdline ? machine->kernel_cmdline : "";
+    bool has_dtb = machine->dtb && *machine->dtb;
     g_autofree char *params = NULL;
     ssize_t size;
+    ssize_t initrd_size = 0;
     hwaddr kernel_load = sony_a6400_zve10_menu_boot ?
                           0x00138000 : CXD90045_KERNEL_LOAD;
-    hwaddr initrd_load = sony_a6400_zve10_menu_boot ?
-                          0x10000000 : CXD90045_INITRD_LOAD;
-    uint64_t initrd_max = sony_a6400_zve10_menu_boot ?
-                          0x10000000 : CXD90045_INITRD_MAX;
+    hwaddr initrd_load = sony_a6400_linux_boot ?
+                          CXD90045_LINUX_INITRD_LOAD :
+                         (sony_a6400_zve10_menu_boot ?
+                          0x10000000 : CXD90045_INITRD_LOAD);
+    uint64_t initrd_max = sony_a6400_linux_boot ?
+                          CXD90045_LINUX_INITRD_MAX :
+                          (sony_a6400_zve10_menu_boot ?
+                           0x10000000 : CXD90045_INITRD_MAX);
+    uint64_t kernel_max = sony_a6400_linux_boot ?
+                          CXD90045_LINUX_KERNEL_MAX :
+                          (initrd_load - kernel_load);
 
+    if (sony_a6400_linux_boot && sony_a6400_zve10_menu_boot) {
+        error_report("sony-a6400: linux-boot and zve10-menu-boot are mutually "
+                     "exclusive");
+        exit(1);
+    }
     if (sony_a6400_zve10_menu_boot && ncpu != 1) {
         error_report("sony-a6400: adapted ZV-E10 menu requires -smp 1");
         exit(1);
@@ -1533,33 +1931,42 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
     for (unsigned i = 0; i < ncpu; i++) {
         qemu_register_reset(sony_a6400_cpu_reset, cpus[i]);
     }
-    sony_a6400_write_stubs(ncpu);
-    if (!machine->kernel_filename) {
+    sony_a6400_write_stubs(ncpu, has_dtb);
+
+    if (machine->kernel_filename) {
+        size = load_image_targphys(machine->kernel_filename, kernel_load,
+                                   kernel_max, &error_fatal);
+        if (size <= 0) {
+            error_report("sony-a6400: could not load kernel '%s'",
+                         machine->kernel_filename);
+            exit(1);
+        }
+    } else if (!sony_a6400_linux_boot) {
         return;
     }
 
-    size = load_image_targphys(machine->kernel_filename, kernel_load,
-                               initrd_load - kernel_load,
-                               &error_fatal);
-    if (size <= 0) {
-        error_report("sony-a6400: could not load kernel '%s'",
-                     machine->kernel_filename);
-        exit(1);
-    }
-
     if (machine->initrd_filename) {
-        size = load_image_targphys(machine->initrd_filename,
-                                   initrd_load, initrd_max,
-                                   &error_fatal);
-        if (size <= 0) {
+        initrd_size = load_image_targphys(machine->initrd_filename,
+                                          initrd_load, initrd_max,
+                                          &error_fatal);
+        if (initrd_size <= 0) {
             error_report("sony-a6400: could not load initrd '%s'",
                          machine->initrd_filename);
             exit(1);
         }
     }
 
+    if (sony_a6400_linux_boot) {
+        if (has_dtb) {
+            sony_a6400_linux_load_dtb(machine->dtb);
+        } else {
+            sony_a6400_linux_atags(machine, (uint32_t)initrd_size);
+        }
+        return;
+    }
+
     if (sony_a6400_zve10_menu_boot) {
-        sony_a6400_menu_atags(machine, machine->initrd_filename ? size : 0);
+        sony_a6400_menu_atags(machine, (uint32_t)initrd_size);
     }
 
     params = g_str_has_prefix(append, "kemco") ? g_strdup(append)
@@ -1588,10 +1995,13 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
 static DeviceState *sony_a6400_gpio;
 static QEMUTimer *sony_a6400_sm_timer;
 static int sony_a6400_sm_step;
+static bool sony_a6400_caif_rx_active;
 
 static void sony_a6400_submicro_tick(void *opaque)
 {
-    qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, CXD90045_SM_REQ_LINE), 0);
+    if (!sony_a6400_caif_rx_active) {
+        qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, CXD90045_SM_REQ_LINE), 0);
+    }
     sony_a6400_sm_step ^= 1;
     qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, CXD90045_SM_STROBE_LINE),
                  sony_a6400_sm_step);
@@ -1687,6 +2097,122 @@ static const MemoryRegionOps sony_a6400_sd_mode_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = { .min_access_size = 4, .max_access_size = 4 },
 };
+
+/*
+ * Opt-in CXD90045 MISCREG/eFuse and ASV words (E0643):
+ *   0xF2915000 EFUSE_CHIPID / EFUSE_TYPEID -> 0x00000500
+ *   0xF2915010 MODEREAD -> 0x0C01002B (live ILCE-6400 with SD inserted;
+ *              BIT(24) set -> 0x0D01002B when empty/ejected; BIT(25) set when
+ *              write-protected)
+ *   0xF2927000 ASV voltage-binning -> 0x00000000
+ */
+static bool sony_a6400_miscreg;
+
+static uint64_t cxd90045_efuse_chipid_read(void *opaque, hwaddr offset,
+                                           unsigned size)
+{
+    return (0x00000500ULL >> (offset * 8)) & MAKE_64BIT_MASK(0, size * 8);
+}
+
+static void cxd90045_efuse_chipid_write(void *opaque, hwaddr offset,
+                                        uint64_t value, unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR,
+                  "cxd90045.miscreg: write to EFUSE_CHIPID (0xF2915000+0x%"
+                  HWADDR_PRIx ") = 0x%" PRIx64 " ignored\n", offset, value);
+}
+
+static const MemoryRegionOps cxd90045_efuse_chipid_ops = {
+    .read = cxd90045_efuse_chipid_read,
+    .write = cxd90045_efuse_chipid_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+static uint64_t cxd90045_miscreg_moderead(void *opaque, hwaddr offset,
+                                          unsigned size)
+{
+    uint32_t val = 0x0C01002BU |
+        ((sony_a6400_sd_bus && sdbus_get_inserted(sony_a6400_sd_bus)) ?
+         0 : BIT(24)) |
+        ((sony_a6400_sd_bus && sdbus_get_readonly(sony_a6400_sd_bus)) ?
+         BIT(25) : 0);
+
+    return ((uint64_t)val >> (offset * 8)) & MAKE_64BIT_MASK(0, size * 8);
+}
+
+static void cxd90045_miscreg_modewrite(void *opaque, hwaddr offset,
+                                       uint64_t value, unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR | LOG_UNIMP,
+                  "cxd90045.miscreg: write to MODEREAD (0xF2915010+0x%"
+                  HWADDR_PRIx ") = 0x%" PRIx64 " ignored\n", offset, value);
+}
+
+static const MemoryRegionOps cxd90045_miscreg_mode_ops = {
+    .read = cxd90045_miscreg_moderead,
+    .write = cxd90045_miscreg_modewrite,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+static uint64_t cxd90045_asv_read(void *opaque, hwaddr offset, unsigned size)
+{
+    return 0;
+}
+
+static void cxd90045_asv_write(void *opaque, hwaddr offset, uint64_t value,
+                              unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR,
+                  "cxd90045.miscreg: write to ASV (0xF2927000+0x%"
+                  HWADDR_PRIx ") = 0x%" PRIx64 " ignored\n", offset, value);
+}
+
+static const MemoryRegionOps cxd90045_asv_ops = {
+    .read = cxd90045_asv_read,
+    .write = cxd90045_asv_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+static void cxd90045_create_miscreg(MemoryRegion *sysmem)
+{
+    MemoryRegion *efuse = g_new(MemoryRegion, 1);
+    MemoryRegion *moderead = g_new(MemoryRegion, 1);
+    MemoryRegion *asv = g_new(MemoryRegion, 1);
+
+    memory_region_init_io(efuse, NULL, &cxd90045_efuse_chipid_ops, NULL,
+                          "cxd90045.efuse-chipid", 4);
+    memory_region_add_subregion_overlap(sysmem, CXD90045_EFUSE_CHIPID,
+                                        efuse, 0);
+
+    memory_region_init_io(moderead, NULL, &cxd90045_miscreg_mode_ops, NULL,
+                          "cxd90045.miscreg-moderead", 4);
+    memory_region_add_subregion_overlap(sysmem, CXD90045_SD_MODEREAD,
+                                        moderead, 0);
+
+    memory_region_init_io(asv, NULL, &cxd90045_asv_ops, NULL,
+                          "cxd90045.asv", 4);
+    memory_region_add_subregion_overlap(sysmem, CXD90045_ASV_BASE, asv, 0);
+}
+
+static bool sony_get_miscreg(Object *obj, Error **errp)
+{
+    return sony_a6400_miscreg;
+}
+
+static void sony_set_miscreg(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "miscreg is a startup option");
+        return;
+    }
+    sony_a6400_miscreg = enabled;
+}
 
 static uint64_t sony_a6400_wheel_read(void *opaque, hwaddr offset, unsigned size)
 {
@@ -2063,28 +2589,34 @@ static void sony_a6400_set_sgc1_event_a(Object *obj, bool value, Error **errp)
  * bytes are 03 b1 01 23 ab 71 is patched; the check repeats every 100 ms of
  * virtual time until it has patched once, then the timer stops.
  */
-#define GATE_FORCE_PA 0x03874FD0ULL
+#define GATE_FORCE_PA_A6400  0x03874FD0ULL
+#define GATE_FORCE_PA_A6400A 0x0386AFD4ULL
 #define GATE_FORCE_PERIOD_NS (100 * 1000 * 1000LL)
 
 static bool sony_a6400_gate_force_probe;
 static QEMUTimer *sony_a6400_gate_force_timer;
+static hwaddr sony_active_gate_force_pa = GATE_FORCE_PA_A6400;
+static hwaddr sony_active_entry_force_pa = 0x0386CDC0ULL;
+static hwaddr sony_active_entry_force_s_pa = 0x0431B594ULL;
 
 static void sony_a6400_gate_force_tick(void *opaque)
 {
     static const uint8_t expected[6] = { 0x03, 0xb1, 0x01, 0x23, 0xab, 0x71 };
     uint8_t bytes[6];
     uint16_t nop = 0xbf00;
+    hwaddr pa = sony_active_gate_force_pa;
 
-    address_space_read(&address_space_memory, GATE_FORCE_PA,
+    address_space_read(&address_space_memory, pa,
                        MEMTXATTRS_UNSPECIFIED, bytes, sizeof(bytes));
     if (memcmp(bytes, expected, sizeof(expected)) != 0) {
         timer_mod(sony_a6400_gate_force_timer,
                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + GATE_FORCE_PERIOD_NS);
         return;
     }
-    address_space_write(&address_space_memory, GATE_FORCE_PA,
+    address_space_write(&address_space_memory, pa,
                         MEMTXATTRS_UNSPECIFIED, &nop, sizeof(nop));
-    fprintf(stderr, "a6400: gate-force-probe patched 0x03874fd0\n");
+    fprintf(stderr, "a6400: gate-force-probe patched 0x%08" HWADDR_PRIx "\n",
+            pa);
 }
 
 static bool sony_a6400_get_gate_force_probe(Object *obj, Error **errp)
@@ -2110,10 +2642,12 @@ static void sony_a6400_set_gate_force_probe(Object *obj, bool value,
  * naturally. The timer polls every 100 us of virtual time: the S = 240
  * window at the first entry is only tens of ms long (L0068 DBG2).
  */
-#define ENTRY_FORCE_PA 0x0386CDC0ULL
-#define ENTRY_FORCE_S_PA 0x0431B594ULL
-#define ENTRY_FORCE_PERIOD_NS (100 * 1000LL)
-#define ENTRY_FORCE_S_READY 0xf0
+#define ENTRY_FORCE_PA_A6400    0x0386CDC0ULL
+#define ENTRY_FORCE_S_PA_A6400  0x0431B594ULL
+#define ENTRY_FORCE_PA_A6400A   0x038793ACULL
+#define ENTRY_FORCE_S_PA_A6400A 0x0432AEACULL
+#define ENTRY_FORCE_PERIOD_NS   (100 * 1000LL)
+#define ENTRY_FORCE_S_READY     0xf0
 
 static bool sony_a6400_entry_force_probe;
 static QEMUTimer *sony_a6400_entry_force_timer;
@@ -2124,24 +2658,25 @@ static void sony_a6400_entry_force_tick(void *opaque)
     static const uint8_t forced[4] = { 0x01, 0x20, 0x00, 0x23 };
     uint8_t bytes[4];
     uint8_t s;
+    hwaddr s_pa = sony_active_entry_force_s_pa;
+    hwaddr e_pa = sony_active_entry_force_pa;
 
-    address_space_read(&address_space_memory, ENTRY_FORCE_S_PA,
+    address_space_read(&address_space_memory, s_pa,
                        MEMTXATTRS_UNSPECIFIED, &s, sizeof(s));
-    address_space_read(&address_space_memory, ENTRY_FORCE_PA,
+    address_space_read(&address_space_memory, e_pa,
                        MEMTXATTRS_UNSPECIFIED, bytes, sizeof(bytes));
     if (s == ENTRY_FORCE_S_READY && memcmp(bytes, orig, sizeof(orig)) == 0) {
-        address_space_write(&address_space_memory, ENTRY_FORCE_PA,
+        address_space_write(&address_space_memory, e_pa,
                             MEMTXATTRS_UNSPECIFIED, forced, sizeof(forced));
-        tb_invalidate_phys_range(NULL, ENTRY_FORCE_PA,
-                                 ENTRY_FORCE_PA + sizeof(forced) - 1);
+        tb_invalidate_phys_range(NULL, e_pa, e_pa + sizeof(forced) - 1);
         fprintf(stderr, "a6400: entry-force-probe applied "
-                "0x6386cdc0=0x2001,0x2300 (dispatch add.w r3,r0,#-1)\n");
+                "0x%08" PRIx64 "=0x2001,0x2300 (dispatch add.w r3,r0,#-1)\n",
+                (uint64_t)(e_pa + 0x60000000ULL));
     } else if (s != ENTRY_FORCE_S_READY &&
                memcmp(bytes, forced, sizeof(forced)) == 0) {
-        address_space_write(&address_space_memory, ENTRY_FORCE_PA,
+        address_space_write(&address_space_memory, e_pa,
                             MEMTXATTRS_UNSPECIFIED, orig, sizeof(orig));
-        tb_invalidate_phys_range(NULL, ENTRY_FORCE_PA,
-                                 ENTRY_FORCE_PA + sizeof(orig) - 1);
+        tb_invalidate_phys_range(NULL, e_pa, e_pa + sizeof(orig) - 1);
     }
     timer_mod(sony_a6400_entry_force_timer,
               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + ENTRY_FORCE_PERIOD_NS);
@@ -2182,7 +2717,10 @@ typedef struct SonyUsbVbus {
 
 static bool sony_a6400_usb_vbus_test;
 static bool sony_a6400_usb_cid_high;
-static bool sony_a6400_dwc3_gadget;
+/* L0154: default on so the E0590 model serves the guest's GCTL/PHY/DCTL
+ * accesses; unknown offsets log as cxd90045-dwc3 unimp and the certified
+ * boot produces none. */
+static bool sony_a6400_dwc3_gadget = true;
 static bool sony_a6400_pl330_dma;
 static SonyUsbVbus *sony_a6400_usb_vbus;
 
@@ -2284,14 +2822,17 @@ static void sony_set_dwc3_gadget(Object *obj, bool enabled, Error **errp)
 }
 
 /*
- * Opt-in hardware watchdog (Custom OS prerequisite 3, E0636).  The stock
- * kernel's cxd900x0_wdt_setup/start/stop and watchdog_touch/tick
+ * Hardware watchdog, on by default (Custom OS prerequisite 3, E0636).  The
+ * stock kernel's cxd900x0_wdt_setup/start/stop and watchdog_touch/tick
  * (nflasha3-Image, 0x60120050..0x60120534) drive one CXD4115 channel at
  * 0xF2402000: CTRL 0x80000012, CMP 1001 * timeout_ms, CTRL 0x80001012
- * (START), kick CLR 0x10, stop CTRL 0 + CLR 0x11.  Off by default so the
- * earlier unmodelled (write-dropped) baseline is unchanged.
+ * (START), kick CLR 0x10, stop CTRL 0 + CLR 0x11.
+ *
+ * L0159: default on so the E0636 model serves the kernel's watchdog setup and
+ * kicks; a missed kick resets the machine (-action watchdog=).  watchdog=off
+ * restores the write-dropped behaviour.
  */
-static bool sony_a6400_watchdog;
+static bool sony_a6400_watchdog = true;
 
 static bool sony_get_watchdog(Object *obj, Error **errp)
 {
@@ -2407,6 +2948,1789 @@ static const MemoryRegionOps cxd90045_sif_ops = {
     .impl = { .min_access_size = 1, .max_access_size = 4 },
 };
 
+/*
+ * L0100: 0xF2920000 block, per-offset rule windows for the resolved kernel
+ * OTG and av-cam A/E sub-blocks (F-0099 contract table).  The block is not
+ * CamCore and not one device, so this is a local rule block instead of a
+ * camcore table:
+ *
+ *   0xF2920000 (0x3000)  kernel FUSB/OTG (udif "otg", PC 0x602AD2A8..;
+ *                        4 offsets)
+ *   0xF292A000 (0x1000)  av-cam sub-block A (literals at 0x637989C0..;
+ *                        5 offsets)
+ *   0xF292E000 (0x1000)  av-cam sub-block E (literals at 0x63AA2F18/1C;
+ *                        2 offsets)
+ *
+ * The unresolved 0xF292C000 page is deliberately not mapped (F-0099: no
+ * static owner in the bound images; only a carved emmc module names it).
+ *
+ * Rule kinds: RF reads back the last value written; ZERO reads 0 (F-0099
+ * status words the guest never writes, and write-only config words, for
+ * which 0 is the certified catch-all baseline).  Writes are stored for
+ * every offset.  An offset without a rule is not claimed: it logs through
+ * the same "<name>.unmodelled: unimplemented device ..." format and offset
+ * base (0xF0000000) as the board catch-all, so an unruled gap in a mapped
+ * window still counts as unmodelled.  Each retired offset has its own rule
+ * and the F-0099 reading/writing PC.
+ */
+#define CXD90045_F292_UNMODELLED_BASE 0xF0000000ULL
+
+typedef enum Cxd90045F292Kind {
+    CXD90045_F292_ZERO, /* read 0 (status never written, or write-only) */
+    CXD90045_F292_RF,   /* read back the last value written */
+} Cxd90045F292Kind;
+
+typedef struct Cxd90045F292Rule {
+    uint32_t off;
+    Cxd90045F292Kind kind;
+    const char *why;
+} Cxd90045F292Rule;
+
+/* Kernel FUSB/OTG window 0xF2920000..0xF2922FFF (F-0099). */
+static const Cxd90045F292Rule cxd90045_f292_rules_otg[] = {
+    { 0x0010, CXD90045_F292_ZERO,
+      "status VBUS bit0/CID bit1: read 0x602AD2AC/DB74/DB80/DB330, "
+      "never written (F-0099)" },
+    { 0x0040, CXD90045_F292_RF,
+      "RMW ldr 0x602AD5BC / str 0x602AD5E4 (F-0099)" },
+    { 0x0050, CXD90045_F292_RF,
+      "RMW ldr 0x602AD5EC/0x602AD674 / str 0x602AD694 (F-0099)" },
+    { 0x0100, CXD90045_F292_RF,
+      "RMW ldr 0x602AD748 / str 0x602AD76C (F-0099)" },
+};
+
+/* av-cam sub-block A 0xF292A000..0xF292AFFF (F-0099). */
+static const Cxd90045F292Rule cxd90045_f292_rules_avcam_a[] = {
+    { 0x010, CXD90045_F292_RF,
+      "RMW bfi helper 0x63CEEF86/90/9A/A4/AE; leaf str 0x637989F8 (F-0099)" },
+    { 0x044, CXD90045_F292_ZERO,
+      "write-only config: str 0x63798A10, helper 0x63CEF008/01C; no "
+      "read in the baseline (F-0099)" },
+    { 0x070, CXD90045_F292_ZERO,
+      "status getter 0x63CEF038 (ubfx #8,#5); never written (F-0099)" },
+    { 0x074, CXD90045_F292_ZERO,
+      "write-only config: str 0x63CEF030/040; no read in the baseline "
+      "(F-0099)" },
+    { 0x080, CXD90045_F292_ZERO,
+      "status getter 0x63CEF054 (ubfx #8,#5); never written (F-0099)" },
+};
+
+/* av-cam sub-block E 0xF292E000..0xF292EFFF (F-0099). */
+static const Cxd90045F292Rule cxd90045_f292_rules_avcam_e[] = {
+    { 0x008, CXD90045_F292_ZERO,
+      "write-only config: 0x63AA2F00 stores 1 via 0x63D99230; no read "
+      "in the baseline (F-0099)" },
+    { 0x018, CXD90045_F292_ZERO,
+      "write-only config: 0x63AA2F0A stores 0x100000 via 0x63D99230; "
+      "no read in the baseline (F-0099)" },
+};
+
+/*
+ * HDMI TX page 0xF292C000..0xF292CFFF (F-0101/L0102).  The page is live:
+ * a 120 s certified boot logs 11 distinct (read|write, offset) pairs / 41
+ * accesses.  The ten write offsets run at PC 0x5F519BEC / LR 0x5F519BE8
+ * (module space) and are write-only in the boot (no read of any of them);
+ * +0x160 is a 21-read poll at PC 0x5F519B34 / LR 0x5F519F94 and is never
+ * written, so the catch-all returns 0 and ZERO preserves that observed
+ * value.  There is no read-follows-write on this page, so no offset is RF.
+ * Every rule still stores writes (the shared handler) and reads 0, i.e.
+ * the certified catch-all baseline for these offsets.
+ */
+static const Cxd90045F292Rule cxd90045_f292_rules_c[] = {
+    { 0x004, CXD90045_F292_ZERO,
+      "2 writes 0x00010000/0x00000000 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x008, CXD90045_F292_ZERO,
+      "2 writes 0x001f0000/0x0000000c at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x104, CXD90045_F292_ZERO,
+      "2 writes 0x1/0x10 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x108, CXD90045_F292_ZERO,
+      "2 writes 0x1/0x10 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x114, CXD90045_F292_ZERO,
+      "1 write 0x1 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x118, CXD90045_F292_ZERO,
+      "1 write 0x1 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x124, CXD90045_F292_ZERO,
+      "4 writes 0x001f0000/0x2000/0/0 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x128, CXD90045_F292_ZERO,
+      "4 writes 0x007f0000/0x7f00/0x30/0x0f at PC 0x5F519BEC; no read "
+      "(F-0101)" },
+    { 0x154, CXD90045_F292_ZERO,
+      "1 write 0x0e82 at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x158, CXD90045_F292_ZERO,
+      "1 write 0xffff at PC 0x5F519BEC; no read (F-0101)" },
+    { 0x160, CXD90045_F292_ZERO,
+      "21 reads at PC 0x5F519B34 / LR 0x5F519F94, never written; returns "
+      "0 as the catch-all did (F-0101)" },
+};
+
+/*
+ * L0105: RCRAW/IDT compressor page 0xF3030000..0xF303FFFF.  A 120 s
+ * certified boot (loop/runs/L0105/base-120, qemu sha256 59eaf180...)
+ * logs 547 distinct catch-all (read|write, offset) pairs / 9471
+ * accesses in the page: 532 write offsets and 15 read offsets, of
+ * which 13 are both.  The oracle's `unmodelled_top` list is capped at
+ * 200 entries, so only 112 of these pairs appear there (13 reads + 99
+ * writes); the full -d unimp log is the ground truth used here.
+ *
+ * Reader PCs are gdbstub Z3 first hits (readwatch-120/watch.json),
+ * writer PCs are Z2 first hits (writewatch-120/watch.json).  Kinds:
+ * RF for the 12 offsets where a read follows a write; ZERO for the 2
+ * read-only status words and for the 520 non-RF write offsets (519 never
+ * read, plus 0x000 read only before its write); 0 is the certified reply.  Writes are
+ * stored for every offset.  Unruled offsets in the 64 KiB window still
+ * log as cxd90045.f303.unmodelled, so the window is not a blanket zero.
+ */
+#define CXD90045_F303_BULK(o) \
+    { (o), CXD90045_F292_ZERO, \
+      "bulk zero-fill word, write 0x63788006/LR 0x63B50B0F, no read (F-0105)" }
+
+static const Cxd90045F292Rule cxd90045_f303_rules[] = {
+    { 0x0000, CXD90045_F292_ZERO,
+      "read 0x63787F6A/LR 0x63788095, never written; catch-all reply 0 (F-0105)" },
+    { 0x0004, CXD90045_F292_RF,
+      "write 0x00000001 at 0x63787F80/LR 0x6378808F, read 0x63787F7A/LR 0x6378808F (read-after-write, F-0105)" },
+    { 0x0008, CXD90045_F292_ZERO,
+      "write-only 0x80000000 at 0x63787F8A/LR 0x6378809D, no read (F-0105)" },
+    { 0x000C, CXD90045_F292_RF,
+      "write 0x00000001/0x00000002 at 0x63787B34/LR 0x63775513, read 0x63787B2E/LR 0x63775513 (read-after-write, F-0105)" },
+    { 0x0030, CXD90045_F292_ZERO,
+      "write-only 0x20152000 at 0x63787FA2/LR 0x637880A7, no read (F-0105)" },
+    { 0x0084, CXD90045_F292_ZERO,
+      "read 0x63787F96/LR 0x63773487, never written; catch-all reply 0 (F-0105)" },
+    { 0x0104, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787B8A/LR 0x63CE7755, no read (F-0105)" },
+    { 0x0108, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787BA2/LR 0x63CE777F, no read (F-0105)" },
+    { 0x0110, CXD90045_F292_ZERO,
+      "write-only 0x00040000 at 0x63787B4E/LR 0x63CE770B, no read (F-0105)" },
+    { 0x0144, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787BAE/LR 0x63CE775B, no read (F-0105)" },
+    { 0x0148, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787BC6/LR 0x63CE7785, no read (F-0105)" },
+    { 0x0204, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787BD2/LR 0x63CE7761, no read (F-0105)" },
+    { 0x0208, CXD90045_F292_ZERO,
+      "write-only 0 at 0x63787BEA/LR 0x63CE778B, no read (F-0105)" },
+    { 0x0220, CXD90045_F292_ZERO,
+      "read 0x63787FEA/LR 0x63B48C71, never written; catch-all reply 0 (F-0105)" },
+    { 0x0304, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787BF6/LR 0x63CE7767, no read (F-0105)" },
+    { 0x0308, CXD90045_F292_ZERO,
+      "write-only 0 at 0x63787C0E/LR 0x63CE7791, no read (F-0105)" },
+    { 0x0404, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787C1A/LR 0x63CE776D, no read (F-0105)" },
+    { 0x0408, CXD90045_F292_ZERO,
+      "write-only 0 at 0x63787C32/LR 0x63CE7797, no read (F-0105)" },
+    { 0x0504, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787C3E/LR 0x63CE7773, no read (F-0105)" },
+    { 0x0508, CXD90045_F292_ZERO,
+      "write-only 0 at 0x63787C56/LR 0x63CE779D, no read (F-0105)" },
+    { 0x0604, CXD90045_F292_ZERO,
+      "write-only 0x000000ff at 0x63787C62/LR 0x63CE7779, no read (F-0105)" },
+    { 0x0608, CXD90045_F292_ZERO,
+      "write-only 0 at 0x63787C7A/LR 0x63B50493, no read (F-0105)" },
+    CXD90045_F303_BULK(0x1000),
+    CXD90045_F303_BULK(0x1004),
+    CXD90045_F303_BULK(0x1008),
+    CXD90045_F303_BULK(0x100C),
+    CXD90045_F303_BULK(0x1010),
+    CXD90045_F303_BULK(0x1014),
+    CXD90045_F303_BULK(0x1018),
+    CXD90045_F303_BULK(0x101C),
+    CXD90045_F303_BULK(0x1020),
+    CXD90045_F303_BULK(0x1024),
+    CXD90045_F303_BULK(0x1028),
+    CXD90045_F303_BULK(0x102C),
+    CXD90045_F303_BULK(0x1030),
+    CXD90045_F303_BULK(0x1034),
+    CXD90045_F303_BULK(0x1038),
+    CXD90045_F303_BULK(0x103C),
+    CXD90045_F303_BULK(0x1040),
+    CXD90045_F303_BULK(0x1044),
+    CXD90045_F303_BULK(0x1048),
+    CXD90045_F303_BULK(0x104C),
+    CXD90045_F303_BULK(0x1050),
+    CXD90045_F303_BULK(0x1054),
+    CXD90045_F303_BULK(0x1058),
+    CXD90045_F303_BULK(0x105C),
+    CXD90045_F303_BULK(0x1060),
+    CXD90045_F303_BULK(0x1064),
+    CXD90045_F303_BULK(0x1068),
+    CXD90045_F303_BULK(0x106C),
+    CXD90045_F303_BULK(0x1070),
+    CXD90045_F303_BULK(0x1074),
+    CXD90045_F303_BULK(0x1078),
+    CXD90045_F303_BULK(0x107C),
+    CXD90045_F303_BULK(0x1080),
+    CXD90045_F303_BULK(0x1084),
+    CXD90045_F303_BULK(0x1088),
+    { 0x108C, CXD90045_F292_ZERO,
+      "write-only 0x1679dd80/0x1679df00 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x1090, CXD90045_F292_RF,
+      "write None at 0x63788006/LR 0x63B50B0F, read 0x63B3FFF0/LR 0x63B3FFED (read-after-write, F-0105)" },
+    { 0x1094, CXD90045_F292_RF,
+      "write None at 0x63788006/LR 0x63B50B0F, read 0x63B3FFF4/LR 0x63B3FFED (read-after-write, F-0105)" },
+    { 0x1098, CXD90045_F292_ZERO,
+      "write-only 0x1679e100/0x1679e180 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x109C, CXD90045_F292_ZERO,
+      "write-only 0x1679e280 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    CXD90045_F303_BULK(0x10A0),
+    { 0x10A4, CXD90045_F292_ZERO,
+      "write-only 0x167a1b80/0x167a1c80 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x10A8, CXD90045_F292_RF,
+      "write None at 0x63788006/LR 0x63B50B0F, read 0x63B3AFF8/LR 0x63B48CBF (read-after-write, F-0105)" },
+    { 0x10AC, CXD90045_F292_RF,
+      "write None at 0x63788006/LR 0x63B50B0F, read 0x63B3AFFA/LR 0x63B48CBF (read-after-write, F-0105)" },
+    { 0x10B0, CXD90045_F292_ZERO,
+      "write-only 0x167a1d80 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    CXD90045_F303_BULK(0x10B4),
+    { 0x10B8, CXD90045_F292_RF,
+      "write None at 0x63788006/LR 0x63B50B0F, read 0x6378801A/LR 0x63778307 (read-after-write, F-0105)" },
+    { 0x10BC, CXD90045_F292_ZERO,
+      "write-only 0x167a1e80/0x167a1f00 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x10C0, CXD90045_F292_RF,
+      "write None at 0x63788006/LR 0x63B50B0F, read 0x63B3CA9A/LR 0x63B48CC3 (read-after-write, F-0105)" },
+    { 0x10C4, CXD90045_F292_RF,
+      "write None at 0x63788006/LR 0x63B50B0F, read 0x63B3CAA0/LR 0x63B48CC3 (read-after-write, F-0105)" },
+    CXD90045_F303_BULK(0x10C8),
+    CXD90045_F303_BULK(0x10CC),
+    CXD90045_F303_BULK(0x10D0),
+    CXD90045_F303_BULK(0x10D4),
+    CXD90045_F303_BULK(0x10D8),
+    CXD90045_F303_BULK(0x10DC),
+    CXD90045_F303_BULK(0x10E0),
+    CXD90045_F303_BULK(0x10E4),
+    CXD90045_F303_BULK(0x10E8),
+    CXD90045_F303_BULK(0x10EC),
+    CXD90045_F303_BULK(0x10F0),
+    CXD90045_F303_BULK(0x10F4),
+    { 0x10F8, CXD90045_F292_RF,
+      "write None at 0x63788006/LR 0x63B50B0F, read 0x63B4EAAC/LR 0x63B48D31 (read-after-write, F-0105)" },
+    CXD90045_F303_BULK(0x10FC),
+    CXD90045_F303_BULK(0x1100),
+    CXD90045_F303_BULK(0x1104),
+    CXD90045_F303_BULK(0x1108),
+    CXD90045_F303_BULK(0x110C),
+    CXD90045_F303_BULK(0x1110),
+    CXD90045_F303_BULK(0x1114),
+    CXD90045_F303_BULK(0x1118),
+    CXD90045_F303_BULK(0x111C),
+    CXD90045_F303_BULK(0x1120),
+    CXD90045_F303_BULK(0x1124),
+    CXD90045_F303_BULK(0x1128),
+    CXD90045_F303_BULK(0x112C),
+    CXD90045_F303_BULK(0x1130),
+    CXD90045_F303_BULK(0x1134),
+    CXD90045_F303_BULK(0x1138),
+    CXD90045_F303_BULK(0x113C),
+    CXD90045_F303_BULK(0x1140),
+    CXD90045_F303_BULK(0x1144),
+    CXD90045_F303_BULK(0x1148),
+    CXD90045_F303_BULK(0x114C),
+    CXD90045_F303_BULK(0x1150),
+    CXD90045_F303_BULK(0x1154),
+    CXD90045_F303_BULK(0x1158),
+    CXD90045_F303_BULK(0x115C),
+    { 0x1160, CXD90045_F292_ZERO,
+      "write-only 0xfe32d500 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x1164, CXD90045_F292_ZERO,
+      "write-only 0x17cbc000 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    CXD90045_F303_BULK(0x1168),
+    CXD90045_F303_BULK(0x116C),
+    CXD90045_F303_BULK(0x1170),
+    CXD90045_F303_BULK(0x1174),
+    { 0x1178, CXD90045_F292_ZERO,
+      "write-only 0x1991f800/0xfe471e80 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x117C, CXD90045_F292_ZERO,
+      "write-only 0x00002300 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    CXD90045_F303_BULK(0x1180),
+    CXD90045_F303_BULK(0x1184),
+    CXD90045_F303_BULK(0x1188),
+    CXD90045_F303_BULK(0x118C),
+    CXD90045_F303_BULK(0x1190),
+    CXD90045_F303_BULK(0x1194),
+    CXD90045_F303_BULK(0x1198),
+    CXD90045_F303_BULK(0x119C),
+    CXD90045_F303_BULK(0x11A0),
+    CXD90045_F303_BULK(0x11A4),
+    CXD90045_F303_BULK(0x11A8),
+    CXD90045_F303_BULK(0x11AC),
+    CXD90045_F303_BULK(0x11B0),
+    CXD90045_F303_BULK(0x11B4),
+    CXD90045_F303_BULK(0x11B8),
+    CXD90045_F303_BULK(0x11BC),
+    CXD90045_F303_BULK(0x11C0),
+    CXD90045_F303_BULK(0x11C4),
+    CXD90045_F303_BULK(0x11C8),
+    CXD90045_F303_BULK(0x11CC),
+    CXD90045_F303_BULK(0x11D0),
+    CXD90045_F303_BULK(0x11D4),
+    CXD90045_F303_BULK(0x11D8),
+    CXD90045_F303_BULK(0x11DC),
+    CXD90045_F303_BULK(0x11E0),
+    CXD90045_F303_BULK(0x11E4),
+    CXD90045_F303_BULK(0x11E8),
+    CXD90045_F303_BULK(0x11EC),
+    CXD90045_F303_BULK(0x11F0),
+    CXD90045_F303_BULK(0x11F4),
+    CXD90045_F303_BULK(0x11F8),
+    CXD90045_F303_BULK(0x11FC),
+    CXD90045_F303_BULK(0x1200),
+    CXD90045_F303_BULK(0x1204),
+    CXD90045_F303_BULK(0x1208),
+    CXD90045_F303_BULK(0x120C),
+    CXD90045_F303_BULK(0x1210),
+    CXD90045_F303_BULK(0x1214),
+    CXD90045_F303_BULK(0x1218),
+    CXD90045_F303_BULK(0x121C),
+    CXD90045_F303_BULK(0x1220),
+    CXD90045_F303_BULK(0x1224),
+    CXD90045_F303_BULK(0x1228),
+    CXD90045_F303_BULK(0x122C),
+    CXD90045_F303_BULK(0x1230),
+    CXD90045_F303_BULK(0x1234),
+    CXD90045_F303_BULK(0x1238),
+    CXD90045_F303_BULK(0x123C),
+    CXD90045_F303_BULK(0x1240),
+    CXD90045_F303_BULK(0x1244),
+    CXD90045_F303_BULK(0x1248),
+    CXD90045_F303_BULK(0x124C),
+    CXD90045_F303_BULK(0x1250),
+    CXD90045_F303_BULK(0x1254),
+    CXD90045_F303_BULK(0x1258),
+    CXD90045_F303_BULK(0x125C),
+    CXD90045_F303_BULK(0x1260),
+    CXD90045_F303_BULK(0x1264),
+    CXD90045_F303_BULK(0x1268),
+    CXD90045_F303_BULK(0x126C),
+    CXD90045_F303_BULK(0x1270),
+    CXD90045_F303_BULK(0x1274),
+    CXD90045_F303_BULK(0x1278),
+    CXD90045_F303_BULK(0x127C),
+    CXD90045_F303_BULK(0x1280),
+    CXD90045_F303_BULK(0x1284),
+    CXD90045_F303_BULK(0x1288),
+    CXD90045_F303_BULK(0x128C),
+    CXD90045_F303_BULK(0x1290),
+    CXD90045_F303_BULK(0x1294),
+    CXD90045_F303_BULK(0x1298),
+    CXD90045_F303_BULK(0x129C),
+    CXD90045_F303_BULK(0x12A0),
+    CXD90045_F303_BULK(0x12A4),
+    CXD90045_F303_BULK(0x12A8),
+    CXD90045_F303_BULK(0x12AC),
+    CXD90045_F303_BULK(0x12B0),
+    CXD90045_F303_BULK(0x12B4),
+    CXD90045_F303_BULK(0x12B8),
+    CXD90045_F303_BULK(0x12BC),
+    CXD90045_F303_BULK(0x12C0),
+    CXD90045_F303_BULK(0x12C4),
+    CXD90045_F303_BULK(0x12C8),
+    CXD90045_F303_BULK(0x12CC),
+    CXD90045_F303_BULK(0x12D0),
+    CXD90045_F303_BULK(0x12D4),
+    CXD90045_F303_BULK(0x12D8),
+    CXD90045_F303_BULK(0x12DC),
+    CXD90045_F303_BULK(0x12E0),
+    CXD90045_F303_BULK(0x12E4),
+    CXD90045_F303_BULK(0x12E8),
+    CXD90045_F303_BULK(0x12EC),
+    CXD90045_F303_BULK(0x12F0),
+    CXD90045_F303_BULK(0x12F4),
+    CXD90045_F303_BULK(0x12F8),
+    CXD90045_F303_BULK(0x12FC),
+    CXD90045_F303_BULK(0x1300),
+    CXD90045_F303_BULK(0x1304),
+    CXD90045_F303_BULK(0x1308),
+    CXD90045_F303_BULK(0x130C),
+    CXD90045_F303_BULK(0x1310),
+    CXD90045_F303_BULK(0x1314),
+    CXD90045_F303_BULK(0x1318),
+    CXD90045_F303_BULK(0x131C),
+    CXD90045_F303_BULK(0x1320),
+    CXD90045_F303_BULK(0x1324),
+    CXD90045_F303_BULK(0x1328),
+    CXD90045_F303_BULK(0x132C),
+    CXD90045_F303_BULK(0x1330),
+    CXD90045_F303_BULK(0x1334),
+    CXD90045_F303_BULK(0x1338),
+    CXD90045_F303_BULK(0x133C),
+    CXD90045_F303_BULK(0x1340),
+    CXD90045_F303_BULK(0x1344),
+    CXD90045_F303_BULK(0x1348),
+    CXD90045_F303_BULK(0x134C),
+    CXD90045_F303_BULK(0x1350),
+    CXD90045_F303_BULK(0x1354),
+    CXD90045_F303_BULK(0x1358),
+    CXD90045_F303_BULK(0x135C),
+    CXD90045_F303_BULK(0x1360),
+    CXD90045_F303_BULK(0x1364),
+    CXD90045_F303_BULK(0x1368),
+    CXD90045_F303_BULK(0x136C),
+    CXD90045_F303_BULK(0x1370),
+    CXD90045_F303_BULK(0x1374),
+    CXD90045_F303_BULK(0x1378),
+    CXD90045_F303_BULK(0x137C),
+    CXD90045_F303_BULK(0x1380),
+    CXD90045_F303_BULK(0x1384),
+    CXD90045_F303_BULK(0x1388),
+    CXD90045_F303_BULK(0x138C),
+    CXD90045_F303_BULK(0x1390),
+    CXD90045_F303_BULK(0x1394),
+    CXD90045_F303_BULK(0x1398),
+    CXD90045_F303_BULK(0x139C),
+    CXD90045_F303_BULK(0x13A0),
+    CXD90045_F303_BULK(0x13A4),
+    CXD90045_F303_BULK(0x13A8),
+    CXD90045_F303_BULK(0x13AC),
+    CXD90045_F303_BULK(0x13B0),
+    CXD90045_F303_BULK(0x13B4),
+    CXD90045_F303_BULK(0x13B8),
+    CXD90045_F303_BULK(0x13BC),
+    CXD90045_F303_BULK(0x13C0),
+    CXD90045_F303_BULK(0x13C4),
+    CXD90045_F303_BULK(0x13C8),
+    CXD90045_F303_BULK(0x13CC),
+    CXD90045_F303_BULK(0x13D0),
+    CXD90045_F303_BULK(0x13D4),
+    CXD90045_F303_BULK(0x13D8),
+    CXD90045_F303_BULK(0x13DC),
+    CXD90045_F303_BULK(0x13E0),
+    CXD90045_F303_BULK(0x13E4),
+    CXD90045_F303_BULK(0x13E8),
+    CXD90045_F303_BULK(0x13EC),
+    CXD90045_F303_BULK(0x13F0),
+    CXD90045_F303_BULK(0x13F4),
+    CXD90045_F303_BULK(0x13F8),
+    CXD90045_F303_BULK(0x13FC),
+    CXD90045_F303_BULK(0x1400),
+    CXD90045_F303_BULK(0x1404),
+    CXD90045_F303_BULK(0x1408),
+    CXD90045_F303_BULK(0x140C),
+    CXD90045_F303_BULK(0x1410),
+    CXD90045_F303_BULK(0x1414),
+    CXD90045_F303_BULK(0x1418),
+    CXD90045_F303_BULK(0x141C),
+    CXD90045_F303_BULK(0x1420),
+    CXD90045_F303_BULK(0x1424),
+    CXD90045_F303_BULK(0x1428),
+    CXD90045_F303_BULK(0x142C),
+    CXD90045_F303_BULK(0x1430),
+    CXD90045_F303_BULK(0x1434),
+    CXD90045_F303_BULK(0x1438),
+    CXD90045_F303_BULK(0x143C),
+    CXD90045_F303_BULK(0x1440),
+    CXD90045_F303_BULK(0x1444),
+    CXD90045_F303_BULK(0x1448),
+    CXD90045_F303_BULK(0x144C),
+    CXD90045_F303_BULK(0x1450),
+    CXD90045_F303_BULK(0x1454),
+    CXD90045_F303_BULK(0x1458),
+    CXD90045_F303_BULK(0x145C),
+    CXD90045_F303_BULK(0x1460),
+    CXD90045_F303_BULK(0x1464),
+    CXD90045_F303_BULK(0x1468),
+    CXD90045_F303_BULK(0x146C),
+    CXD90045_F303_BULK(0x1470),
+    CXD90045_F303_BULK(0x1474),
+    CXD90045_F303_BULK(0x1478),
+    CXD90045_F303_BULK(0x147C),
+    CXD90045_F303_BULK(0x1480),
+    CXD90045_F303_BULK(0x1484),
+    CXD90045_F303_BULK(0x1488),
+    CXD90045_F303_BULK(0x148C),
+    CXD90045_F303_BULK(0x1490),
+    CXD90045_F303_BULK(0x1494),
+    CXD90045_F303_BULK(0x1498),
+    CXD90045_F303_BULK(0x149C),
+    CXD90045_F303_BULK(0x14A0),
+    CXD90045_F303_BULK(0x14A4),
+    CXD90045_F303_BULK(0x14A8),
+    CXD90045_F303_BULK(0x14AC),
+    CXD90045_F303_BULK(0x14B0),
+    CXD90045_F303_BULK(0x14B4),
+    CXD90045_F303_BULK(0x14B8),
+    CXD90045_F303_BULK(0x14BC),
+    CXD90045_F303_BULK(0x14C0),
+    CXD90045_F303_BULK(0x14C4),
+    CXD90045_F303_BULK(0x14C8),
+    CXD90045_F303_BULK(0x14CC),
+    CXD90045_F303_BULK(0x14D0),
+    CXD90045_F303_BULK(0x14D4),
+    CXD90045_F303_BULK(0x14D8),
+    CXD90045_F303_BULK(0x14DC),
+    CXD90045_F303_BULK(0x14E0),
+    CXD90045_F303_BULK(0x14E4),
+    CXD90045_F303_BULK(0x14E8),
+    CXD90045_F303_BULK(0x14EC),
+    CXD90045_F303_BULK(0x14F0),
+    CXD90045_F303_BULK(0x14F4),
+    CXD90045_F303_BULK(0x14F8),
+    CXD90045_F303_BULK(0x14FC),
+    CXD90045_F303_BULK(0x1500),
+    CXD90045_F303_BULK(0x1504),
+    CXD90045_F303_BULK(0x1508),
+    CXD90045_F303_BULK(0x150C),
+    CXD90045_F303_BULK(0x1510),
+    CXD90045_F303_BULK(0x1514),
+    CXD90045_F303_BULK(0x1518),
+    CXD90045_F303_BULK(0x151C),
+    CXD90045_F303_BULK(0x1520),
+    CXD90045_F303_BULK(0x1524),
+    CXD90045_F303_BULK(0x1528),
+    CXD90045_F303_BULK(0x152C),
+    CXD90045_F303_BULK(0x1530),
+    CXD90045_F303_BULK(0x1534),
+    CXD90045_F303_BULK(0x1538),
+    CXD90045_F303_BULK(0x153C),
+    CXD90045_F303_BULK(0x1540),
+    CXD90045_F303_BULK(0x1544),
+    CXD90045_F303_BULK(0x1548),
+    CXD90045_F303_BULK(0x154C),
+    CXD90045_F303_BULK(0x1550),
+    CXD90045_F303_BULK(0x1554),
+    CXD90045_F303_BULK(0x1558),
+    CXD90045_F303_BULK(0x155C),
+    CXD90045_F303_BULK(0x1560),
+    CXD90045_F303_BULK(0x1564),
+    CXD90045_F303_BULK(0x1568),
+    CXD90045_F303_BULK(0x156C),
+    CXD90045_F303_BULK(0x1570),
+    CXD90045_F303_BULK(0x1574),
+    CXD90045_F303_BULK(0x1578),
+    CXD90045_F303_BULK(0x157C),
+    CXD90045_F303_BULK(0x1580),
+    CXD90045_F303_BULK(0x1584),
+    CXD90045_F303_BULK(0x1588),
+    CXD90045_F303_BULK(0x158C),
+    CXD90045_F303_BULK(0x1590),
+    CXD90045_F303_BULK(0x1594),
+    CXD90045_F303_BULK(0x1598),
+    CXD90045_F303_BULK(0x159C),
+    CXD90045_F303_BULK(0x15A0),
+    CXD90045_F303_BULK(0x15A4),
+    CXD90045_F303_BULK(0x15A8),
+    CXD90045_F303_BULK(0x15AC),
+    CXD90045_F303_BULK(0x15B0),
+    CXD90045_F303_BULK(0x15B4),
+    CXD90045_F303_BULK(0x15B8),
+    CXD90045_F303_BULK(0x15BC),
+    CXD90045_F303_BULK(0x15C0),
+    CXD90045_F303_BULK(0x15C4),
+    CXD90045_F303_BULK(0x15C8),
+    CXD90045_F303_BULK(0x15CC),
+    CXD90045_F303_BULK(0x15D0),
+    CXD90045_F303_BULK(0x15D4),
+    CXD90045_F303_BULK(0x15D8),
+    CXD90045_F303_BULK(0x15DC),
+    CXD90045_F303_BULK(0x15E0),
+    CXD90045_F303_BULK(0x15E4),
+    CXD90045_F303_BULK(0x15E8),
+    CXD90045_F303_BULK(0x15EC),
+    CXD90045_F303_BULK(0x15F0),
+    CXD90045_F303_BULK(0x15F4),
+    CXD90045_F303_BULK(0x15F8),
+    CXD90045_F303_BULK(0x15FC),
+    CXD90045_F303_BULK(0x1600),
+    CXD90045_F303_BULK(0x1604),
+    CXD90045_F303_BULK(0x1608),
+    CXD90045_F303_BULK(0x160C),
+    CXD90045_F303_BULK(0x1610),
+    CXD90045_F303_BULK(0x1614),
+    CXD90045_F303_BULK(0x1618),
+    CXD90045_F303_BULK(0x161C),
+    CXD90045_F303_BULK(0x1620),
+    CXD90045_F303_BULK(0x1624),
+    CXD90045_F303_BULK(0x1628),
+    CXD90045_F303_BULK(0x162C),
+    CXD90045_F303_BULK(0x1630),
+    CXD90045_F303_BULK(0x1634),
+    CXD90045_F303_BULK(0x1638),
+    CXD90045_F303_BULK(0x163C),
+    CXD90045_F303_BULK(0x1640),
+    CXD90045_F303_BULK(0x1644),
+    CXD90045_F303_BULK(0x1648),
+    CXD90045_F303_BULK(0x164C),
+    CXD90045_F303_BULK(0x1650),
+    CXD90045_F303_BULK(0x1654),
+    CXD90045_F303_BULK(0x1658),
+    CXD90045_F303_BULK(0x165C),
+    CXD90045_F303_BULK(0x1660),
+    CXD90045_F303_BULK(0x1664),
+    CXD90045_F303_BULK(0x1668),
+    CXD90045_F303_BULK(0x166C),
+    CXD90045_F303_BULK(0x1670),
+    CXD90045_F303_BULK(0x1674),
+    CXD90045_F303_BULK(0x1678),
+    CXD90045_F303_BULK(0x167C),
+    CXD90045_F303_BULK(0x1680),
+    CXD90045_F303_BULK(0x1684),
+    CXD90045_F303_BULK(0x1688),
+    CXD90045_F303_BULK(0x168C),
+    CXD90045_F303_BULK(0x1690),
+    CXD90045_F303_BULK(0x1694),
+    CXD90045_F303_BULK(0x1698),
+    CXD90045_F303_BULK(0x169C),
+    CXD90045_F303_BULK(0x16A0),
+    CXD90045_F303_BULK(0x16A4),
+    CXD90045_F303_BULK(0x16A8),
+    CXD90045_F303_BULK(0x16AC),
+    CXD90045_F303_BULK(0x16B0),
+    CXD90045_F303_BULK(0x16B4),
+    CXD90045_F303_BULK(0x16B8),
+    CXD90045_F303_BULK(0x16BC),
+    CXD90045_F303_BULK(0x16C0),
+    CXD90045_F303_BULK(0x16C4),
+    CXD90045_F303_BULK(0x16C8),
+    CXD90045_F303_BULK(0x16CC),
+    CXD90045_F303_BULK(0x16D0),
+    CXD90045_F303_BULK(0x16D4),
+    CXD90045_F303_BULK(0x16D8),
+    CXD90045_F303_BULK(0x16DC),
+    CXD90045_F303_BULK(0x16E0),
+    CXD90045_F303_BULK(0x16E4),
+    CXD90045_F303_BULK(0x16E8),
+    CXD90045_F303_BULK(0x16EC),
+    CXD90045_F303_BULK(0x16F0),
+    CXD90045_F303_BULK(0x16F4),
+    CXD90045_F303_BULK(0x16F8),
+    CXD90045_F303_BULK(0x16FC),
+    CXD90045_F303_BULK(0x1700),
+    CXD90045_F303_BULK(0x1704),
+    CXD90045_F303_BULK(0x1708),
+    CXD90045_F303_BULK(0x170C),
+    CXD90045_F303_BULK(0x1710),
+    CXD90045_F303_BULK(0x1714),
+    CXD90045_F303_BULK(0x1718),
+    CXD90045_F303_BULK(0x171C),
+    CXD90045_F303_BULK(0x1720),
+    CXD90045_F303_BULK(0x1724),
+    CXD90045_F303_BULK(0x1728),
+    CXD90045_F303_BULK(0x172C),
+    CXD90045_F303_BULK(0x1730),
+    CXD90045_F303_BULK(0x1734),
+    CXD90045_F303_BULK(0x1738),
+    CXD90045_F303_BULK(0x173C),
+    CXD90045_F303_BULK(0x1740),
+    CXD90045_F303_BULK(0x1744),
+    CXD90045_F303_BULK(0x1748),
+    CXD90045_F303_BULK(0x174C),
+    CXD90045_F303_BULK(0x1750),
+    CXD90045_F303_BULK(0x1754),
+    CXD90045_F303_BULK(0x1758),
+    CXD90045_F303_BULK(0x175C),
+    CXD90045_F303_BULK(0x1760),
+    CXD90045_F303_BULK(0x1764),
+    CXD90045_F303_BULK(0x1768),
+    CXD90045_F303_BULK(0x176C),
+    CXD90045_F303_BULK(0x1770),
+    CXD90045_F303_BULK(0x1774),
+    CXD90045_F303_BULK(0x1778),
+    CXD90045_F303_BULK(0x177C),
+    CXD90045_F303_BULK(0x1780),
+    CXD90045_F303_BULK(0x1784),
+    CXD90045_F303_BULK(0x1788),
+    CXD90045_F303_BULK(0x178C),
+    CXD90045_F303_BULK(0x1790),
+    CXD90045_F303_BULK(0x1794),
+    CXD90045_F303_BULK(0x1798),
+    CXD90045_F303_BULK(0x179C),
+    CXD90045_F303_BULK(0x17A0),
+    CXD90045_F303_BULK(0x17A4),
+    CXD90045_F303_BULK(0x17A8),
+    CXD90045_F303_BULK(0x17AC),
+    CXD90045_F303_BULK(0x17B0),
+    CXD90045_F303_BULK(0x17B4),
+    CXD90045_F303_BULK(0x17B8),
+    { 0x17BC, CXD90045_F292_ZERO,
+      "write-only 0x167a1e00 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17C0, CXD90045_F292_RF,
+      "write 0xfe413e80 at 0x63788006/LR 0x63B50B0F, read 0x63B48C5C/LR 0x63B48C15 (read-after-write, F-0105)" },
+    { 0x17C4, CXD90045_F292_ZERO,
+      "write-only 0x16796000 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17C8, CXD90045_F292_RF,
+      "write 0x016000f0 at 0x63788006/LR 0x63B50B0F, read 0x63B48C60/LR 0x63B48C15 (read-after-write, F-0105)" },
+    CXD90045_F303_BULK(0x17CC),
+    CXD90045_F303_BULK(0x17D0),
+    { 0x17D4, CXD90045_F292_ZERO,
+      "write-only 0x1679af28 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17D8, CXD90045_F292_ZERO,
+      "write-only 0x1679aed8 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17DC, CXD90045_F292_ZERO,
+      "write-only 0x64411be0 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17E0, CXD90045_F292_ZERO,
+      "write-only 0x643cf4f4 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17E4, CXD90045_F292_ZERO,
+      "write-only 0x1679f200 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17E8, CXD90045_F292_ZERO,
+      "write-only 0x1679f230 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17EC, CXD90045_F292_ZERO,
+      "write-only 0x1679f2b0 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17F0, CXD90045_F292_ZERO,
+      "write-only 0x00800080 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17F4, CXD90045_F292_ZERO,
+      "write-only 0x00000004 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17F8, CXD90045_F292_ZERO,
+      "write-only 0x00000004 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+    { 0x17FC, CXD90045_F292_ZERO,
+      "write-only 0x00010001 at 0x63788006/LR 0x63B50B0F, no read (F-0105)" },
+};
+#undef CXD90045_F303_BULK
+
+/*
+ * L0108: 0xF3040000 page (PA 0xF3040000..0xF304FFFF).  A 120 s certified
+ * boot of the L0105 baseline (loop/runs/L0108/base-120, qemu sha256
+ * dea94742...) logs 17 distinct catch-all (read|write, offset) pairs / 67
+ * accesses in the low page: 4 read offsets and 13 write offsets, of which
+ * 3 are both.  The AIF group at 0xF3041000 (2 channels, 0x800 bytes) stays
+ * with the live-view pipeline at -300; the window below is at -600, so it
+ * fills only around it.
+ *
+ * Reader PCs are gdbstub Z3 first hits (loop/runs/L0108/watch-120 and
+ * readwatch-004), writer PCs are Z2 first hits.  Kinds: RF for the 3 offsets
+ * where a read follows a write (0x108/0x110/0x120); ZERO for the read-only
+ * status word 0x004 and for the 10 write-only offsets, where 0 is the
+ * certified catch-all reply.  Writes are stored for every offset.  Unruled
+ * offsets inside the window still log as cxd90045.f304.unmodelled, so the
+ * window is not a blanket zero.
+ */
+static const Cxd90045F292Rule cxd90045_f304_rules[] = {
+    { 0x0004, CXD90045_F292_ZERO,
+      "read 0x637884F2/LR 0x63788201, never written; catch-all reply 0 "
+      "(F-0108)" },
+    { 0x0008, CXD90045_F292_ZERO,
+      "write-only 0x00000006/0x00000000 at 0x63788506/LR 0x63788297, no "
+      "read (F-0108)" },
+    { 0x0100, CXD90045_F292_ZERO,
+      "write-only 0x00000001/0x00000000 at 0x6378839A/LR 0x6378818B, no "
+      "read (F-0108)" },
+    { 0x0108, CXD90045_F292_RF,
+      "write 0x00000000/0x00000001 at 0x637883AC/LR 0x63CE78FF, read "
+      "0x637883A6/LR 0x63CE78FF (read-after-write, F-0108)" },
+    { 0x0110, CXD90045_F292_RF,
+      "write 0x00000001 at 0x637883CC/LR 0x637882A5, read 0x637883C6/LR "
+      "0x637882A5 (read-after-write, F-0108)" },
+    { 0x011C, CXD90045_F292_ZERO,
+      "write-only 0x00000000 at 0x637883E2/LR 0x6378817F, no read "
+      "(F-0108)" },
+    { 0x0120, CXD90045_F292_RF,
+      "write 0x00A00000/0x000001AA at 0x637883F6/LR 0x637885D3, read "
+      "0x637883F0/LR 0x637885D3 (read-after-write, F-0108)" },
+    { 0x0124, CXD90045_F292_ZERO,
+      "write-only 0x00000000 at 0x63788422/LR 0x63788279, no read "
+      "(F-0108)" },
+    { 0x0128, CXD90045_F292_ZERO,
+      "write-only 0x167C5200/0x16890A00/0x1695C200/0x16A27A00 at "
+      "0x6378842E/LR 0x63CE799F, no read (F-0108)" },
+    { 0x012C, CXD90045_F292_ZERO,
+      "write-only 0x1685B200/0x16926A00/0x169F2200/0x16ABDA00 at "
+      "0x6378843A/LR 0x63CE79BB, no read (F-0108)" },
+    { 0x0130, CXD90045_F292_ZERO,
+      "write-only 0x16880A00/0x1694C200/0x16A17A00/0x16AE3200 at "
+      "0x63788446/LR 0x63CE79D5, no read (F-0108)" },
+    { 0x0134, CXD90045_F292_ZERO,
+      "write-only 0x1688BE00/0x16957600/0x16A22E00/0x16AEE600 at "
+      "0x63788452/LR 0x63CE79EF, no read (F-0108)" },
+    { 0x0138, CXD90045_F292_ZERO,
+      "write-only 0x1688FA00/0x1695B200/0x16A26A00/0x16AF2200 at "
+      "0x6378845E/LR 0x63CE7A09, no read (F-0108)" },
+    { 0x013C, CXD90045_F292_ZERO,
+      "write-only 0x0000001F at 0x6378846A/LR 0x63CE7A1B, no read "
+      "(F-0108)" },
+};
+
+/*
+ * FUSB block: kernel UDIF resource 'add' at PA 0xF0220000, size 0x20000
+ * (F-0106, L0112, L0114).  The bound images show 5 distinct offsets / 9
+ * unmodelled pairs.  +0x0, +0x4 and +0x11008 are read-modify-write in the
+ * firmware (F-0106), but they are ruled ZERO (read 0, the catch-all value)
+ * because RF read-back was non-deterministic in L0112 (F-0112): read-back
+ * changed the kernel driver's path.  +0x11080 and +0x11084 are write-only and
+ * ZERO.  Writes are stored but never read back.  Probe PC 0x602AD52C, handler
+ * 0x602B6778.  Every other offset in the 0x20000 window still logs as
+ * unmodelled, so the window is not a blanket zero.  DWC3 (0xF020C000, 0x4000)
+ * does not overlap.
+ */
+static const Cxd90045F292Rule cxd90045_f022_rules[] = {
+    { 0x00000, CXD90045_F292_ZERO,
+      "read returns 0, the catch-all-equivalent value; RF read-back was "
+      "non-deterministic in L0112 (F-0112) (L0114)" },
+    { 0x00004, CXD90045_F292_ZERO,
+      "read returns 0, the catch-all-equivalent value; RF read-back was "
+      "non-deterministic in L0112 (F-0112) (L0114)" },
+    { 0x11008, CXD90045_F292_ZERO,
+      "read returns 0, the catch-all-equivalent value; RF read-back was "
+      "non-deterministic in L0112 (F-0112) (L0114)" },
+    { 0x11080, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (L0114)" },
+    { 0x11084, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (L0114)" },
+};
+
+/*
+ * clkrst3 clock/reset bank at PA 0xF2900000, size 0x1000 (F-0104, L0116).
+ * The kernel clk-init and av-cam clock code write these offsets; the reads
+ * the catch-all used to answer are 0, and the rows below keep that value.
+ * Every row is ZERO (read 0, writes stored and never read back), so the
+ * guest sees no change.  +0x030 gets NO row on purpose: its read is
+ * branched on (F-0104), so a constant would be a guess, and it must still
+ * log as cxd90045.f290.unmodelled.  The 4 KiB page is the only range this
+ * window covers; the LDEC page at 0xF2903000 and the 0xF2800000 regfile are
+ * separate.  Unruled offsets still log, so the window is not a blanket zero.
+ */
+static const Cxd90045F292Rule cxd90045_f290_rules[] = {
+    { 0x004, CXD90045_F292_ZERO,
+      "write/read pair; read returns 0, the catch-all value (F-0104) (L0116)" },
+    { 0x008, CXD90045_F292_ZERO,
+      "write/read pair; read returns 0, the catch-all value (F-0104) (L0116)" },
+    { 0x028, CXD90045_F292_ZERO,
+      "kernel clk-init write 0x60122F60..0x60123044; no read (F-0104) (L0116)" },
+    { 0x034, CXD90045_F292_ZERO,
+      "kernel clk-init write; no read (F-0104) (L0116)" },
+    { 0x038, CXD90045_F292_ZERO,
+      "kernel clk-init write; no read (F-0104) (L0116)" },
+    { 0x044, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0A4, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0A8, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0C4, CXD90045_F292_ZERO,
+      "kernel clk-init write/read pair; read returns 0 (F-0104) (L0116)" },
+};
+
+/*
+ * L0118: four clock/reset-group pages next to the f2a_clk siblings
+ * (0xF2A01000..0xF2A30000, f2a_bases[] below, which reads back written values
+ * and is NOT extended).  F-0107 names 0xF2A00000 and 0xF2A10000 as the
+ * group's offset-0 pages; 0xF2A20000 and 0xF2A32000 are added from the
+ * baseline unmodelled list only.  All four are ZERO-only windows: every row
+ * reads 0, the catch-all value, and writes are stored but never read back.
+ * F-0107 classifies +0x004/+0x008/+0x024/+0x028 as read-modify-write (RF);
+ * RF is deferred until their read-back values are captured, so these rows are
+ * ZERO.  Write-only rows also answer an (unobserved) read with 0 instead of
+ * logging it.  Unruled offsets still log as unmodelled.
+ */
+static const Cxd90045F292Rule cxd90045_f2a0_rules[] = {
+    { 0x008, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+    { 0x024, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+    { 0x028, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+    { 0x0A4, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0107) (L0118)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f2a1_rules[] = {
+    { 0x004, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+    { 0x008, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+    { 0x024, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+    { 0x028, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f2a2_rules[] = {
+    { 0x024, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+    { 0x028, CXD90045_F292_ZERO,
+      "read/write pair; read returns 0, the catch-all value (F-0107) (L0118)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f2a3_rules[] = {
+    { 0x030, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0107) (L0118)" },
+    { 0x1A0, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0107) (L0118)" },
+};
+
+/*
+ * L0122: six unmapped pages, ZERO-only windows (F-0115: no static owner,
+ * contract NEEDS-CAPTURE).  Each row is a baseline pair the catch-all
+ * answered with 0, so ZERO keeps the final state.  Reads return 0, the
+ * catch-all value; the registers' real contract is uncaptured, and unruled
+ * offsets in these pages still log as unmodelled.
+ *
+ * L0122 keeps only the write-only pages of L0120 (F-0120): the read pages
+ * 0xF2932000 and 0xF35D0000 are left unmodelled.
+ */
+static const Cxd90045F292Rule cxd90045_f2931_rules[] = {
+    { 0x100, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x104, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x12C, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x130, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f3203_rules[] = {
+    { 0x384, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x904, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f3212_rules[] = {
+    { 0x05C, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x068, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x06C, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f3215_rules[] = {
+    { 0xB00, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+};
+
+typedef struct Cxd90045F292 {
+    MemoryRegion mmio;
+    const Cxd90045F292Rule *rules;
+    size_t nrules;
+    uint32_t *regs;      /* one word per 4 bytes of the mapped window */
+    hwaddr base;
+    uint64_t size;
+    const char *name;
+} Cxd90045F292;
+
+static const Cxd90045F292Rule *cxd90045_f292_rule(const Cxd90045F292 *s,
+                                                  uint32_t off)
+{
+    size_t i;
+
+    for (i = 0; i < s->nrules; i++) {
+        if (s->rules[i].off == off) {
+            return &s->rules[i];
+        }
+    }
+    return NULL;
+}
+
+static void cxd90045_f292_log_unlisted(const Cxd90045F292 *s, bool write,
+                                       hwaddr off, unsigned size, uint64_t v)
+{
+    uint64_t o = (s->base + off) - CXD90045_F292_UNMODELLED_BASE;
+
+    if (write) {
+        qemu_log_mask(LOG_UNIMP, "%s.unmodelled: unimplemented device write "
+                      "(size %u, offset 0x%" PRIx64 ", value 0x%" PRIx64 ")\n",
+                      s->name, size, o, v);
+    } else {
+        qemu_log_mask(LOG_UNIMP, "%s.unmodelled: unimplemented device read "
+                      "(size %u, offset 0x%" PRIx64 ")\n",
+                      s->name, size, o);
+    }
+}
+
+static uint64_t cxd90045_f292_read(void *opaque, hwaddr off, unsigned size)
+{
+    Cxd90045F292 *s = opaque;
+    hwaddr w = off & ~3ULL;
+    const Cxd90045F292Rule *r = cxd90045_f292_rule(s, w);
+    uint32_t v = 0;
+
+    if (!r) {
+        cxd90045_f292_log_unlisted(s, false, off, size, 0);
+    } else if (r->kind == CXD90045_F292_RF) {
+        v = s->regs[w >> 2];
+    }
+    /* ZERO and unlisted offsets read 0, as the certified catch-all did. */
+    v >>= (off & 3) * 8;
+    if (size < 4) {
+        v &= (1u << (size * 8)) - 1;
+    }
+    return v;
+}
+
+static void cxd90045_f292_write(void *opaque, hwaddr off, uint64_t v,
+                                unsigned size)
+{
+    Cxd90045F292 *s = opaque;
+    hwaddr w = off & ~3ULL;
+    unsigned sh = (off & 3) * 8;
+    uint32_t mask = size >= 4 ? 0xffffffffu : ((1u << (size * 8)) - 1) << sh;
+    uint32_t old = s->regs[w >> 2];
+
+    if (!cxd90045_f292_rule(s, w)) {
+        cxd90045_f292_log_unlisted(s, true, off, size, v);
+    }
+    s->regs[w >> 2] = (old & ~mask) | (((uint32_t)v << sh) & mask);
+}
+
+static const MemoryRegionOps cxd90045_f292_ops = {
+    .read = cxd90045_f292_read,
+    .write = cxd90045_f292_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+static void cxd90045_f292_create(MemoryRegion *sysmem, hwaddr base,
+                                 uint64_t size, const char *name,
+                                 const Cxd90045F292Rule *rules,
+                                 size_t nrules)
+{
+    Cxd90045F292 *s = g_new0(Cxd90045F292, 1);
+
+    s->base = base;
+    s->size = size;
+    s->name = name;
+    s->rules = rules;
+    s->nrules = nrules;
+    s->regs = g_new0(uint32_t, size / sizeof(uint32_t));
+    memory_region_init_io(&s->mmio, NULL, &cxd90045_f292_ops, s, name, size);
+    memory_region_add_subregion_overlap(sysmem, base, &s->mmio, -600);
+}
+
+/*
+ * Remaining E0705 / main scored-boot peripheral rule tables (-600, above
+ * cxd90045.unmodelled -1000; unruled offsets still log as <name>.unmodelled).
+ */
+static const Cxd90045F292Rule cxd90045_emmc0_vendor_rules[] = {
+    { 0x000, CXD90045_F292_ZERO, "emmc.ko VR_RESET +0x100 write 0x7" },
+    { 0x008, CXD90045_F292_RF,   "emmc.ko VR_CLK_CTRL +0x108 RMW" },
+    { 0x00C, CXD90045_F292_ZERO, "emmc.ko VR_STAT +0x10C read 0 ready" },
+    { 0x024, CXD90045_F292_RF,   "emmc.ko VR_TIMING +0x124 RMW" },
+    { 0x058, CXD90045_F292_RF,   "emmc.ko VR_HS200_DLL +0x158 RMW" },
+    { 0x104, CXD90045_F292_RF,   "emmc.ko BCTL +0x204 RMW" },
+    { 0x108, CXD90045_F292_ZERO, "emmc.ko BRST +0x208 reset pulse 0x7" },
+    { 0x144, CXD90045_F292_RF,   "emmc.ko B_AXI +0x244 RMW 0x8000" },
+    { 0x3FC, CXD90045_F292_RF,   "emmc.ko VR_LOCK +0x4FC RMW" },
+};
+
+static const Cxd90045F292Rule cxd90045_spi0_rules[] = {
+    { 0x000, CXD90045_F292_ZERO, "av-cam spi0 SPICR0 0x63a6bf8e write 0x40" },
+};
+
+static const Cxd90045F292Rule cxd90045_sircs_rules[] = {
+    { 0x000, CXD90045_F292_ZERO, "sircs.ko SIRCS_CTRL +0x00 write 0x654C" },
+    { 0x008, CXD90045_F292_ZERO, "sircs.ko SIRCS_MODE +0x08 write 0x12" },
+    { 0x01C, CXD90045_F292_ZERO, "sircs.ko SIRCS_INT +0x1C write 0x1" },
+    { 0x020, CXD90045_F292_ZERO, "sircs.ko SIRCS_RX_EN +0x20 write 0xA01" },
+};
+
+static const Cxd90045F292Rule cxd90045_combophy_rx_rules[] = {
+    { 0x100, CXD90045_F292_ZERO, "av-cam ComboPHY LANE_MODE +0x100" },
+    { 0x104, CXD90045_F292_ZERO, "av-cam ComboPHY LANE_STOP +0x104" },
+    { 0x12C, CXD90045_F292_ZERO, "av-cam ComboPHY RX_CAL_CFG +0x12C" },
+    { 0x130, CXD90045_F292_ZERO, "av-cam ComboPHY RX_RST_CTRL +0x130" },
+};
+
+static const Cxd90045F292Rule cxd90045_combophy_mon_rules[] = {
+    { 0x0C0, CXD90045_F292_ZERO, "av-cam link monitor ERR_STAT +0xC0 (0=ok)" },
+    { 0x0C8, CXD90045_F292_ZERO, "av-cam link monitor ERR_MASK +0xC8" },
+};
+
+static const Cxd90045F292Rule cxd90045_pbl_aic0_rules[] = {
+    { 0x004, CXD90045_F292_RF, "av-cam PBL AIC0 DICARB +0x04" },
+    { 0x008, CXD90045_F292_RF, "av-cam PBL AIC0 EICARB +0x08" },
+    { 0x010, CXD90045_F292_RF, "av-cam PBL AIC0 DIC0_VMC +0x10" },
+    { 0x014, CXD90045_F292_RF, "av-cam PBL AIC0 DIC1_VMC +0x14" },
+    { 0x018, CXD90045_F292_RF, "av-cam PBL AIC0 EIC0_VMC +0x18" },
+    { 0x01C, CXD90045_F292_RF, "av-cam PBL AIC0 EIC1_VMC +0x1C" },
+};
+
+static const Cxd90045F292Rule cxd90045_cal_nor_rules[] = {
+    { 0x000, CXD90045_F292_ZERO, "av-cam 0xF6000000 calibration header [0..3]" },
+    { 0x004, CXD90045_F292_ZERO, "av-cam 0xF6000004 calibration header [4..7]" },
+    { 0x008, CXD90045_F292_ZERO, "av-cam 0xF6000008 calibration header [8..11]" },
+    { 0x00C, CXD90045_F292_ZERO, "av-cam 0xF600000C calibration header [12..15]" },
+    { 0x010, CXD90045_F292_ZERO, "av-cam 0xF6000010 calibration header [16]" },
+};
+
+/*
+ * GP-DMAC Unit 1 at 0xF0103000 (av-cam 0x63a68c42..0x63a693cd, twin of Unit 0
+ * at 0xF0102000): models IRQ_CLR (+0x08 W1C), IRQ_EN (+0x10), DMA_EN (+0x30),
+ * ARB_MASK (+0x34), and Ch0/Ch3 CFG/CTRL (+0x10C/+0x110, +0x16C/+0x170 with
+ * self-clearing BIT(0) start and BIT(18) busy == 0). Unlisted offsets still
+ * log as cxd90045.gpdmac1.unmodelled.
+ */
+typedef struct Cxd90045GpDmac1 {
+    MemoryRegion mmio;
+    uint32_t regs[0x1000 >> 2];
+} Cxd90045GpDmac1;
+
+static bool cxd90045_gpdmac1_known(hwaddr off)
+{
+    switch (off) {
+    case 0x008:
+    case 0x010:
+    case 0x030:
+    case 0x034:
+    case 0x10C:
+    case 0x110:
+    case 0x16C:
+    case 0x170:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static uint64_t cxd90045_gpdmac1_read(void *opaque, hwaddr off, unsigned size)
+{
+    Cxd90045GpDmac1 *s = opaque;
+    hwaddr w = off & ~3ULL;
+
+    if (!cxd90045_gpdmac1_known(w) || w == 0x008) {
+        uint64_t o = (0xF0103000ULL + off) - CXD90045_F292_UNMODELLED_BASE;
+        qemu_log_mask(LOG_UNIMP,
+                      "cxd90045.gpdmac1.unmodelled: unimplemented device read "
+                      "(size %u, offset 0x%" PRIx64 ")\n", size, o);
+        return 0;
+    }
+    uint32_t v = s->regs[w >> 2];
+    if (w == 0x110 || w == 0x170) {
+        v &= ~((1U << 18) | 1U); /* busy == 0, start self-cleared */
+    }
+    return (v >> ((off & 3) * 8)) & (size >= 4 ? 0xFFFFFFFFU : ((1U << (size * 8)) - 1));
+}
+
+static void cxd90045_gpdmac1_write(void *opaque, hwaddr off, uint64_t v,
+                                   unsigned size)
+{
+    Cxd90045GpDmac1 *s = opaque;
+    hwaddr w = off & ~3ULL;
+
+    if (!cxd90045_gpdmac1_known(w)) {
+        uint64_t o = (0xF0103000ULL + off) - CXD90045_F292_UNMODELLED_BASE;
+        qemu_log_mask(LOG_UNIMP,
+                      "cxd90045.gpdmac1.unmodelled: unimplemented device write "
+                      "(size %u, offset 0x%" PRIx64 ", value 0x%" PRIx64 ")\n",
+                      size, o, v);
+        return;
+    }
+    if (w == 0x008) {
+        s->regs[0x004 >> 2] &= ~(uint32_t)v; /* W1C IRQ status */
+        return;
+    }
+    s->regs[w >> 2] = (uint32_t)v;
+    if ((w == 0x110 || w == 0x170) && (v & 1U)) {
+        s->regs[w >> 2] &= ~1U;
+    }
+}
+
+static const MemoryRegionOps cxd90045_gpdmac1_ops = {
+    .read = cxd90045_gpdmac1_read,
+    .write = cxd90045_gpdmac1_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+/*
+ * Verified hardware clock/reset, ZMA0/RC0 PBL IP, and SoC reset / PMIC power-off
+ * models (clkrst-model=on, pmic-reset=on).
+ *
+ * 1. Universal CXD90045 0x10-stride clock/reset triplet bank (clkrst3 0xF2900000
+ *    and f2a0..f2a3 0xF2A00000..0xF2A32000):
+ *      slot + 0x0: STAT / VAL (R: state, W: state = v)
+ *      slot + 0x4: SET (W1S: state |= v, R: state)
+ *      slot + 0x8: CLR (W1C: state &= ~v, R: 0)
+ *      slot + 0xC: AUX (R/W latch)
+ */
+static bool sony_a6400_clkrst_model;
+static bool sony_a6400_pmic_reset;
+static bool sony_a6400_sd_uhs_u3;
+static bool sony_a6400_remote_suspend_bypass;
+static bool sony_a6400_still_capture;
+
+/*
+ * Active 0xF3030000 IDT/RCRAW compressor/decompressor (still-capture=on,
+ * mapped at -450 above cxd90045.f303 -600, wired to GIC IRQ 88):
+ *   - +0x00C SA_SEND_A bit 0: executes +0x110 mailbox command:
+ *       0x00040000 Init          -> reply +0x120 = 0x00040000
+ *       0x00060000/1 CompressRaw -> writes 16B Sony cRAW2 blocks + +0x13F0 len
+ *       0x00050004 DecompressRaw -> unpacks cRAW2 blocks, reply 0x00050000
+ *   - +0x100 clear, +0x104 factor (W1C), +0x108 mask -> GIC IRQ 88
+ */
+typedef struct Cxd90045RcrawIdtState {
+    MemoryRegion mr;
+    qemu_irq irq88;
+    uint32_t regs[0x10000 >> 2];
+    uint32_t factor_104;
+    uint32_t mask_108;
+} Cxd90045RcrawIdtState;
+
+static void cxd90045_rcraw_idt_update_irq(Cxd90045RcrawIdtState *s)
+{
+    qemu_set_irq(s->irq88, (s->factor_104 & s->mask_108) != 0);
+}
+
+static void cxd90045_rcraw_idt_exec(Cxd90045RcrawIdtState *s)
+{
+    uint32_t cmd = s->regs[0x110 >> 2];
+
+    if (cmd == 0x00040000u) {
+        s->regs[0x120 >> 2] = 0x00040000u;
+    } else if ((cmd & 0xFFFFFFFEu) == 0x00060000u) {
+        uint32_t dst_pa = s->regs[0x1180 >> 2];
+        if (dst_pa < 0x04000000u || dst_pa >= 0x40000000u) {
+            dst_pa = s->regs[0x1164 >> 2];
+        }
+        uint32_t w_px = 6000, h_ln = 4000;
+        size_t total_bytes = (size_t)w_px * h_ln; /* 1 byte/px in ARW 2.3 cRAW2 */
+        if (dst_pa >= 0x04000000u &&
+            (uint64_t)dst_pa + total_bytes <= 0x40000000ULL) {
+            static const uint16_t bars[8][3] = {
+                { 14800, 14800, 14800 }, { 14800, 14800,  1024 },
+                {  1024, 14800, 14800 }, {  1024, 14800,  1024 },
+                { 14800,  1024, 14800 }, { 14800,  1024,  1024 },
+                {  1024,  1024, 14800 }, {  1024,  1024,  1024 },
+            };
+            g_autofree uint8_t *crow = g_malloc(w_px);
+            for (uint32_t y = 0; y < h_ln; y++) {
+                for (uint32_t x = 0; x < w_px; x += 16) {
+                    uint16_t grp[16];
+                    unsigned bar = ((x + 8) * 8) / w_px;
+                    for (unsigned i = 0; i < 16; i++) {
+                        unsigned px = x + i;
+                        if ((y & 1) == 0) {
+                            grp[i] = (px & 1) ? bars[bar][1] : bars[bar][0];
+                        } else {
+                            grp[i] = (px & 1) ? bars[bar][2] : bars[bar][1];
+                        }
+                    }
+                    cxd90045_craw2_pack_block16(grp, crow + x);
+                }
+                address_space_write(&address_space_memory,
+                                    (hwaddr)dst_pa + (uint64_t)y * w_px,
+                                    MEMTXATTRS_UNSPECIFIED, crow, w_px);
+            }
+        }
+        s->regs[0x13F0 >> 2] = (uint32_t)total_bytes;
+        s->regs[0x120 >> 2] = cmd & ~0xF0u;
+    } else if (cmd == 0x00050004u) {
+        s->regs[0x120 >> 2] = 0x00050000u;
+    } else {
+        /* Preserve E0702 non-still OPD/TOP baseline without spurious IRQ 88 */
+        return;
+    }
+    s->factor_104 |= 0x01u;
+    cxd90045_rcraw_idt_update_irq(s);
+}
+
+static uint64_t cxd90045_rcraw_idt_read(void *opaque, hwaddr off, unsigned sz)
+{
+    Cxd90045RcrawIdtState *s = opaque;
+    hwaddr w = off & ~3ULL;
+    uint32_t v = 0;
+
+    switch (w) {
+    case 0x0104:
+        v = s->factor_104;
+        break;
+    case 0x0108:
+        v = s->mask_108;
+        break;
+    case 0x0004:
+    case 0x000C:
+    case 0x0110:
+    case 0x0120:
+    case 0x1090:
+    case 0x1094:
+    case 0x10A8:
+    case 0x10AC:
+    case 0x10B8:
+    case 0x10C0:
+    case 0x10C4:
+    case 0x10F8:
+    case 0x1180:
+    case 0x13F0:
+    case 0x17C0:
+    case 0x17C8:
+        v = s->regs[w >> 2];
+        break;
+    default:
+        /* Self-clearing reset/trigger/status words (E0702 ZERO contract) */
+        v = 0;
+        break;
+    }
+    return (v >> ((off & 3) * 8)) & (sz >= 4 ? 0xFFFFFFFFU : ((1U << (sz * 8)) - 1));
+}
+
+static void cxd90045_rcraw_idt_write(void *opaque, hwaddr off, uint64_t val,
+                                     unsigned sz)
+{
+    Cxd90045RcrawIdtState *s = opaque;
+    hwaddr w = off & ~3ULL;
+    uint32_t v = (uint32_t)val;
+
+    if (w == 0x0100 || w == 0x0104) {
+        s->factor_104 &= ~v;
+        cxd90045_rcraw_idt_update_irq(s);
+        return;
+    }
+    if (w == 0x0108) {
+        s->mask_108 = v;
+        cxd90045_rcraw_idt_update_irq(s);
+        return;
+    }
+    if ((w >> 2) < ARRAY_SIZE(s->regs)) {
+        s->regs[w >> 2] = v;
+    }
+    if (w == 0x000C && (v & 1u)) {
+        cxd90045_rcraw_idt_exec(s);
+    }
+}
+
+static const MemoryRegionOps cxd90045_rcraw_idt_ops = {
+    .read = cxd90045_rcraw_idt_read,
+    .write = cxd90045_rcraw_idt_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+/*
+ * Post-boot Sub-Micro CAIF shutter/exposure command state machine
+ * (av-cam CaptureUtilityCAIF.cpp 0x6375a9e4..0x6375df98, enabled when
+ * still-capture=on).
+ */
+typedef struct CaifMsg {
+    uint8_t cat;
+    uint8_t subcmd;
+    uint16_t len;
+} CaifMsg;
+
+typedef struct Cxd90045CaifState {
+    CaifMsg queue[16];
+    unsigned q_head;
+    unsigned q_tail;
+    bool rx_active;
+    bool rx_hdr_sent;
+    uint16_t rx_rem;
+    uint8_t cur_cat;
+    uint8_t cur_sub;
+    uint16_t cur_len;
+    int last_s2req;
+    int last_exp_ready;
+    int last_read_start;
+    int exp_pulse_step;
+    QEMUTimer *strobe_timer;
+    QEMUTimer *exp_timer;
+    DeviceState *sg_dev;
+} Cxd90045CaifState;
+
+static Cxd90045CaifState *sony_a6400_caif;
+static DeviceState *sony_a6400_frames_split;
+
+static void caif_pulse_strobe(Cxd90045CaifState *c, int64_t delay_us)
+{
+    timer_mod(c->strobe_timer,
+              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + delay_us * SCALE_US);
+}
+
+static void caif_strobe_tick(void *opaque)
+{
+    /* Pulse P0.8 (SM_STROBE, IRQ 129) high then low on nextsubmicro tick */
+    qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, CXD90045_SM_STROBE_LINE), 1);
+    qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, CXD90045_SM_STROBE_LINE), 0);
+}
+
+static void caif_kick_next_rx(Cxd90045CaifState *c)
+{
+    if (c->rx_active || c->q_head == c->q_tail) {
+        return;
+    }
+    CaifMsg m = c->queue[c->q_head];
+    c->q_head = (c->q_head + 1) % ARRAY_SIZE(c->queue);
+    c->rx_active = true;
+    sony_a6400_caif_rx_active = true;
+    c->rx_hdr_sent = false;
+    c->cur_cat = m.cat;
+    c->cur_sub = m.subcmd;
+    c->cur_len = m.len;
+    c->rx_rem = m.len;
+    /* Assert P2.5 (SM_REQ = 1) and pulse P0.8 (IRQ 129) */
+    qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, CXD90045_SM_REQ_LINE), 1);
+    caif_pulse_strobe(c, 150);
+}
+
+static void caif_enqueue(Cxd90045CaifState *c, uint8_t cat, uint8_t sub,
+                         uint16_t len)
+{
+    unsigned next = (c->q_tail + 1) % ARRAY_SIZE(c->queue);
+    if (next == c->q_head) {
+        return;
+    }
+    c->queue[c->q_tail] = (CaifMsg){ .cat = cat, .subcmd = sub, .len = len };
+    c->q_tail = next;
+    caif_kick_next_rx(c);
+}
+
+static void caif_exp_tick(void *opaque)
+{
+    Cxd90045CaifState *c = opaque;
+    int exp_line = 1 * 32 + 2; /* P1.2 exposure IRQ 139 */
+
+    if (c->exp_pulse_step == 0) {
+        qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, exp_line), 1);
+        qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, exp_line), 0);
+        c->exp_pulse_step = 1;
+        timer_mod(c->exp_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 1000 * SCALE_US);
+    } else if (c->exp_pulse_step == 1) {
+        qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, exp_line), 1);
+        qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, exp_line), 0);
+        c->exp_pulse_step = 2;
+        timer_mod(c->exp_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 1000 * SCALE_US);
+    } else {
+        caif_enqueue(c, 3, 3, 0x000A); /* (3, 3) START_END */
+    }
+}
+
+static void caif_on_s2req_gpio(void *opaque, int n, int level)
+{
+    Cxd90045CaifState *c = opaque;
+    if (c->last_s2req == 1 && level == 0) {
+        caif_enqueue(c, 3, 0, 0x0014); /* (3, 0) CAP_START */
+    }
+    c->last_s2req = level;
+}
+
+static void caif_on_exp_ready_gpio(void *opaque, int n, int level)
+{
+    Cxd90045CaifState *c = opaque;
+    if (c->last_exp_ready == 1 && level == 0) {
+        c->exp_pulse_step = 0;
+        timer_mod(c->exp_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 500 * SCALE_US);
+    }
+    c->last_exp_ready = level;
+}
+
+static void caif_on_read_start_gpio(void *opaque, int n, int level)
+{
+    Cxd90045CaifState *c = opaque;
+    if (c->last_read_start == 1 && level == 0) {
+        if (sony_a6400_frames_split) {
+            qemu_set_irq(qdev_get_gpio_in(sony_a6400_frames_split, 0), 1);
+            qemu_set_irq(qdev_get_gpio_in(sony_a6400_frames_split, 0), 0);
+        }
+        caif_enqueue(c, 3, 5, 0x0608);  /* (3, 5) CAP_DATA (1544 B) */
+        caif_enqueue(c, 3, 12, 0x000E); /* (3, 12) EBC (14 B) */
+    }
+    c->last_read_start = level;
+}
+
+typedef struct Cxd90045ClkRstBank {
+    MemoryRegion mr;
+    const char *name;
+    hwaddr base;
+    uint64_t valid_slot_bitmap;
+    uint32_t val[64];
+    uint32_t aux[64];
+} Cxd90045ClkRstBank;
+
+static uint64_t cxd90045_clkrst_bank_read(void *opaque, hwaddr off, unsigned sz)
+{
+    Cxd90045ClkRstBank *b = opaque;
+    unsigned slot = (off & ~3ULL) >> 4;
+    unsigned sub = (off & ~3ULL) & 0xFU;
+    uint32_t v = 0;
+
+    if (slot >= 64 || !((b->valid_slot_bitmap >> slot) & 1ULL)) {
+        qemu_log_mask(LOG_UNIMP, "%s: unimp read +0x%03" HWADDR_PRIx "\n",
+                      b->name, off);
+        return 0;
+    }
+    if (sub == 0x0 || sub == 0x4) {
+        v = b->val[slot];
+    } else if (sub == 0xC) {
+        v = b->aux[slot];
+    }
+    return (v >> ((off & 3) * 8)) & (sz >= 4 ? 0xFFFFFFFFU : ((1U << (sz * 8)) - 1));
+}
+
+static void cxd90045_clkrst_bank_write(void *opaque, hwaddr off, uint64_t val,
+                                       unsigned sz)
+{
+    Cxd90045ClkRstBank *b = opaque;
+    unsigned slot = (off & ~3ULL) >> 4;
+    unsigned sub = (off & ~3ULL) & 0xFU;
+    uint32_t v = (uint32_t)val;
+
+    if (slot >= 64 || !((b->valid_slot_bitmap >> slot) & 1ULL)) {
+        qemu_log_mask(LOG_UNIMP, "%s: unimp write +0x%03" HWADDR_PRIx
+                      " = 0x%" PRIx64 "\n", b->name, off, val);
+        return;
+    }
+    if (sub == 0x0) {
+        b->val[slot] = v;
+    } else if (sub == 0x4) {
+        b->val[slot] |= v;
+    } else if (sub == 0x8) {
+        b->val[slot] &= ~v;
+    } else if (sub == 0xC) {
+        b->aux[slot] = v;
+    }
+}
+
+static const MemoryRegionOps cxd90045_clkrst_bank_ops = {
+    .read = cxd90045_clkrst_bank_read,
+    .write = cxd90045_clkrst_bank_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+static void cxd90045_clkrst_bank_reset(void *opaque)
+{
+    Cxd90045ClkRstBank *b = opaque;
+    memset(b->val, 0, sizeof(b->val));
+    memset(b->aux, 0, sizeof(b->aux));
+}
+
+static void cxd90045_create_clkrst_bank(MemoryRegion *sysmem, hwaddr base,
+                                        const char *name, uint64_t slot_mask)
+{
+    Cxd90045ClkRstBank *b = g_new0(Cxd90045ClkRstBank, 1);
+
+    b->name = name;
+    b->base = base;
+    b->valid_slot_bitmap = slot_mask;
+    memory_region_init_io(&b->mr, NULL, &cxd90045_clkrst_bank_ops, b, name,
+                          0x1000);
+    memory_region_add_subregion_overlap(sysmem, base, &b->mr, -450);
+    qemu_register_reset(cxd90045_clkrst_bank_reset, b);
+}
+
+/*
+ * 2. Stateful CXD90045 Clkgen F28 (0xF2800000..0xF2807FFF): BAM_POWERSAVE
+ *    (+0x00..+0x07), ISP SRAM port gates (+0x2000..+0x209F), and ISP/GPU clock
+ *    dividers & QoS (+0x4000..+0x42FF, +0x5000..+0x51FF, +0x6000..+0x62BF,
+ *    +0x7000..+0x703F). Unverified holes log LOG_UNIMP.
+ */
+typedef struct Cxd90045ClkgenF28 {
+    MemoryRegion mr;
+    uint8_t regs[0x8000];
+} Cxd90045ClkgenF28;
+
+static bool cxd90045_clkgen_f28_valid(hwaddr off)
+{
+    return off < 0x0008 ||
+           (off >= 0x2000 && off < 0x20A0) ||
+           (off >= 0x4000 && off < 0x4300) ||
+           (off >= 0x5000 && off < 0x5200) ||
+           (off >= 0x6000 && off < 0x62C0) ||
+           (off >= 0x7000 && off < 0x7040);
+}
+
+static uint64_t cxd90045_clkgen_f28_read(void *opaque, hwaddr off, unsigned sz)
+{
+    Cxd90045ClkgenF28 *s = opaque;
+    uint64_t v = 0;
+
+    if (!cxd90045_clkgen_f28_valid(off)) {
+        qemu_log_mask(LOG_UNIMP, "cxd90045.clkgen-f28-model: unimp read +0x%04"
+                      HWADDR_PRIx "\n", off);
+        return 0;
+    }
+    for (unsigned i = 0; i < sz && off + i < sizeof(s->regs); i++) {
+        v |= (uint64_t)s->regs[off + i] << (8 * i);
+    }
+    return v;
+}
+
+static void cxd90045_clkgen_f28_write(void *opaque, hwaddr off, uint64_t val,
+                                      unsigned sz)
+{
+    Cxd90045ClkgenF28 *s = opaque;
+
+    if (!cxd90045_clkgen_f28_valid(off)) {
+        qemu_log_mask(LOG_UNIMP, "cxd90045.clkgen-f28-model: unimp write +0x%04"
+                      HWADDR_PRIx " = 0x%" PRIx64 "\n", off, val);
+        return;
+    }
+    for (unsigned i = 0; i < sz && off + i < sizeof(s->regs); i++) {
+        s->regs[off + i] = (val >> (8 * i)) & 0xFFU;
+    }
+}
+
+static const MemoryRegionOps cxd90045_clkgen_f28_ops = {
+    .read = cxd90045_clkgen_f28_read,
+    .write = cxd90045_clkgen_f28_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+/*
+ * 3. Stateful PBL IP shell (ZMA0 @ 0xF3500000 and RC0 @ 0xF3880000):
+ *    - AIC (+0x00..+0x5F): +0x0C IRQ_CLR W1C, +0x34 CORE_TRIG (0x1/0x100
+ *      self-clearing reset/start strobes)
+ *    - AIF (+0x1000..+0x13FF): +0x1008 BIT(24) soft-reset auto-clears while
+ *      preserving channel nibbles [23:0]; channel ch=0..3 (+0x1200 + 0x80*ch)
+ *      +0x04 BIT(30) stop request clears +0x00 BIT(0) active and keeps BIT(31)
+ *      hung-flag == 0 (av-cam 0x63a1fd08..10)
+ *    - Core pipeline sub-pages (+0x2000..+0xF3FF)
+ */
+typedef struct Cxd90045PblIp {
+    MemoryRegion mr;
+    const char *name;
+    uint32_t regs[0x10000 >> 2];
+} Cxd90045PblIp;
+
+static bool cxd90045_pbl_ip_valid(hwaddr off)
+{
+    return off < 0x0060 ||
+           (off >= 0x1000 && off < 0x1400) ||
+           (off >= 0x2000 && off < 0xF400);
+}
+
+static uint64_t cxd90045_pbl_ip_read(void *opaque, hwaddr off, unsigned sz)
+{
+    Cxd90045PblIp *s = opaque;
+    hwaddr w = off & ~3ULL;
+
+    if (!cxd90045_pbl_ip_valid(w)) {
+        qemu_log_mask(LOG_UNIMP, "%s: unimp read +0x%04" HWADDR_PRIx "\n",
+                      s->name, off);
+        return 0;
+    }
+    uint32_t v = s->regs[w >> 2];
+    return (v >> ((off & 3) * 8)) & (sz >= 4 ? 0xFFFFFFFFU : ((1U << (sz * 8)) - 1));
+}
+
+static void cxd90045_pbl_ip_write(void *opaque, hwaddr off, uint64_t val,
+                                  unsigned sz)
+{
+    Cxd90045PblIp *s = opaque;
+    hwaddr w = off & ~3ULL;
+    uint32_t v = (uint32_t)val;
+
+    if (!cxd90045_pbl_ip_valid(w)) {
+        qemu_log_mask(LOG_UNIMP, "%s: unimp write +0x%04" HWADDR_PRIx
+                      " = 0x%" PRIx64 "\n", s->name, off, val);
+        return;
+    }
+    if (w == 0x000C) { /* AIC IRQ_CLR W1C */
+        s->regs[0x000C >> 2] &= ~v;
+        return;
+    }
+    if (w == 0x0034) { /* AIC CORE_TRIG: 0x101 strobes self-clear */
+        s->regs[0x0034 >> 2] = v & ~0x101U;
+        return;
+    }
+    if (w == 0x1008) { /* AIF_RST_NIBBLE: BIT(24) reset auto-clears */
+        s->regs[0x1008 >> 2] = v & ~(1U << 24);
+        return;
+    }
+    if (w >= 0x1200 && w < 0x1400 && ((w - 0x1200) & 0x7FU) == 0x04) {
+        /* Channel CH_STOP_ACK: BIT(30) stops channel and keeps BIT(31) == 0 */
+        hwaddr ch_ctl = w - 0x04;
+        if (v & (1U << 30)) {
+            s->regs[ch_ctl >> 2] &= ~1U;
+        }
+        s->regs[w >> 2] = v & ~(3U << 30);
+        return;
+    }
+    unsigned sh = (off & 3) * 8;
+    uint32_t mask = sz >= 4 ? 0xFFFFFFFFU : ((1U << (sz * 8)) - 1) << sh;
+    s->regs[w >> 2] = (s->regs[w >> 2] & ~mask) | ((v << sh) & mask);
+}
+
+static const MemoryRegionOps cxd90045_pbl_ip_ops = {
+    .read = cxd90045_pbl_ip_read,
+    .write = cxd90045_pbl_ip_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+/*
+ * 4. MISCREG SoC Warm Reset (0xF2915040..0xF2915053, cxd900x0_reset @
+ *    0x6011f640) & Hardware Power-Off (cfg.poff=10,5 -> GPIO P10.5 after
+ *    XRSTREQ_CLR 0xF2915048 = 0x10 in SRAM 0xFE020000 stub).
+ */
+typedef struct Cxd90045RstMiscState {
+    MemoryRegion mr;
+    uint32_t rst_ctrl;
+    uint32_t emg_mask;
+    bool poff_armed;
+} Cxd90045RstMiscState;
+
+static uint64_t cxd90045_rstmisc_read(void *opaque, hwaddr off, unsigned size)
+{
+    Cxd90045RstMiscState *s = opaque;
+    switch (off) {
+    case 0x00:
+    case 0x04:
+        return s->rst_ctrl;
+    case 0x08:
+        return 0;
+    case 0x10:
+        return s->emg_mask;
+    default:
+        qemu_log_mask(LOG_UNIMP, "cxd90045.rstmisc: unimp read +0x%02"
+                      HWADDR_PRIx "\n", off);
+        return 0;
+    }
+}
+
+static void cxd90045_rstmisc_write(void *opaque, hwaddr off, uint64_t val,
+                                   unsigned size)
+{
+    Cxd90045RstMiscState *s = opaque;
+    uint32_t v = (uint32_t)val;
+
+    switch (off) {
+    case 0x00:
+        s->rst_ctrl = v;
+        break;
+    case 0x04:
+        s->rst_ctrl |= v;
+        break;
+    case 0x08:
+        if (v & (1U << 4)) {
+            s->poff_armed = true;
+        }
+        s->rst_ctrl &= ~v;
+        return;
+    case 0x10:
+        s->emg_mask = v;
+        return;
+    default:
+        qemu_log_mask(LOG_UNIMP, "cxd90045.rstmisc: unimp write +0x%02"
+                      HWADDR_PRIx " = 0x%x\n", off, v);
+        return;
+    }
+    if (v & 0x1U) {
+        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+    }
+}
+
+static const MemoryRegionOps cxd90045_rstmisc_ops = {
+    .read = cxd90045_rstmisc_read,
+    .write = cxd90045_rstmisc_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static void cxd90045_rstmisc_reset(void *opaque)
+{
+    Cxd90045RstMiscState *s = opaque;
+    s->rst_ctrl = 0;
+    s->emg_mask = 0;
+    s->poff_armed = false;
+}
+
+static void cxd90045_poff_gpio_handler(void *opaque, int n, int level)
+{
+    Cxd90045RstMiscState *s = opaque;
+    if (level == 0 && s->poff_armed) {
+        qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
+    }
+}
+
 static void sony_a6400_create_liveview_pipeline(MachineState *machine,
                                                 MemoryRegion *sysmem,
                                                 qemu_irq *pic)
@@ -2462,6 +4786,7 @@ static void sony_a6400_create_liveview_pipeline(MachineState *machine,
     qdev_prop_set_uint16(frames, "num-lines", ARRAY_SIZE(pig));
     qdev_realize_and_unref(frames, NULL, &error_fatal);
     qdev_connect_gpio_out_named(sg, "frame", 0, qdev_get_gpio_in(frames, 0));
+    sony_a6400_frames_split = frames;
 
     memory_region_init_io(sif_mmio, OBJECT(machine), &cxd90045_sif_ops,
                           sif_blk->regs, "cxd90045.sif", 0x1000);
@@ -2504,6 +4829,8 @@ static void sony_a6400_create_liveview_pipeline(MachineState *machine,
 
     for (size_t k = 0; k < ARRAY_SIZE(aif_groups); k++) {
         DeviceState *aif = qdev_new(TYPE_CXD90045_AIF);
+        bool fe_rcraw = (sony_a6400_still_capture &&
+                         aif_groups[k].base == 0xF3020000ULL);
 
         qdev_prop_set_uint32(aif, "nch", aif_groups[k].nch);
         qdev_prop_set_uint32(aif, "irq0-mask", aif_groups[k].irq0_mask);
@@ -2522,6 +4849,12 @@ static void sony_a6400_create_liveview_pipeline(MachineState *machine,
             sysbus_connect_irq(SYS_BUS_DEVICE(aif), 1,
                                pic[aif_groups[k].irq1 - 32]);
         }
+        if (fe_rcraw) {
+            for (int rch = 0; rch < 3; rch++) {
+                sysbus_connect_irq(SYS_BUS_DEVICE(aif), 2 + rch,
+                                   pic[(70 + rch) - 32]);
+            }
+        }
     }
 }
 
@@ -2539,25 +4872,66 @@ static void sony_a6400_submicro_crc(uint8_t frame[128])
     frame[127] = crc >> 8;
 }
 
+static DeviceState *sony_a6400_hdmi_cec_dev;
+static bool sony_a6400_sm_rail_on;
+
+static bool sony_a6400_submicro_frame_valid(const uint8_t frame[128])
+{
+    unsigned end = 4 + frame[2] + ((unsigned)frame[3] << 8);
+
+    if (end > 126) {
+        return false;
+    }
+    for (unsigned pos = 4; pos + 4 <= end;) {
+        unsigned size = frame[pos + 1];
+        if (size > end - pos - 4) {
+            return false;
+        }
+        pos += 4 + size;
+    }
+    return true;
+}
+
 static const uint8_t *sony_a6400_submicro_tlv(const uint8_t frame[128],
                                              uint8_t id, unsigned min_len)
 {
     unsigned end = 4 + frame[2] + ((unsigned)frame[3] << 8);
 
-    if (end > 126) {
+    if (!sony_a6400_submicro_frame_valid(frame)) {
         return NULL;
     }
     for (unsigned pos = 4; pos + 4 <= end;) {
         unsigned size = frame[pos + 1];
-        if (size > end - pos - 4) {
-            return NULL;
-        }
         if (frame[pos] == id) {
             return size >= min_len ? frame + pos + 4 : NULL;
         }
         pos += 4 + size;
     }
     return NULL;
+}
+
+static bool sony_a6400_submicro_has_tlv_id(const uint8_t frame[128], uint8_t id)
+{
+    unsigned end = 4 + frame[2] + ((unsigned)frame[3] << 8);
+
+    if (!sony_a6400_submicro_frame_valid(frame)) {
+        return false;
+    }
+    for (unsigned pos = 4; pos + 4 <= end;) {
+        unsigned size = frame[pos + 1];
+        if (frame[pos] == id) {
+            return true;
+        }
+        pos += 4 + size;
+    }
+    return false;
+}
+
+static void sony_a6400_submicro_init_rail_state(void)
+{
+    const uint8_t *status =
+        sony_a6400_submicro_tlv(sony_a6400_sm_frames + 256, 0x03, 4);
+    sony_a6400_sm_rail_on = status ? ((status[3] & BIT(0)) != 0) : false;
 }
 
 static void sony_a6400_submicro_lens_reply(const uint8_t tx[128],
@@ -2567,15 +4941,74 @@ static void sony_a6400_submicro_lens_reply(const uint8_t tx[128],
     const uint8_t *status = sony_a6400_submicro_tlv(reply, 0x03, 4);
     unsigned pos;
 
-    if (!request || !status) {
+    if (!sony_a6400_submicro_frame_valid(tx) || !status) {
         qemu_log_mask(LOG_UNIMP, "sony-a6400: missing lens power TLV\n");
         return;
     }
+    if (request) {
+        sony_a6400_sm_rail_on = (request[1] & BIT(0)) != 0;
+    } else if (sony_a6400_submicro_has_tlv_id(tx, 0x0a)) {
+        /* Truncated TLV 0x0a (< 2 bytes): refuse without altering reply. */
+        qemu_log_mask(LOG_UNIMP, "sony-a6400: truncated lens power TLV\n");
+        return;
+    }
     /* av-cam 0x6386ACDA requests the rail; 0x6386AC28 reads its status.
-     * The virtual supply settles at the SPI exchange. No lens is simulated. */
+     * Persist the latched rail state across Slot-B polls that omit TLV 0x0a. */
     pos = (status - reply) + 3;
-    reply[pos] = (reply[pos] & ~BIT(0)) | (request[1] & BIT(0));
+    reply[pos] = (reply[pos] & ~BIT(0)) | (sony_a6400_sm_rail_on ? BIT(0) : 0);
     sony_a6400_submicro_crc(reply);
+}
+
+static void sony_a6400_patch_slot_a(uint8_t slot[128])
+{
+    if (slot[0] != 0x20) {
+        return;
+    }
+    if (!sony_a6400_sd_bus && !sony_a6400_hdmi_cec_dev &&
+        !(sony_a6400_rear_controls &&
+          (sony_a6400_front_pressed || sony_a6400_power_off))) {
+        return;
+    }
+    /* Captured ORIL 0x63A755C6 decodes slot A byte 2 bit 4 as SD0 presence. */
+    if (sony_a6400_sd_bus) {
+        slot[2] &= ~BIT(4);
+        if (sdbus_get_inserted(sony_a6400_sd_bus)) {
+            slot[2] |= BIT(4);
+        }
+    }
+    /* Sub-micro Slot A byte 29 (CAkey2) bit 6 = HDMI cable HPD (0x63A64C7E). */
+    if (sony_a6400_hdmi_cec_dev) {
+        if (cxd90045_hdmi_is_plugged(sony_a6400_hdmi_cec_dev)) {
+            slot[29] |= BIT(6);
+        } else {
+            slot[29] &= ~BIT(6);
+        }
+    }
+    /* E0526: the OFF position clears CAkey1 bit 0. */
+    if (sony_a6400_rear_controls || sony_a6400_power_off) {
+        if (sony_a6400_power_off) {
+            slot[28] &= ~BIT(0);
+        }
+        if (sony_a6400_rear_controls) {
+            slot[28] |= sony_a6400_front_pressed & (BIT(1) | BIT(2));
+            slot[29] &= ~(sony_a6400_front_pressed >> 8);
+        }
+    }
+    sony_a6400_submicro_crc(slot);
+}
+
+static size_t sony_a6400_submicro_slot_offset(uint8_t req_cmd, size_t fallback)
+{
+    if (req_cmd == 0x31) {
+        return 256;
+    }
+    if (req_cmd == 0x61) {
+        return 128;
+    }
+    if (req_cmd == 0x21) {
+        return 0;
+    }
+    return fallback;
 }
 
 static void sony_a6400_submicro_xfer(void *opaque, int ch, uint32_t mode,
@@ -2584,38 +5017,62 @@ static void sony_a6400_submicro_xfer(void *opaque, int ch, uint32_t mode,
     uint8_t out[256];
 
     sony_a6400_sio_log(opaque, ch, mode, buf, len);
+    if (sony_a6400_caif && len > 0 &&
+        buf[0] != 0x21 && buf[0] != 0x31 && buf[0] != 0x61) {
+        Cxd90045CaifState *c = sony_a6400_caif;
+        if (c->rx_active) {
+            if (!c->rx_hdr_sent && len == 8) {
+                uint8_t hdr[8] = {
+                    0x00, c->cur_cat, c->cur_sub, 0x00,
+                    (uint8_t)(c->cur_len & 0xFFu),
+                    (uint8_t)(c->cur_len >> 8),
+                    0x00, 0x00,
+                };
+                memcpy(buf, hdr, 8);
+                c->rx_hdr_sent = true;
+                caif_pulse_strobe(c, 100);
+                return;
+            }
+            if (c->rx_hdr_sent) {
+                uint16_t take = MIN((uint16_t)len, c->rx_rem);
+                memset(buf, 0, len);
+                c->rx_rem -= take;
+                if (c->rx_rem == 0) {
+                    c->rx_active = false;
+                    sony_a6400_caif_rx_active = false;
+                    qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio,
+                                                  CXD90045_SM_REQ_LINE), 0);
+                    caif_pulse_strobe(c, 100);
+                    caif_kick_next_rx(c);
+                } else {
+                    caif_pulse_strobe(c, 100);
+                }
+                return;
+            }
+        }
+        /* Post-boot CPU -> Sub-Micro command TX (e.g. (3, 4) CAP_SETTING) */
+        if (len <= 128) {
+            caif_pulse_strobe(c, 100);
+            return;
+        }
+    }
     if (!sony_a6400_sm_loaded || len < 128) {
         return;
     }
-    memcpy(out, sony_a6400_sm_frames +
-           (buf[0] == 0x31 ? 256 : buf[0] == 0x61 ? 128 : 0), 128);
-    if (out[0] == 0x20 &&
-        (sony_a6400_sd_bus || (sony_a6400_rear_controls &&
-         (sony_a6400_front_pressed || sony_a6400_power_off)))) {
-        /* Captured ORIL 0x63A755C6 decodes slot A byte 2 bit 4 as
-         * SD0 presence in the seven-byte front media report. */
-        if (sony_a6400_sd_bus) {
-            out[2] &= ~BIT(4);
-            if (sdbus_get_inserted(sony_a6400_sd_bus)) {
-                out[2] |= BIT(4);
-            }
-        }
-        /* E0526: the OFF position clears CAkey1 bit 0. */
-        if (sony_a6400_rear_controls) {
-            if (sony_a6400_power_off) {
-                out[28] &= ~BIT(0);
-            }
-            out[28] |= sony_a6400_front_pressed & (BIT(1) | BIT(2));
-            out[29] &= ~(sony_a6400_front_pressed >> 8);
-        }
-        sony_a6400_submicro_crc(out);
+    memcpy(out, sony_a6400_sm_frames + sony_a6400_submicro_slot_offset(buf[0], 0),
+           128);
+    if (out[0] == 0x20) {
+        sony_a6400_patch_slot_a(out);
     } else if (sony_a6400_sm_lens_power && buf[0] == 0x31 && out[0] == 0x30) {
         sony_a6400_submicro_lens_reply(buf, out);
     }
     if (len >= 256) {
-        memcpy(out + 128, sony_a6400_sm_frames + 256, 128);
-        if (sony_a6400_sm_lens_power && buf[128] == 0x31 &&
-            out[128] == 0x30) {
+        size_t off1 = sony_a6400_submicro_slot_offset(buf[128], 256);
+        memcpy(out + 128, sony_a6400_sm_frames + off1, 128);
+        if (out[128] == 0x20) {
+            sony_a6400_patch_slot_a(out + 128);
+        } else if (sony_a6400_sm_lens_power && buf[128] == 0x31 &&
+                   out[128] == 0x30) {
             sony_a6400_submicro_lens_reply(buf + 128, out + 128);
         }
     }
@@ -2756,24 +5213,446 @@ static const VMStateDescription vmstate_cxd_opt_timer = {
     }
 };
 
+/*
+ * Multi-body CXD90045 hardware catalog matching DEFAULT_REGISTRY in
+ * src/a6400/targets/catalog.py (8 modeled camera bodies).
+ */
+typedef struct SonyBodyProfile {
+    const char *machine_name;
+    const char *target_id;
+    const char *short_alias;
+    const char *desc;
+    bool has_evf;       /* false on EVF-less ZV-E10 -> P0.2 idle high */
+    bool has_ibis_imu;  /* 6-axis gyro/accel responder on SIO ch4 */
+    bool has_dual_sd;   /* second SDHCI removable slot at mmc2 (0xF0302000) */
+    bool full_frame;    /* defaults kit E-mount lens to FE 50mm F1.8 vs PZ1650 */
+} SonyBodyProfile;
+
+static const SonyBodyProfile sony_body_profiles[] = {
+    {
+        "sony-a6400",  "ilce_6400",  "a6400",
+        "Sony ILCE-6400 (BIONZ X / CXD90045)",
+        true,  false, false, false,
+    },
+    {
+        "sony-a6400a", "ilce_6400a", "a6400a",
+        "Sony ILCE-6400A (BIONZ X / CXD90045, J3 panel)",
+        true,  false, false, false,
+    },
+    {
+        "sony-zve10",  "zv_e10",     "zve10",
+        "Sony ZV-E10 (BIONZ X / CXD90045, vari-angle, no EVF)",
+        false, true,  false, false,
+    },
+    {
+        "sony-a6100",  "ilce_6100",  "a6100",
+        "Sony ILCE-6100 (BIONZ X / CXD90045)",
+        true,  false, false, false,
+    },
+    {
+        "sony-a6600",  "ilce_6600",  "a6600",
+        "Sony ILCE-6600 (BIONZ X / CXD90045, IBIS)",
+        true,  true,  false, false,
+    },
+    {
+        "sony-a7c",    "ilce_7c",    "a7c",
+        "Sony ILCE-7C (BIONZ X / CXD90045, Full-Frame IBIS)",
+        true,  true,  false, true,
+    },
+    {
+        "sony-a7m3",   "ilce_7m3",   "a7m3",
+        "Sony ILCE-7M3 (BIONZ X / CXD90045, Full-Frame IBIS, Dual SD)",
+        true,  true,  true,  true,
+    },
+    {
+        "sony-a7rm4a", "ilce_7rm4a", "a7rm4a",
+        "Sony ILCE-7RM4A (BIONZ X / CXD90045, Full-Frame IBIS, Dual SD, J3)",
+        true,  true,  true,  true,
+    },
+};
+
+static char *sony_a6400_camera_model;
+static const SonyBodyProfile *sony_active_body = &sony_body_profiles[0];
+static bool sony_a6400_peripherals;
+static bool sony_a6400_touchscreen;
+static bool sony_a6400_bcm4339;
+static bool sony_a6400_hdmi_cec;
+static bool sony_a6400_audio_io;
+static bool sony_a6400_audio_mic_plugged;
+static char *sony_a6400_audio_input;
+static char *sony_a6400_emount_lens;
+
+static const SonyBodyProfile *sony_find_body_profile(const char *key)
+{
+    if (!key || !*key) {
+        return NULL;
+    }
+    for (size_t i = 0; i < ARRAY_SIZE(sony_body_profiles); i++) {
+        const SonyBodyProfile *p = &sony_body_profiles[i];
+        if (g_ascii_strcasecmp(key, p->machine_name) == 0 ||
+            g_ascii_strcasecmp(key, p->target_id) == 0 ||
+            g_ascii_strcasecmp(key, p->short_alias) == 0) {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+static char *sony_get_camera_model(Object *obj, Error **errp)
+{
+    if (sony_a6400_camera_model && *sony_a6400_camera_model) {
+        const SonyBodyProfile *p = sony_find_body_profile(sony_a6400_camera_model);
+        return g_strdup(p ? p->target_id : sony_a6400_camera_model);
+    }
+    MachineClass *mc = MACHINE_GET_CLASS(obj);
+    const SonyBodyProfile *p = sony_find_body_profile(mc->name);
+    return g_strdup(p ? p->target_id : "ilce_6400");
+}
+
+static void sony_set_camera_model(Object *obj, const char *value, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "camera-model is a startup option");
+        return;
+    }
+    if (value && *value && !sony_find_body_profile(value)) {
+        error_setg(errp, "unknown CXD90045 camera-model '%s' (expected "
+                   "ilce_6400, ilce_6400a, zv_e10, ilce_6100, ilce_6600, "
+                   "ilce_7c, ilce_7m3, or ilce_7rm4a)", value);
+        return;
+    }
+    g_free(sony_a6400_camera_model);
+    sony_a6400_camera_model = g_strdup(value);
+}
+
+static bool sony_get_peripherals(Object *obj, Error **errp)
+{
+    return sony_a6400_peripherals;
+}
+
+static void sony_set_peripherals(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "peripherals is a startup option");
+        return;
+    }
+    sony_a6400_peripherals = enabled;
+}
+
+static bool sony_get_touchscreen(Object *obj, Error **errp)
+{
+    return sony_a6400_touchscreen || sony_a6400_peripherals;
+}
+
+static void sony_set_touchscreen(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "touchscreen is a startup option");
+        return;
+    }
+    sony_a6400_touchscreen = enabled;
+}
+
+static bool sony_get_bcm4339(Object *obj, Error **errp)
+{
+    return sony_a6400_bcm4339 || sony_a6400_peripherals;
+}
+
+static void sony_set_bcm4339(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "bcm4339 is a startup option");
+        return;
+    }
+    sony_a6400_bcm4339 = enabled;
+}
+
+static bool sony_get_hdmi_cec(Object *obj, Error **errp)
+{
+    return sony_a6400_hdmi_cec || sony_a6400_peripherals;
+}
+
+static void sony_set_hdmi_cec(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "hdmi-cec is a startup option");
+        return;
+    }
+    sony_a6400_hdmi_cec = enabled;
+}
+
+static bool sony_get_audio_io(Object *obj, Error **errp)
+{
+    return sony_a6400_audio_io || sony_a6400_peripherals;
+}
+
+static void sony_set_audio_io(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "audio-io is a startup option");
+        return;
+    }
+    sony_a6400_audio_io = enabled;
+}
+
+static bool sony_get_audio_mic_plugged(Object *obj, Error **errp)
+{
+    return sony_a6400_audio_mic_plugged;
+}
+
+static void sony_set_audio_mic_plugged(Object *obj, bool enabled, Error **errp)
+{
+    sony_a6400_audio_mic_plugged = enabled;
+}
+
+static char *sony_get_audio_input(Object *obj, Error **errp)
+{
+    return g_strdup(sony_a6400_audio_input ? sony_a6400_audio_input : "sine440");
+}
+
+static void sony_set_audio_input(Object *obj, const char *value, Error **errp)
+{
+    g_free(sony_a6400_audio_input);
+    sony_a6400_audio_input = g_strdup(value);
+}
+
+static char *sony_get_emount_lens(Object *obj, Error **errp)
+{
+    if (sony_a6400_emount_lens && *sony_a6400_emount_lens) {
+        return g_strdup(sony_a6400_emount_lens);
+    }
+    if (sony_a6400_peripherals) {
+        return g_strdup(sony_active_body->full_frame ? "fe50f18" : "selp1650");
+    }
+    return g_strdup("none");
+}
+
+static void sony_set_emount_lens(Object *obj, const char *value, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "emount-lens is a startup option");
+        return;
+    }
+    g_free(sony_a6400_emount_lens);
+    sony_a6400_emount_lens = g_strdup(value);
+}
+
+static bool sony_get_clkrst_model(Object *obj, Error **errp)
+{
+    return sony_a6400_clkrst_model;
+}
+
+static void sony_set_clkrst_model(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "clkrst-model is a startup option");
+        return;
+    }
+    sony_a6400_clkrst_model = enabled;
+}
+
+static bool sony_get_pmic_reset(Object *obj, Error **errp)
+{
+    return sony_a6400_pmic_reset;
+}
+
+static void sony_set_pmic_reset(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "pmic-reset is a startup option");
+        return;
+    }
+    sony_a6400_pmic_reset = enabled;
+}
+
+static bool sony_get_sd_uhs_u3(Object *obj, Error **errp)
+{
+    return sony_a6400_sd_uhs_u3;
+}
+
+static void sony_set_sd_uhs_u3(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "sd-uhs-u3 is a startup option");
+        return;
+    }
+    sony_a6400_sd_uhs_u3 = enabled;
+}
+
+static bool sony_get_power_off(Object *obj, Error **errp)
+{
+    return sony_a6400_power_off;
+}
+
+static void sony_set_power_off(Object *obj, bool enabled, Error **errp)
+{
+    sony_a6400_power_off = enabled;
+}
+
+static bool sony_get_remote_suspend_bypass(Object *obj, Error **errp)
+{
+    return sony_a6400_remote_suspend_bypass;
+}
+
+static void sony_set_remote_suspend_bypass(Object *obj, bool enabled,
+                                           Error **errp)
+{
+    sony_a6400_remote_suspend_bypass = enabled;
+}
+
+static bool sony_get_still_capture(Object *obj, Error **errp)
+{
+    return sony_a6400_still_capture;
+}
+
+static void sony_set_still_capture(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "still-capture is a startup option");
+        return;
+    }
+    sony_a6400_still_capture = enabled;
+}
+
+/*
+ * Stationary 6-axis MEMS IMU responder on SIO channel 4 (0xF2405800, IRQ 205)
+ * for IBIS and active-gyro bodies (ZV-E10, ILCE-6600, ILCE-7C, ILCE-7M3,
+ * ILCE-7RM4A): answers SPI register reads (bit 7 = 1) with WHO_AM_I = 0x69,
+ * gyro = [0, 0, 0], and accel = [0, 0, +16384 (+1g)].
+ */
+static void sony_cxd90045_imu_xfer(void *opaque, int ch, uint32_t mode,
+                                   uint8_t *buf, int len)
+{
+    sony_a6400_sio_log(opaque, ch, mode, buf, len);
+    if (len < 2 || !(buf[0] & 0x80)) {
+        return;
+    }
+    uint8_t reg = buf[0] & 0x7Fu;
+    buf[0] = 0x00;
+    for (int i = 1; i < len; i++) {
+        uint8_t r = (uint8_t)(reg + (i - 1));
+        switch (r) {
+        case 0x0F: /* WHO_AM_I (BMI160/LSM6DS-style IMU ID) */
+        case 0x75: /* MPU-style WHO_AM_I */
+            buf[i] = 0x69;
+            break;
+        case 0x1E: /* STATUS: gyro + accel data ready */
+            buf[i] = 0x03;
+            break;
+        case 0x2C: /* Accel Z low (+1g = 0x4000 LE) */
+            buf[i] = 0x00;
+            break;
+        case 0x2D: /* Accel Z high */
+            buf[i] = 0x40;
+            break;
+        case 0x3F: /* Big-endian Accel Z high (+1g = 0x4000 BE) */
+            buf[i] = 0x40;
+            break;
+        default:
+            buf[i] = 0x00;
+            break;
+        }
+    }
+}
+
+/*
+ * L0137: SA core 4 (base 0xF35D0000, index 4 of av-cam's SA base pool) ID
+ * words.  av-cam 0x63A7ED50 compares them with the firmware constant
+ * "SA1_V1.0SA5_V1.0" (F-0136); only the ID is evidenced, so the rest of the
+ * core is left unmodelled (no IRQs, no other registers).  Expected value
+ * from firmware, not a bus capture.
+ */
+static const uint8_t cxd90045_sa4_id[16] = {
+    'S', 'A', '1', '_', 'V', '1', '.', '0',
+    'S', 'A', '5', '_', 'V', '1', '.', '0',
+};
+
+static uint64_t cxd90045_sa4_id_read(void *opaque, hwaddr off, unsigned size)
+{
+    uint64_t v = 0;
+    unsigned i;
+
+    for (i = 0; i < size; i++) {
+        v |= (uint64_t)cxd90045_sa4_id[(off + i) & 0xF] << (i * 8);
+    }
+    return v;
+}
+
+static void cxd90045_sa4_id_write(void *opaque, hwaddr off, uint64_t v,
+                                  unsigned size)
+{
+    qemu_log_mask(LOG_UNIMP,
+                  "cxd90045.sa4-id: write +0x%x size %u value 0x%" PRIx64
+                  " ignored\n", (unsigned)off, size, v);
+}
+
+static const MemoryRegionOps cxd90045_sa4_id_ops = {
+    .read = cxd90045_sa4_id_read,
+    .write = cxd90045_sa4_id_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
 static void sony_a6400_init(MachineState *machine)
 {
+    MachineClass *mc = MACHINE_GET_CLASS(machine);
+    const SonyBodyProfile *body =
+        sony_find_body_profile(sony_a6400_camera_model);
+    if (!body) {
+        body = sony_find_body_profile(mc->name);
+    }
+    if (!body) {
+        body = &sony_body_profiles[0];
+    }
+    sony_active_body = body;
+    sony_a6400_hdmi_cec_dev = NULL;
+    sony_a6400_caif = NULL;
+    sony_a6400_caif_rx_active = false;
+    sony_a6400_frames_split = NULL;
+    if (strcmp(body->target_id, "ilce_6400a") == 0) {
+        sony_active_gate_force_pa = GATE_FORCE_PA_A6400A;
+        sony_active_entry_force_pa = ENTRY_FORCE_PA_A6400A;
+        sony_active_entry_force_s_pa = ENTRY_FORCE_S_PA_A6400A;
+    } else {
+        sony_active_gate_force_pa = GATE_FORCE_PA_A6400;
+        sony_active_entry_force_pa = ENTRY_FORCE_PA_A6400;
+        sony_active_entry_force_s_pa = ENTRY_FORCE_S_PA_A6400;
+    }
+
+    bool touch_on = sony_a6400_touchscreen || sony_a6400_peripherals;
+    bool bcm4339_on = sony_a6400_bcm4339 || sony_a6400_peripherals;
+    bool hdmi_cec_on = sony_a6400_hdmi_cec || sony_a6400_peripherals;
+    bool audio_io_on = sony_a6400_audio_io || sony_a6400_peripherals;
+    const char *lens_cfg = (sony_a6400_emount_lens && *sony_a6400_emount_lens) ?
+        sony_a6400_emount_lens :
+        (sony_a6400_peripherals ?
+         (body->full_frame ? "fe50f18" : "selp1650") : NULL);
+    bool lens_on = lens_cfg && strcmp(lens_cfg, "none") != 0 &&
+                   strcmp(lens_cfg, "off") != 0;
+    if (lens_on) {
+        sony_a6400_sm_lens_power = true;
+    }
+
     bool liveview = sony_a6400_liveview_source && *sony_a6400_liveview_source;
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *ram0 = g_new(MemoryRegion, 1);
     MemoryRegion *ram1 = g_new(MemoryRegion, 1);
     MemoryRegion *sram = g_new(MemoryRegion, 1);
-    MemoryRegion *crcdc_mmio = g_new(MemoryRegion, 1);
-    MemoryRegion *l2c_mmio = g_new(MemoryRegion, 1);
     CxdRwStub *sugi_clk;
     DeviceState *a9mp;
+    DeviceState *i2c0_dev = NULL;
+    DeviceState *vph_dev = NULL;
     SysBusDevice *sbd;
     qemu_irq pic[CXD90045_NUM_IRQS];
     unsigned ncpu = machine->smp.cpus;
     ARMCPU *cpus[CXD90045_MAX_CPUS];
     DeviceState *timer;
     BlockBackend *sd_blk;
+    BlockBackend *sd2_blk;
     int i;
+
+    sony_a6400_sd_bus = NULL;
 
     for (unsigned c = 0; c < ncpu; c++) {
         Object *cpuobj = object_new(machine->cpu_type);
@@ -2825,7 +5704,13 @@ static void sony_a6400_init(MachineState *machine)
      * CID 0xB105F00D, matching the kernel's expected AMBA IDs.  No second
      * -serial is passed, so the chardev is NULL and UART0/console is untouched.
      */
-    pl011_create(CXD90045_UART3_BASE, pic[CXD90045_UART3_SPI], serial_hd(1));
+    {
+        Chardev *uart3_chr = serial_hd(1);
+        if (!uart3_chr && bcm4339_on) {
+            uart3_chr = cxd90045_bcm4339_bt_chardev_new("bcm4339-bt");
+        }
+        pl011_create(CXD90045_UART3_BASE, pic[CXD90045_UART3_SPI], uart3_chr);
+    }
 
     timer = qdev_new("cxd4115-timer");
     sysbus_realize_and_unref(SYS_BUS_DEVICE(timer), &error_fatal);
@@ -2849,16 +5734,17 @@ static void sony_a6400_init(MachineState *machine)
         sysbus_realize_and_unref(SYS_BUS_DEVICE(wdt), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(wdt), 0, CXD90045_WDT_BASE);
     }
-    if (sony_a6400_work_dma) {
+    if (sony_a6400_work_dma && !lens_on) {
         cxd90045_create_work_dma(get_system_memory());
     }
     if (sony_a6400_f30a_fill) {
         cxd90045_create_f30a_fill(get_system_memory());
     }
     if (sony_a6400_ddrb_control) {
-        cxd90045_create_ddrb(sysmem);
+        cxd90045_create_ddrb_at(sysmem, CXD90045_DDRB_BASE, "cxd90045.ddrb",
+                                sony_a6400_pmic_reset);
     }
-    if (sony_a6400_lowmem_abort) {
+    if (sony_a6400_lowmem_abort || sony_a6400_strict_bus_abort) {
         sony_a6400_create_lowmem_abort(sysmem, cpus, ncpu);
     }
     if (sony_a6400_hostwin && *sony_a6400_hostwin) {
@@ -2958,10 +5844,14 @@ static void sony_a6400_init(MachineState *machine)
     {
         DeviceState *rf = qdev_new("cxd90014-regfile");
         qdev_prop_set_string(rf, "name", "cxd90045.audioip");
-        qdev_prop_set_uint64(rf, "size", 0x8000);
+        qdev_prop_set_uint64(rf, "size", 0x9000);
         qdev_prop_set_uint64(rf, "base", 0xF3420000ULL);
         sysbus_realize_and_unref(SYS_BUS_DEVICE(rf), &error_fatal);
         sysbus_mmio_map_overlap(SYS_BUS_DEVICE(rf), 0, 0xF3420000ULL, -500);
+    }
+    if (audio_io_on) {
+        cxd90045_audio_create(machine, sysmem, sony_a6400_audio_input,
+                              sony_a6400_audio_mic_plugged);
     }
 
     /*
@@ -3145,6 +6035,246 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     /*
+     * L0100: the 0xF2920000 block's resolved kernel OTG (0x3000) and av-cam
+     * A/E (0x1000 each) windows, from the F-0099 contract.  Each window is a
+     * local per-offset rule block mapped at -600, above the
+     * cxd90045.unmodelled catch-all (-1000); the 0xF292C000 page was not
+     * mapped then (F-0099: no static owner).
+     * L0102: F-0101 found that page live (11 pairs / 41 accesses, PCs in
+     * module space), so it gets its own 0x1000 rule window below.
+     * Unruled offsets inside any of these windows still log as unmodelled
+     * (see cxd90045_f292_* above).
+     */
+    cxd90045_f292_create(sysmem, 0xF2920000ULL, 0x3000,
+                         "cxd90045.f292-otg", cxd90045_f292_rules_otg,
+                         ARRAY_SIZE(cxd90045_f292_rules_otg));
+    cxd90045_f292_create(sysmem, 0xF292A000ULL, 0x1000,
+                         "cxd90045.f292-avcam-a",
+                         cxd90045_f292_rules_avcam_a,
+                         ARRAY_SIZE(cxd90045_f292_rules_avcam_a));
+    cxd90045_f292_create(sysmem, 0xF292E000ULL, 0x1000,
+                         "cxd90045.f292-avcam-e",
+                         cxd90045_f292_rules_avcam_e,
+                         ARRAY_SIZE(cxd90045_f292_rules_avcam_e));
+    cxd90045_f292_create(sysmem, 0xF292C000ULL, 0x1000,
+                         "cxd90045.f292-c", cxd90045_f292_rules_c,
+                         ARRAY_SIZE(cxd90045_f292_rules_c));
+
+    /*
+     * L0105: RCRAW/IDT hardware compressor page 0xF3030000..0xF303FFFF.
+     * The certified 120 s boot logs 547 distinct catch-all pairs here; the
+     * table above rules every one of the 534 distinct offsets, and one
+     * 64 KiB window at -600 (above cxd90045.unmodelled at -1000) retires
+     * them.  The CAMPIG windows at 0xF3000000/0xF3100000 end below this
+     * page.  Unruled offsets inside the window still log (see
+     * cxd90045_f292_* above), so the window is not a blanket zero.
+     */
+    cxd90045_f292_create(sysmem, 0xF3030000ULL, 0x10000ULL,
+                         "cxd90045.f303", cxd90045_f303_rules,
+                         ARRAY_SIZE(cxd90045_f303_rules));
+
+    /*
+     * L0108: 0xF3040000 page.  The certified 120 s boot logs 17 distinct
+     * catch-all pairs (4 reads + 13 writes, 3 both); the table above rules
+     * every one.  One 64 KiB window at -600 sits above the
+     * cxd90045.unmodelled catch-all (-1000) and below the live-view AIF
+     * group at 0xF3041000 (-300), which therefore keeps its 0x800-byte
+     * register block.  Unruled offsets inside the window still log (see
+     * cxd90045_f292_* above), so the window is not a blanket zero.
+     */
+    cxd90045_f292_create(sysmem, 0xF3040000ULL, 0x10000ULL,
+                         "cxd90045.f304", cxd90045_f304_rules,
+                         ARRAY_SIZE(cxd90045_f304_rules));
+
+    /*
+     * L0112: FUSB block at 0xF0220000 (F-0106), priority -600 as in L0108.
+     * Rules above; unruled offsets still log as cxd90045.f022.unmodelled.
+     */
+    cxd90045_f292_create(sysmem, 0xF0220000ULL, 0x20000ULL,
+                         "cxd90045.f022", cxd90045_f022_rules,
+                         ARRAY_SIZE(cxd90045_f022_rules));
+
+    /*
+     * L0116: clkrst3 clock/reset bank at 0xF2900000 (F-0104), priority -600
+     * as in L0108.  Rules above; +0x030 has no rule and still logs.
+     */
+    cxd90045_f292_create(sysmem, 0xF2900000ULL, 0x1000ULL,
+                         "cxd90045.f290", cxd90045_f290_rules,
+                         ARRAY_SIZE(cxd90045_f290_rules));
+
+    /*
+     * L0118: clock/reset-group pages beside f2a_clk, ZERO-only, priority -600.
+     * The f2a_clk siblings at 0xF2A01000/0xF2A11000/... are separate pages.
+     */
+    cxd90045_f292_create(sysmem, 0xF2A00000ULL, 0x1000ULL,
+                         "cxd90045.f2a0", cxd90045_f2a0_rules,
+                         ARRAY_SIZE(cxd90045_f2a0_rules));
+    cxd90045_f292_create(sysmem, 0xF2A10000ULL, 0x1000ULL,
+                         "cxd90045.f2a1", cxd90045_f2a1_rules,
+                         ARRAY_SIZE(cxd90045_f2a1_rules));
+    cxd90045_f292_create(sysmem, 0xF2A20000ULL, 0x1000ULL,
+                         "cxd90045.f2a2", cxd90045_f2a2_rules,
+                         ARRAY_SIZE(cxd90045_f2a2_rules));
+    cxd90045_f292_create(sysmem, 0xF2A32000ULL, 0x1000ULL,
+                         "cxd90045.f2a3", cxd90045_f2a3_rules,
+                         ARRAY_SIZE(cxd90045_f2a3_rules));
+
+    /* Remaining E0705 / main scored-boot peripheral windows (-600). */
+    {
+        Cxd90045GpDmac1 *dmac1 = g_new0(Cxd90045GpDmac1, 1);
+        memory_region_init_io(&dmac1->mmio, NULL, &cxd90045_gpdmac1_ops, dmac1,
+                              "cxd90045.gpdmac1", 0x1000);
+        memory_region_add_subregion_overlap(sysmem, 0xF0103000ULL,
+                                            &dmac1->mmio, -600);
+    }
+    cxd90045_f292_create(sysmem, 0xF0304100ULL, 0x400ULL,
+                         "cxd90045.emmc0-vendor", cxd90045_emmc0_vendor_rules,
+                         ARRAY_SIZE(cxd90045_emmc0_vendor_rules));
+    cxd90045_f292_create(sysmem, 0xF2006000ULL, 0x1000ULL,
+                         "cxd90045.spi0", cxd90045_spi0_rules,
+                         ARRAY_SIZE(cxd90045_spi0_rules));
+    cxd90045_f292_create(sysmem, 0xF2400000ULL, 0x1000ULL,
+                         "cxd90045.sircs", cxd90045_sircs_rules,
+                         ARRAY_SIZE(cxd90045_sircs_rules));
+    cxd90045_f292_create(sysmem, 0xF2931000ULL, 0x1000ULL,
+                         "cxd90045.combophy-rx", cxd90045_combophy_rx_rules,
+                         ARRAY_SIZE(cxd90045_combophy_rx_rules));
+    cxd90045_f292_create(sysmem, 0xF2932000ULL, 0x1000ULL,
+                         "cxd90045.combophy-mon", cxd90045_combophy_mon_rules,
+                         ARRAY_SIZE(cxd90045_combophy_mon_rules));
+    cxd90045_f292_create(sysmem, 0xF30A0000ULL, 0x1000ULL,
+                         "cxd90045.pbl-aic0", cxd90045_pbl_aic0_rules,
+                         ARRAY_SIZE(cxd90045_pbl_aic0_rules));
+    cxd90045_f292_create(sysmem, 0xF6000000ULL, 0x1000ULL,
+                         "cxd90045.cal-nor", cxd90045_cal_nor_rules,
+                         ARRAY_SIZE(cxd90045_cal_nor_rules));
+    if (sony_a6400_peripherals) {
+        MemoryRegion *cal_rom = g_new0(MemoryRegion, 1);
+        memory_region_init_io(cal_rom, NULL, &cxd90045_asv_ops, NULL,
+                              "cxd90045.cal-nor-rom", 0x10000);
+        memory_region_add_subregion_overlap(sysmem, 0xF6000000ULL,
+                                            cal_rom, -450);
+    }
+
+    if (sony_a6400_clkrst_model) {
+        /* Verified stateful 0x10-stride STAT/SET/CLR clock/reset banks */
+        cxd90045_create_clkrst_bank(sysmem, 0xF2900000ULL,
+                                    "cxd90045.clkrst3-model",
+                                    (1ULL << 0) | (1ULL << 2) | (1ULL << 3) |
+                                    (1ULL << 4) | (1ULL << 6) | (1ULL << 10) |
+                                    (1ULL << 12));
+        cxd90045_create_clkrst_bank(sysmem, 0xF2A00000ULL,
+                                    "cxd90045.f2a0-model",
+                                    (1ULL << 0) | (1ULL << 2) | (1ULL << 3) |
+                                    (1ULL << 5) | (1ULL << 10));
+        cxd90045_create_clkrst_bank(sysmem, 0xF2A10000ULL,
+                                    "cxd90045.f2a1-model",
+                                    (1ULL << 0) | (1ULL << 2));
+        cxd90045_create_clkrst_bank(sysmem, 0xF2A20000ULL,
+                                    "cxd90045.f2a2-model",
+                                    (1ULL << 0) | (1ULL << 2) | (1ULL << 8));
+        cxd90045_create_clkrst_bank(sysmem, 0xF2A32000ULL,
+                                    "cxd90045.f2a3-model",
+                                    (1ULL << 3) | (1ULL << 26));
+
+        Cxd90045ClkgenF28 *f28 = g_new0(Cxd90045ClkgenF28, 1);
+        memory_region_init_io(&f28->mr, NULL, &cxd90045_clkgen_f28_ops, f28,
+                              "cxd90045.clkgen-f28-model", 0x8000);
+        memory_region_add_subregion_overlap(sysmem, 0xF2800000ULL, &f28->mr,
+                                            -450);
+
+        Cxd90045PblIp *zma0 = g_new0(Cxd90045PblIp, 1);
+        zma0->name = "cxd90045.zma0-pbl";
+        memory_region_init_io(&zma0->mr, NULL, &cxd90045_pbl_ip_ops, zma0,
+                              zma0->name, 0x10000);
+        memory_region_add_subregion_overlap(sysmem, 0xF3500000ULL, &zma0->mr,
+                                            -450);
+
+        Cxd90045PblIp *rc0 = g_new0(Cxd90045PblIp, 1);
+        rc0->name = "cxd90045.rc0-pbl";
+        memory_region_init_io(&rc0->mr, NULL, &cxd90045_pbl_ip_ops, rc0,
+                              rc0->name, 0x10000);
+        memory_region_add_subregion_overlap(sysmem, 0xF3880000ULL, &rc0->mr,
+                                            -450);
+
+        DeviceState *sa4_dev = qdev_new("cxd90014-sa");
+        qdev_prop_set_uint32(sa4_dev, "index", 4);
+        qdev_prop_set_uint64(sa4_dev, "base", 0xF35D0000ULL);
+        qdev_prop_set_string(sa4_dev, "core-id", "SA1_V1.0SA5_V1.0");
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(sa4_dev), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(sa4_dev), 0, 0xF35D0000ULL,
+                                -450);
+    }
+
+    /*
+     * L0122: ZERO-only windows for four write-only pages the catch-all served (F-0115).
+     * Priority -600 as in L0118; no page here overlaps an existing mapping.
+     */
+    cxd90045_f292_create(sysmem, 0xF2931000ULL, 0x1000ULL,
+                         "cxd90045.f2931", cxd90045_f2931_rules,
+                         ARRAY_SIZE(cxd90045_f2931_rules));
+    cxd90045_f292_create(sysmem, 0xF3203000ULL, 0x1000ULL,
+                         "cxd90045.f3203", cxd90045_f3203_rules,
+                         ARRAY_SIZE(cxd90045_f3203_rules));
+    cxd90045_f292_create(sysmem, 0xF3212000ULL, 0x1000ULL,
+                         "cxd90045.f3212", cxd90045_f3212_rules,
+                         ARRAY_SIZE(cxd90045_f3212_rules));
+    cxd90045_f292_create(sysmem, 0xF3215000ULL, 0x1000ULL,
+                         "cxd90045.f3215", cxd90045_f3215_rules,
+                         ARRAY_SIZE(cxd90045_f3215_rules));
+
+    /*
+     * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
+     * /kmod/i2c.ko, channel 0/1 at 0xF2401000/0xF2402000, IRQ 199/200).
+     * Only the driver-defined start/config handshake and the message-setup
+     * writes are modelled (L0036); the addressed-slave phase is not, so no
+     * IRQ is connected and nothing completes.  Mapped at -500, above the
+     * cxd90045.unmodelled catch-all (-1000); nothing else maps this page.
+     */
+    {
+        DeviceState *i2c = qdev_new("cxd90045-i2c");
+
+        if (touch_on) {
+            qdev_prop_set_uint64(i2c, "base", 0xF2401000ULL);
+            qdev_prop_set_uint64(i2c, "size", 0x800);
+            qdev_prop_set_bit(i2c, "complete-transfers", true);
+        }
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(i2c), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(i2c), 0, 0xF2401000ULL, -500);
+        if (touch_on) {
+            sysbus_connect_irq(SYS_BUS_DEVICE(i2c), 0, pic[199 - 32]);
+
+            DeviceState *i2c1 = qdev_new("cxd90045-i2c");
+            qdev_prop_set_uint64(i2c1, "base", 0xF2401800ULL);
+            qdev_prop_set_uint64(i2c1, "size", 0x800);
+            qdev_prop_set_bit(i2c1, "complete-transfers", true);
+            sysbus_realize_and_unref(SYS_BUS_DEVICE(i2c1), &error_fatal);
+            sysbus_mmio_map_overlap(SYS_BUS_DEVICE(i2c1), 0, 0xF2401800ULL, -500);
+            sysbus_connect_irq(SYS_BUS_DEVICE(i2c1), 0, pic[200 - 32]);
+        }
+        i2c0_dev = i2c;
+    }
+
+    /*
+     * TPU / jog-dial counter block at 0xF2404000 (4 KiB, E0573: the JogTpu
+     * accessor reads the 16-bit counter at 0xF2404014 + (channel << 8)).
+     * Three channels at 0x100 stride; driver-defined 16-bit registers at
+     * +0x00..+0x34 store and read back, the counter holds the last write,
+     * and +0x2c bit 0 is the run bit (L0038, cxd90045_tpu.c).  No IRQ is
+     * connected: the driver polls +0x2c bit 0 / +0x10 bit 7 and names no
+     * completion interrupt.  The opt-in rear-wheel counter (rear-controls=on)
+     * maps its 2 bytes at 0xF2404014 with priority -500, so it overlays this
+     * page's counter when enabled; this model is at -600, above the
+     * cxd90045.unmodelled catch-all (-1000).  Nothing else maps this page.
+     */
+    {
+        DeviceState *tpu = qdev_new("cxd90045-tpu");
+
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(tpu), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(tpu), 0, 0xF2404000ULL, -600);
+    }
+
+    /*
      * Imager / ComboPHY window (E0534).  av-cam keeps absolute pointers
      * here (Leo clk 0xFC021000, MIPI D-PHY register blocks, sensor tables
      * under 0xFC0Axxxx).  Reads of unassigned space are 0, so a
@@ -3172,10 +6302,23 @@ static void sony_a6400_init(MachineState *machine)
     /* GPIO p0..p17; pin IRQs p0.0-15 -> 121+, p0.16 -> 144, p1.0-6 -> 137+ */
     {
         DeviceState *gpio = qdev_new("cxd90014-gpio");
-        /* P0.2 is the active-low EVF eye contact input with rear controls. */
-        qdev_prop_set_string(gpio, "reset-high", sony_a6400_rear_controls ?
-                             "0.2," CXD90045_GPIO_RESET_HIGH :
-                             CXD90045_GPIO_RESET_HIGH);
+        bool evf_idle_high = sony_a6400_rear_controls || !body->has_evf;
+        g_autoptr(GString) rst = g_string_new("");
+
+        /* P0.2 is the active-low EVF eye contact input; EVF-less bodies
+         * (ZV-E10) and rear-controls keep P0.2 high so rear LCD stays active.
+         * P1.4 is active-low lens detect: high when mount is empty, low when
+         * an E-mount lens is attached.  P5.9 is active-low touch INT (high). */
+        if (evf_idle_high) {
+            g_string_append(rst, "0.2,");
+        }
+        g_string_append(rst, lens_on ?
+                        "0.1,0.3,0.4,0.7,0.10,0.11,0.13,1.1,1.5" :
+                        CXD90045_GPIO_RESET_HIGH);
+        if (touch_on) {
+            g_string_append(rst, ",0.12,5.9");
+        }
+        qdev_prop_set_string(gpio, "reset-high", rst->str);
         sysbus_realize_and_unref(SYS_BUS_DEVICE(gpio), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(gpio), 0, CXD90045_GPIO_BASE);
         for (i = 0; i <= 16; i++) {
@@ -3224,6 +6367,57 @@ static void sony_a6400_init(MachineState *machine)
         memcpy(sony_a6400_sm_frames, data, sizeof(sony_a6400_sm_frames));
         g_free(data);
         sony_a6400_sm_loaded = true;
+        sony_a6400_submicro_init_rail_state();
+    }
+
+    if (sony_a6400_pmic_reset) {
+        Cxd90045RstMiscState *rst = g_new0(Cxd90045RstMiscState, 1);
+        memory_region_init_io(&rst->mr, NULL, &cxd90045_rstmisc_ops, rst,
+                              "cxd90045.rstmisc", 0x14);
+        memory_region_add_subregion_overlap(sysmem, 0xF2915040ULL, &rst->mr,
+                                            -450);
+        qemu_register_reset(cxd90045_rstmisc_reset, rst);
+        qdev_connect_gpio_out_named(
+            sony_a6400_gpio, "out", 10 * 32 + 5,
+            qemu_allocate_irq(cxd90045_poff_gpio_handler, rst, 0));
+        cxd90045_create_ddrb_at(sysmem, 0xF0104000ULL, "cxd90045.ddra", true);
+        if (!sony_a6400_ddrb_control) {
+            cxd90045_create_ddrb_at(sysmem, CXD90045_DDRB_BASE,
+                                    "cxd90045.ddrb", true);
+        }
+    }
+
+    if (sony_a6400_still_capture) {
+        Cxd90045RcrawIdtState *idt = g_new0(Cxd90045RcrawIdtState, 1);
+        idt->irq88 = pic[88 - 32];
+        memory_region_init_io(&idt->mr, NULL, &cxd90045_rcraw_idt_ops, idt,
+                              "cxd90045.rcraw-idt-active", 0x10000);
+        memory_region_add_subregion_overlap(sysmem, 0xF3030000ULL, &idt->mr,
+                                            -450);
+
+        Cxd90045CaifState *caif = g_new0(Cxd90045CaifState, 1);
+        caif->last_s2req = 1;
+        caif->last_exp_ready = 1;
+        caif->last_read_start = 1;
+        caif->strobe_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, caif_strobe_tick,
+                                          caif);
+        caif->exp_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, caif_exp_tick, caif);
+        sony_a6400_caif = caif;
+        qdev_connect_gpio_out_named(
+            sony_a6400_gpio, "out", 7 * 32 + 15,
+            qemu_allocate_irq(caif_on_s2req_gpio, caif, 0));
+        qdev_connect_gpio_out_named(
+            sony_a6400_gpio, "out", 5 * 32 + 29,
+            qemu_allocate_irq(caif_on_exp_ready_gpio, caif, 0));
+        qdev_connect_gpio_out_named(
+            sony_a6400_gpio, "out", 5 * 32 + 30,
+            qemu_allocate_irq(caif_on_exp_ready_gpio, caif, 1));
+        qdev_connect_gpio_out_named(
+            sony_a6400_gpio, "out", 5 * 32 + 23,
+            qemu_allocate_irq(caif_on_read_start_gpio, caif, 0));
+        qdev_connect_gpio_out_named(
+            sony_a6400_gpio, "out", 5 * 32 + 24,
+            qemu_allocate_irq(caif_on_read_start_gpio, caif, 1));
     }
 
     /*
@@ -3260,29 +6454,65 @@ static void sony_a6400_init(MachineState *machine)
         sysbus_mmio_map(SYS_BUS_DEVICE(ev), 0, 0xF3C30000ULL);
         sysbus_connect_irq(SYS_BUS_DEVICE(ev), 0, pic[83 - 32]);
         sysbus_connect_irq(SYS_BUS_DEVICE(ev), 1, pic[84 - 32]);
+        vph_dev = vph;
+    }
+
+    if (touch_on) {
+        cxd90045_touch_create(machine, i2c0_dev, sony_a6400_gpio, vph_dev);
+    }
+    if (hdmi_cec_on) {
+        sony_a6400_hdmi_cec_dev =
+            cxd90045_hdmi_cec_create(machine, sysmem, vph_dev);
+    }
+    if (bcm4339_on) {
+        cxd90045_bcm4339_sdio_create(sysmem, CXD90045_MMC1_BASE,
+                                     pic[CXD90045_MMC1_SPI], sony_a6400_gpio);
+    }
+    if (lens_on) {
+        cxd90045_emount_lens_create(machine, sysmem, pic[151 - 32],
+                                    pic[174 - 32], sony_a6400_gpio, lens_cfg,
+                                    sony_a6400_work_dma);
     }
 
     /* SIO: 5 channels, 0xF2405000 + 0x200 * ch, IRQ 201 + ch (E0526) */
     {
         DeviceState *sio = qdev_new("cxd90014-sio");
+        bool imu_ch4 = body->has_ibis_imu || sony_a6400_peripherals;
         sysbus_realize_and_unref(SYS_BUS_DEVICE(sio), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(sio), 0, CXD90045_SIO_BASE);
         for (i = 0; i < 5; i++) {
+            CXDSioSlaveXferDir cb = sony_a6400_sio_log;
+            if (i == 3) {
+                cb = sony_a6400_submicro_xfer;
+            } else if (i == 4 && imu_ch4) {
+                cb = sony_cxd90045_imu_xfer;
+            }
             sysbus_connect_irq(SYS_BUS_DEVICE(sio), i,
                                pic[CXD90045_SIO_IRQ0 + i - 32]);
-            cxd90014_sio_attach_dir(sio, i, i == 3 ?
-                                    sony_a6400_submicro_xfer :
-                                    sony_a6400_sio_log, NULL);
+            cxd90014_sio_attach_dir(sio, i, cb, NULL);
         }
     }
 
-    memory_region_init_io(crcdc_mmio, NULL, &cxd90045_crcdc_ops, NULL,
-                          "cxd90045.crcdc", 0x1000);
-    memory_region_add_subregion(sysmem, CXD90045_CRCDC_BASE, crcdc_mmio);
+    if (sony_a6400_crcdc_model || sony_a6400_clkrst_model) {
+        cxd90045_create_crcdc_model(sysmem, 0);
+    } else {
+        MemoryRegion *crcdc_mmio = g_new(MemoryRegion, 1);
+        memory_region_init_io(crcdc_mmio, NULL, &cxd90045_crcdc_ops, NULL,
+                              "cxd90045.crcdc", 0x1000);
+        memory_region_add_subregion(sysmem, CXD90045_CRCDC_BASE, crcdc_mmio);
+    }
 
-    memory_region_init_io(l2c_mmio, NULL, &cxd90045_l2c_stub_ops, NULL,
-                          "cxd90045.l2c_stub", 0x1000);
-    memory_region_add_subregion(sysmem, CXD90045_L2C_STUB_BASE, l2c_mmio);
+    if (sony_a6400_pl310) {
+        DeviceState *l2x0 = qdev_new("l2x0");
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(l2x0), &error_fatal);
+        sysbus_mmio_map(SYS_BUS_DEVICE(l2x0), 0, CXD90045_L2C_STUB_BASE);
+        cxd90045_create_pl310_ext(sysmem);
+    } else {
+        MemoryRegion *l2c_mmio = g_new(MemoryRegion, 1);
+        memory_region_init_io(l2c_mmio, NULL, &cxd90045_l2c_stub_ops, NULL,
+                              "cxd90045.l2c_stub", 0x1000);
+        memory_region_add_subregion(sysmem, CXD90045_L2C_STUB_BASE, l2c_mmio);
+    }
 
     {
         DeviceState *gpu = qdev_new("dmp-smaph-s30");
@@ -3323,15 +6553,39 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     /*
+     * L0137: ID-only window for SA core 4 (see cxd90045_sa4_id above).
+     * Mapped at -600, above the cxd90045.unmodelled catch-all (-1000).
+     */
+    {
+        MemoryRegion *sa4_id = g_new0(MemoryRegion, 1);
+
+        memory_region_init_io(sa4_id, NULL, &cxd90045_sa4_id_ops, NULL,
+                              "cxd90045.sa4-id", 0x10);
+        memory_region_add_subregion_overlap(sysmem, 0xF35D00F0ULL, sa4_id,
+                                            -600);
+    }
+
+    /*
      * Sensor register writer (a5000 P2S).  av-cam has the same unit-0
      * bases.  A transfer that never clears 0xF3C00908 bit0 is refused
      * forever after the first one (RE_SENSOR_ISP.md).  IRQ 38.
      */
     {
         DeviceState *p2s = qdev_new("cxd90014-p2s");
+        object_property_add_child(OBJECT(machine), "cxd90014-p2s-ch0",
+                                  OBJECT(p2s));
         sysbus_realize_and_unref(SYS_BUS_DEVICE(p2s), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(p2s), 0, 0xF3C00000ULL);
         sysbus_connect_irq(SYS_BUS_DEVICE(p2s), 0, pic[38 - 32]);
+
+        /* CXD90045 P2S channel 1 (IMX284 4-wire sensor serializer @ 0xFC088000) */
+        DeviceState *p2s1 = qdev_new("cxd90014-p2s");
+        qdev_prop_set_uint64(p2s1, "base", 0xFC088000ULL);
+        qdev_prop_set_uint32(p2s1, "channel-id", 1);
+        object_property_add_child(OBJECT(machine), "cxd90014-p2s-ch1",
+                                  OBJECT(p2s1));
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(p2s1), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(p2s1), 0, 0xFC088000ULL, -400);
     }
 
     /*
@@ -3404,23 +6658,66 @@ static void sony_a6400_init(MachineState *machine)
         DeviceState *sdhci = qdev_new(TYPE_SYSBUS_SDHCI);
         DeviceState *card = qdev_new(TYPE_SD_CARD);
         SDBus *bus = &SYSBUS_SDHCI(sdhci)->sdbus;
-        MemoryRegion *mode_read = g_new(MemoryRegion, 1);
 
         qdev_prop_set_uint8(sdhci, "sd-spec-version", 3);
-        qdev_prop_set_uint64(sdhci, "capareg", 0x016830b0);
+        if (sony_a6400_sd_uhs_u3) {
+            qdev_prop_set_uint8(sdhci, "uhs", UHS_I);
+            qdev_prop_set_uint64(sdhci, "capareg", 0x00000007056830b0ULL);
+        } else {
+            qdev_prop_set_uint64(sdhci, "capareg", 0x016830b0);
+        }
         sbd = SYS_BUS_DEVICE(sdhci);
         sysbus_realize_and_unref(sbd, &error_fatal);
         sysbus_mmio_map(sbd, 0, CXD90045_MMC0_BASE);
         sysbus_connect_irq(sbd, 0, pic[CXD90045_MMC0_SPI]);
+        {
+            /* Sony SDHCI vendor PHY/DLL wrapper (+0x100..+0x4FF, mmc_drv.ko +0xbabc) */
+            DeviceState *vrf = qdev_new("cxd90014-regfile");
+            qdev_prop_set_string(vrf, "name", "cxd90045.mmc0-vendor");
+            qdev_prop_set_uint64(vrf, "size", 0x400);
+            qdev_prop_set_uint64(vrf, "base", CXD90045_MMC0_BASE + 0x100ULL);
+            sysbus_realize_and_unref(SYS_BUS_DEVICE(vrf), &error_fatal);
+            sysbus_mmio_map_overlap(SYS_BUS_DEVICE(vrf), 0,
+                                    CXD90045_MMC0_BASE + 0x100ULL, -500);
+        }
         qdev_prop_set_drive_err(card, "drive", sd_blk, &error_fatal);
+        if (sony_a6400_sd_uhs_u3) {
+            qdev_prop_set_uint8(card, "speed-class", 10);
+            qdev_prop_set_uint8(card, "uhs-speed-grade", 3);
+        }
         qdev_realize_and_unref(card, BUS(bus), &error_fatal);
         sony_a6400_sd_bus = bus;
 
-        /* mcmn_drv polls active-low card detect in MISCREG, not SDHCI. */
-        memory_region_init_io(mode_read, OBJECT(machine),
-                              &sony_a6400_sd_mode_ops, bus,
-                              "cxd90045.sd-moderead", 4);
-        memory_region_add_subregion(sysmem, CXD90045_SD_MODEREAD, mode_read);
+        if (!sony_a6400_miscreg) {
+            MemoryRegion *mode_read = g_new(MemoryRegion, 1);
+
+            /* mcmn_drv polls active-low card detect in MISCREG, not SDHCI. */
+            memory_region_init_io(mode_read, OBJECT(machine),
+                                  &sony_a6400_sd_mode_ops, bus,
+                                  "cxd90045.sd-moderead", 4);
+            memory_region_add_subregion(sysmem, CXD90045_SD_MODEREAD,
+                                        mode_read);
+        }
+    }
+    sd2_blk = blk_by_name("a6400-sd2");
+    if (sd2_blk || (body->has_dual_sd && sony_a6400_peripherals)) {
+        DeviceState *sdhci2 = qdev_new(TYPE_SYSBUS_SDHCI);
+        SDBus *bus2 = &SYSBUS_SDHCI(sdhci2)->sdbus;
+
+        qdev_prop_set_uint8(sdhci2, "sd-spec-version", 3);
+        qdev_prop_set_uint64(sdhci2, "capareg", 0x016830b0);
+        sbd = SYS_BUS_DEVICE(sdhci2);
+        sysbus_realize_and_unref(sbd, &error_fatal);
+        sysbus_mmio_map(sbd, 0, CXD90045_MMC2_BASE);
+        sysbus_connect_irq(sbd, 0, pic[CXD90045_MMC2_SPI]);
+        if (sd2_blk) {
+            DeviceState *card2 = qdev_new(TYPE_SD_CARD);
+            qdev_prop_set_drive_err(card2, "drive", sd2_blk, &error_fatal);
+            qdev_realize_and_unref(card2, BUS(bus2), &error_fatal);
+        }
+    }
+    if (sony_a6400_miscreg) {
+        cxd90045_create_miscreg(sysmem);
     }
 
     sony_a6400_board_mig.sm_timer = sony_a6400_sm_timer;
@@ -3429,9 +6726,10 @@ static void sony_a6400_init(MachineState *machine)
     sony_a6400_load_boot_contract(machine, cpus, ncpu);
 }
 
-static void sony_a6400_machine_init(MachineClass *mc)
+static void sony_cxd90045_common_machine_init(MachineClass *mc,
+                                              const char *desc)
 {
-    mc->desc = "Sony ILCE-6400 (BIONZ X / CXD90045)";
+    mc->desc = desc;
     mc->init = sony_a6400_init;
     mc->max_cpus = CXD90045_MAX_CPUS;
     mc->default_cpus = CXD90045_MAX_CPUS;
@@ -3506,7 +6804,7 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                    sony_get_dwc3_gadget,
                                    sony_set_dwc3_gadget);
     object_class_property_set_description(OBJECT_CLASS(mc), "dwc3-gadget",
-        "Enable the experimental CXD90045 DWC3 gadget controller at 0xF020C000 and IRQ 229 (E0590)");
+        "Enable the CXD90045 DWC3 gadget controller at 0xF020C000 and IRQ 229 (E0590, default on)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "pl330-dma",
                                    sony_get_pl330_dma,
                                    sony_set_pl330_dma);
@@ -3515,8 +6813,9 @@ static void sony_a6400_machine_init(MachineClass *mc)
     object_class_property_add_bool(OBJECT_CLASS(mc), "watchdog",
                                    sony_get_watchdog, sony_set_watchdog);
     object_class_property_set_description(OBJECT_CLASS(mc), "watchdog",
-        "Model the CXD4115 hardware watchdog at 0xF2402000; expiry follows "
-        "-action watchdog= (E0636)");
+        "Model the CXD4115 hardware watchdog at 0xF2402000 (default on); "
+        "expiry follows -action watchdog=; watchdog=off drops the writes "
+        "(E0636)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "work-dma",
                                    sony_get_work_dma, sony_set_work_dma);
     object_class_property_set_description(OBJECT_CLASS(mc), "work-dma",
@@ -3546,10 +6845,135 @@ static void sony_a6400_machine_init(MachineClass *mc)
     object_class_property_set_description(OBJECT_CLASS(mc), "lowmem-abort",
         "Bus error (external abort) on PA 0x000F8000-0x000F8FFF in the reserved "
         "first megabyte, as observed on the ILCE-6400 (E0647)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "strict-bus-abort",
+                                   sony_get_strict_bus_abort,
+                                   sony_set_strict_bus_abort);
+    object_class_property_set_description(OBJECT_CLASS(mc), "strict-bus-abort",
+        "Raise synchronous external aborts (FSR 0x008) on PA 0x000F8000 and all "
+        "unmapped physical address holes instead of returning 0 (E0647)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "pl310",
+                                   sony_get_pl310, sony_set_pl310);
+    object_class_property_set_description(OBJECT_CLASS(mc), "pl310",
+        "Instantiate the ARM PL310 L2 cache controller (l2x0) at 0xF8002000 "
+        "instead of the +0x77C read stub (E0416, E0655)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "crcdc-model",
+                                   sony_get_crcdc_model, sony_set_crcdc_model);
+    object_class_property_set_description(OBJECT_CLASS(mc), "crcdc-model",
+        "Model the CRCDC clock block at 0xF2A31000 with self-clearing +0x30 "
+        "bit 0 trigger (E0423)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "miscreg",
+                                   sony_get_miscreg, sony_set_miscreg);
+    object_class_property_set_description(OBJECT_CLASS(mc), "miscreg",
+        "Model CXD90045 EFUSE_CHIPID (0xF2915000), MODEREAD (0xF2915010), and "
+        "ASV (0xF2927000) registers (E0643)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "linux-boot",
+                                   sony_get_linux_boot, sony_set_linux_boot);
+    object_class_property_set_description(OBJECT_CLASS(mc), "linux-boot",
+        "Boot standard ARMv7 Linux kernels / custom OS images (1..4 cores, "
+        "ATAGS at 0x103000 or -dtb at 0x0FF00000, initrd at 0x10000000)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "usb-vbus",
                                    sony_get_usb_vbus, sony_set_usb_vbus);
     object_class_property_set_description(OBJECT_CLASS(mc), "usb-vbus",
         "Set virtual cable presence at runtime");
+    object_class_property_add_str(OBJECT_CLASS(mc), "camera-model",
+                                  sony_get_camera_model, sony_set_camera_model);
+    object_class_property_set_description(OBJECT_CLASS(mc), "camera-model",
+        "Select modeled CXD90045 camera body profile (ilce_6400, ilce_6400a, "
+        "zv_e10, ilce_6100, ilce_6600, ilce_7c, ilce_7m3, ilce_7rm4a)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "peripherals",
+                                   sony_get_peripherals, sony_set_peripherals);
+    object_class_property_set_description(OBJECT_CLASS(mc), "peripherals",
+        "Enable all modeled CXD90045 camera peripherals (touchscreen, bcm4339, "
+        "hdmi-cec, audio-io, emount-lens, and 6-axis IMU)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "touchscreen",
+                                   sony_get_touchscreen, sony_set_touchscreen);
+    object_class_property_set_description(OBJECT_CLASS(mc), "touchscreen",
+        "Enable virtual FocalTech 0x20 I2C capacitive touchscreen on i2c0 + "
+        "P5.9 INT + VPH LCD pointer handler");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "bcm4339",
+                                   sony_get_bcm4339, sony_set_bcm4339);
+    object_class_property_set_description(OBJECT_CLASS(mc), "bcm4339",
+        "Enable Broadcom BCM4339 SDIO Wi-Fi at mmc1 (0xF0301000, IRQ 221) and "
+        "Bluetooth 4.1 H4 HCI + HCD firmware controller on uart3 (/dev/ttyBT)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "hdmi-cec",
+                                   sony_get_hdmi_cec, sony_set_hdmi_cec);
+    object_class_property_set_description(OBJECT_CLASS(mc), "hdmi-cec",
+        "Enable CXD90045 HDMI TX (0xF2A40000, DDC EDID + HPD + VPH Console 1) "
+        "and CEC (0xF3C10000, virtual TV responder)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "audio-io",
+                                   sony_get_audio_io, sony_set_audio_io);
+    object_class_property_set_description(OBJECT_CLASS(mc), "audio-io",
+        "Enable CXD90045 AudioIp (0xF3420000..0xF3428FFF) capture/playback DMA "
+        "ring buffers, mic-jack detect, and synthetic PCM capture");
+    object_class_property_add_str(OBJECT_CLASS(mc), "audio-input",
+                                  sony_get_audio_input, sony_set_audio_input);
+    object_class_property_set_description(OBJECT_CLASS(mc), "audio-input",
+        "Synthetic PCM microphone source when audio-io=on (sine440, silence, "
+        "or none)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "audio-mic-plugged",
+                                   sony_get_audio_mic_plugged,
+                                   sony_set_audio_mic_plugged);
+    object_class_property_set_description(OBJECT_CLASS(mc), "audio-mic-plugged",
+        "Report an external 3.5 mm microphone plugged into AudioIp");
+    object_class_property_add_str(OBJECT_CLASS(mc), "emount-lens",
+                                  sony_get_emount_lens, sony_set_emount_lens);
+    object_class_property_set_description(OBJECT_CLASS(mc), "emount-lens",
+        "Attach a physical E-mount lens model with focus/iris/zoom/OSS motors "
+        "(selp1650, sigma1850, sel2470gm, fe50f18, or none)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "clkrst-model",
+                                   sony_get_clkrst_model,
+                                   sony_set_clkrst_model);
+    object_class_property_set_description(OBJECT_CLASS(mc), "clkrst-model",
+        "Enable verified stateful clock/reset banks (0xF280/0xF290/0xF2A0), "
+        "ZMA0/RC0 PBL IP (0xF350/0xF388), and SA4 core (0xF35D0000)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "pmic-reset",
+                                   sony_get_pmic_reset, sony_set_pmic_reset);
+    object_class_property_set_description(OBJECT_CLASS(mc), "pmic-reset",
+        "Model MISCREG SWRESET/XRSTREQ (0xF2915040) and GPIO P10.5 power-off "
+        "(cfg.poff=10,5) with DDR-A/DDR-B self-refresh");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "sd-uhs-u3",
+                                   sony_get_sd_uhs_u3, sony_set_sd_uhs_u3);
+    object_class_property_set_description(OBJECT_CLASS(mc), "sd-uhs-u3",
+        "Enable UHS-I 1.8V SDR104 + U3 speed-class reporting on MMC0 for "
+        "XAVC S 4K 60M/100M qualification");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "power-off",
+                                   sony_get_power_off, sony_set_power_off);
+    object_class_property_set_description(OBJECT_CLASS(mc), "power-off",
+        "Hold or release the sub-micro CAkey1 bit 0 power lever at runtime");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "remote-suspend-bypass",
+                                   sony_get_remote_suspend_bypass,
+                                   sony_set_remote_suspend_bypass);
+    object_class_property_set_description(OBJECT_CLASS(mc),
+        "remote-suspend-bypass",
+        "Declared stimulus: allow normal Power OFF teardown in WBI boots");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "still-capture",
+                                   sony_get_still_capture,
+                                   sony_set_still_capture);
+    object_class_property_set_description(OBJECT_CLASS(mc), "still-capture",
+        "Enable post-boot Sub-Micro CAIF shutter/exposure link, active "
+        "0xF3030000 IDT/RCRAW cRAW2 codec (IRQ 88), and FE-AIF IRQs 70..72");
 }
 
-DEFINE_MACHINE_ARM("sony-a6400", sony_a6400_machine_init)
+#define DEFINE_SONY_CXD90045_BODY(fn_suffix, mname, mdesc)                  \
+    static void sony_##fn_suffix##_machine_init(MachineClass *mc)           \
+    {                                                                       \
+        sony_cxd90045_common_machine_init(mc, mdesc);                       \
+    }                                                                       \
+    DEFINE_MACHINE_ARM(mname, sony_##fn_suffix##_machine_init)
+
+DEFINE_SONY_CXD90045_BODY(a6400,  "sony-a6400",
+    "Sony ILCE-6400 (BIONZ X / CXD90045)")
+DEFINE_SONY_CXD90045_BODY(a6400a, "sony-a6400a",
+    "Sony ILCE-6400A (BIONZ X / CXD90045, J3 panel)")
+DEFINE_SONY_CXD90045_BODY(zve10,  "sony-zve10",
+    "Sony ZV-E10 (BIONZ X / CXD90045, vari-angle, no EVF)")
+DEFINE_SONY_CXD90045_BODY(a6100,  "sony-a6100",
+    "Sony ILCE-6100 (BIONZ X / CXD90045)")
+DEFINE_SONY_CXD90045_BODY(a6600,  "sony-a6600",
+    "Sony ILCE-6600 (BIONZ X / CXD90045, IBIS)")
+DEFINE_SONY_CXD90045_BODY(a7c,    "sony-a7c",
+    "Sony ILCE-7C (BIONZ X / CXD90045, Full-Frame IBIS)")
+DEFINE_SONY_CXD90045_BODY(a7m3,   "sony-a7m3",
+    "Sony ILCE-7M3 (BIONZ X / CXD90045, Full-Frame IBIS, Dual SD)")
+DEFINE_SONY_CXD90045_BODY(a7rm4a, "sony-a7rm4a",
+    "Sony ILCE-7RM4A (BIONZ X / CXD90045, Full-Frame IBIS, Dual SD, J3)")

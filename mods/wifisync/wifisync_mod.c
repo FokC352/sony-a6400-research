@@ -861,9 +861,6 @@ static void ws_worker(void) {
                 struct timeval_ { int32_t sec; int32_t usec; } tv;
                 int sb = 524288;
                 int nodelay = 1;
-                if (ws_power_state(&WS_STATE->srv) == WS_POWER_STANDBY) {
-                    ws_power_on(&WS_STATE->srv);
-                }
                 tv.sec = 5;
                 tv.usec = 0;
                 (void)sc6(SYS_setsockopt, fd, SOL_SOCKET, 20 /*SO_RCVTIMEO*/,  (int)&tv,      8, 0);
@@ -875,7 +872,7 @@ static void ws_worker(void) {
                 k.send = sock_send;
                 k.wait = sock_wait;
                 k.idle = sock_idle;
-                (void)ws_http_serve_conn(&WS_STATE->srv, &k, 16u);
+                (void)ws_http_serve(&WS_STATE->srv, &k);
                 ml_close(fd);
             }
         }
@@ -1142,7 +1139,6 @@ __attribute__((used)) void ws_on(int on) {
         ws_memcpy(WS_STATE->cfg, saved_cfg, sizeof(saved_cfg));
         WS_STATE->magic = WS_BSS_MAGIC;
     }
-    (void)ml_mkdir("/tmp_bt/mods");
     (void)ml_mkdir("/tmp_bt/wifisync");
 
     if (!on) {

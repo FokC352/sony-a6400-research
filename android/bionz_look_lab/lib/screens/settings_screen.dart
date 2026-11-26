@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../models/sync_models.dart';
 import '../services/sync_bridge.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     super.key,
     required this.bridge,
-    required this.config,
     required this.batteryExempt,
-    required this.onConfigSaved,
     required this.onBatteryRefresh,
   });
 
   final SyncBridge bridge;
-  final SyncConfig config;
   final bool batteryExempt;
-  final ValueChanged<SyncConfig> onConfigSaved;
   final VoidCallback onBatteryRefresh;
 
   @override
@@ -61,23 +56,6 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: SwitchListTile(
-            secondary: const Icon(Icons.bolt),
-            title: const Text('ARW Instant Preview + Background RAW'),
-            subtitle: const Text(
-              'Fetch the embedded ~150 KB JPEG preview immediately while the full .ARW transfers in the background.',
-            ),
-            value: config.arwInstantPreview,
-            onChanged: (val) async {
-              final saved = await bridge.saveConfig(
-                config.copyWith(arwInstantPreview: val),
-              );
-              onConfigSaved(saved);
-            },
           ),
         ),
         const SizedBox(height: 12),

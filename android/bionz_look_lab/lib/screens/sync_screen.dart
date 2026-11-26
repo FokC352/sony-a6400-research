@@ -75,7 +75,7 @@ class _SyncScreenState extends State<SyncScreen> {
 
   Future<void> _saveApConfig() async {
     final port = int.tryParse(_portCtrl.text.trim()) ?? 8765;
-    final next = widget.config.copyWith(
+    final next = SyncConfig(
       ssid: _ssidCtrl.text.trim().isEmpty
           ? 'A6400-5G-SYNC'
           : _ssidCtrl.text.trim(),
@@ -310,55 +310,11 @@ class _SyncScreenState extends State<SyncScreen> {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(
-                        f.isPreview
-                            ? Icons.bolt
-                            : (f.isRaw ? Icons.raw_on : Icons.photo_outlined),
-                        color: f.isPreview
-                            ? const Color(0xFFF59E0B)
-                            : (f.isRaw ? const Color(0xFFFF6D00) : const Color(0xFF14B8A6)),
+                        f.isRaw ? Icons.raw_on : Icons.photo_outlined,
                       ),
-                      title: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              f.dcfName,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: (f.isPreview
-                                      ? const Color(0xFFF59E0B)
-                                      : (f.isRaw
-                                          ? const Color(0xFFFF6D00)
-                                          : const Color(0xFF14B8A6)))
-                                  .withValues(alpha: 0.16),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              f.isPreview ? 'PREVIEW' : (f.isRaw ? 'RAW' : 'JPG'),
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: f.isPreview
-                                    ? const Color(0xFFF59E0B)
-                                    : (f.isRaw
-                                        ? const Color(0xFFFF6D00)
-                                        : const Color(0xFF14B8A6)),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      title: Text(f.dcfName),
                       subtitle: Text(
-                        f.isPreview
-                            ? 'Instant preview • Syncing RAW in background'
-                            : '${f.sizeMb.toStringAsFixed(1)} MB • CRC ${f.crc32Hex} • ${f.localPath}',
+                        '${f.sizeMb.toStringAsFixed(1)} MB • CRC ${f.crc32Hex} • ${f.localPath}',
                       ),
                       trailing: const Icon(Icons.auto_fix_high, size: 18),
                       onTap: () async {

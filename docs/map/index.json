@@ -7,16 +7,22 @@
       "reviewed": "2026-11-22",
       "evidence_span": "see record index"
     },
+    "firmware-dumps": {
+      "title": "Firmware dump sets and partition identity",
+      "doc": "docs/map/firmware-dumps.md",
+      "reviewed": "2026-11-26",
+      "evidence_span": "see record index"
+    },
     "hardware-live": {
       "title": "Live hardware observations and peripheral contracts",
       "doc": "docs/map/hardware-live.md",
-      "reviewed": "2026-11-22",
-      "evidence_span": "see record index"
+      "reviewed": "2026-11-26",
+      "evidence_span": "E0068-E0075, E0084, E0297-E0298, E0313-E0314, E0647-E0649"
     },
     "imaging-pipeline": {
       "title": "Imaging pipeline: color, RAW, RCRAW and recording paths",
       "doc": "docs/map/imaging-pipeline.md",
-      "reviewed": "2026-11-26",
+      "reviewed": "2026-11-24",
       "evidence_span": "see record index"
     },
     "l2-kernel-boot": {
@@ -28,7 +34,7 @@
     "l3-userspace": {
       "title": "L3 user space: original im.elf under InterpreterProbe",
       "doc": "docs/map/l3-userspace.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-26",
       "evidence_span": "see record index"
     },
     "menu-touch-ui": {
@@ -40,7 +46,7 @@
     "mods": {
       "title": "Mod Loader and firmware mods",
       "doc": "docs/map/mods.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-24",
       "evidence_span": "see record index"
     },
     "native-debugger": {
@@ -58,13 +64,13 @@
     "qemu-a6400": {
       "title": "QEMU sony-a6400 machine",
       "doc": "docs/map/qemu-a6400.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-26",
       "evidence_span": "see record index"
     },
     "storage-sd-backup": {
       "title": "Storage, SD card and backup service",
       "doc": "docs/map/storage-sd-backup.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-24",
       "evidence_span": "see record index"
     },
     "usb-composite": {
@@ -88,7 +94,7 @@
     "wifi-and-remote": {
       "title": "Wi-Fi and remote control",
       "doc": "docs/map/wifi-and-remote.md",
-      "reviewed": "2026-11-22",
+      "reviewed": "2026-11-24",
       "evidence_span": "see record index"
     }
   },
@@ -160,6 +166,62 @@
       ],
       "inactive_claims": []
     },
+    "source.a6100-dump": {
+      "area": "firmware-dumps",
+      "name": "ILCE-6100 Ver.1.00 partition set",
+      "kind": "source",
+      "address": null,
+      "aliases": [
+        "a6100-dump-20261120",
+        "dumps/a6100-dump-20261120",
+        "38115_03.2021040601"
+      ],
+      "anchor": "firmware-dumps.md#source-a6100-dump",
+      "active_claims": [
+        "C01",
+        "C03",
+        "C05",
+        "C06",
+        "C07"
+      ],
+      "inactive_claims": []
+    },
+    "source.a6400-dump": {
+      "area": "firmware-dumps",
+      "name": "ILCE-6400 read-only partition set",
+      "kind": "source",
+      "address": null,
+      "aliases": [
+        "a6400-nflasha-readonly",
+        "dumps/a6400-nflasha-readonly",
+        "38111_06.2021081003"
+      ],
+      "anchor": "firmware-dumps.md#source-a6400-dump",
+      "active_claims": [
+        "C02",
+        "C04",
+        "C05",
+        "C07"
+      ],
+      "inactive_claims": []
+    },
+    "proc.dump-integrity": {
+      "area": "firmware-dumps",
+      "name": "Dump integrity and cross-body comparison",
+      "kind": "process",
+      "address": null,
+      "aliases": [
+        "dump-inventory",
+        "sha256sum -c"
+      ],
+      "anchor": "firmware-dumps.md#proc-dump-integrity",
+      "active_claims": [
+        "C01",
+        "C02",
+        "C05"
+      ],
+      "inactive_claims": []
+    },
     "dev.gpio-buspower": {
       "area": "hardware-live",
       "name": "GPIO and USB bus-power drivers",
@@ -170,7 +232,8 @@
       "active_claims": [
         "C01",
         "C03",
-        "C09"
+        "C09",
+        "C11"
       ],
       "inactive_claims": []
     },
@@ -182,7 +245,9 @@
       "aliases": [],
       "anchor": "hardware-live.md#dev-hdmi-cec",
       "active_claims": [
-        "C02"
+        "C02",
+        "C15",
+        "C17"
       ],
       "inactive_claims": []
     },
@@ -194,9 +259,12 @@
       "aliases": [],
       "anchor": "hardware-live.md#dev-touch-input",
       "active_claims": [
-        "C04"
+        "C10",
+        "C39"
       ],
-      "inactive_claims": []
+      "inactive_claims": [
+        "C04"
+      ]
     },
     "dev.osd-display": {
       "area": "hardware-live",
@@ -211,7 +279,10 @@
       "anchor": "hardware-live.md#dev-osd-display",
       "active_claims": [
         "C03",
-        "C05"
+        "C05",
+        "C20",
+        "C21",
+        "C22"
       ],
       "inactive_claims": [
         "R01"
@@ -225,7 +296,13 @@
       "aliases": [],
       "anchor": "hardware-live.md#dev-gpes-bar",
       "active_claims": [
-        "C06"
+        "C06",
+        "C24",
+        "C25",
+        "C26",
+        "C27",
+        "C28",
+        "C30"
       ],
       "inactive_claims": []
     },
@@ -240,7 +317,11 @@
       ],
       "anchor": "hardware-live.md#policy-devmem",
       "active_claims": [
-        "C07"
+        "C07",
+        "C30",
+        "C31",
+        "C32",
+        "C33"
       ],
       "inactive_claims": []
     },
@@ -258,8 +339,192 @@
       "anchor": "hardware-live.md#dev-lens",
       "active_claims": [
         "C08",
-        "C10",
-        "C11"
+        "C40",
+        "C41",
+        "C35",
+        "C36",
+        "C37"
+      ],
+      "inactive_claims": []
+    },
+    "dev.usb-buspower": {
+      "area": "hardware-live",
+      "name": "/dev/usb/buspwr (248:13)",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "usb_buspwr.ko",
+        "libUsbBusPower.so"
+      ],
+      "anchor": "hardware-live.md#dev-usb-buspower",
+      "active_claims": [
+        "C12"
+      ],
+      "inactive_claims": []
+    },
+    "dev.usb-event": {
+      "area": "hardware-live",
+      "name": "/dev/usb/event (242:0)",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "usb_event_thread"
+      ],
+      "anchor": "hardware-live.md#dev-usb-event",
+      "active_claims": [
+        "C13"
+      ],
+      "inactive_claims": []
+    },
+    "dev.usb-otgcore": {
+      "area": "hardware-live",
+      "name": "/dev/usb/otgcore (242:2)",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "libInfraUsbCmn.so"
+      ],
+      "anchor": "hardware-live.md#dev-usb-otgcore",
+      "active_claims": [
+        "C14"
+      ],
+      "inactive_claims": []
+    },
+    "dev.devno-table": {
+      "area": "hardware-live",
+      "name": "devno.ko udif_devnodes table",
+      "kind": "source",
+      "address": null,
+      "aliases": [],
+      "anchor": "hardware-live.md#dev-devno-table",
+      "active_claims": [
+        "C15",
+        "C16"
+      ],
+      "inactive_claims": []
+    },
+    "dev.stream": {
+      "area": "hardware-live",
+      "name": "/dev/stream display and heap window",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "0x202e0000"
+      ],
+      "anchor": "hardware-live.md#dev-stream",
+      "active_claims": [
+        "C19",
+        "C21",
+        "C22"
+      ],
+      "inactive_claims": []
+    },
+    "lib.libobj": {
+      "area": "l3-userspace",
+      "name": "libObj.so (application object library)",
+      "kind": "module",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#lib-libobj",
+      "active_claims": [
+        "C11",
+        "C15",
+        "C37",
+        "C38",
+        "C40",
+        "C58"
+      ],
+      "inactive_claims": [
+        "R01",
+        "R02"
+      ]
+    },
+    "sys.camera-memory": {
+      "area": "hardware-live",
+      "name": "ILCE-6400 boot memory layout",
+      "kind": "device",
+      "address": null,
+      "aliases": [
+        "mem=1G@0",
+        "memrsv=704M@0x14000000:uc"
+      ],
+      "anchor": "hardware-live.md#sys-camera-memory",
+      "active_claims": [
+        "C18",
+        "C34"
+      ],
+      "inactive_claims": []
+    },
+    "proc.osal-uipc": {
+      "area": "hardware-live",
+      "name": "/proc/osal/uipc registration tables",
+      "kind": "source",
+      "address": null,
+      "aliases": [],
+      "anchor": "hardware-live.md#proc-osal-uipc",
+      "active_claims": [
+        "C29"
+      ],
+      "inactive_claims": []
+    },
+    "process.im-elf": {
+      "area": "l3-userspace",
+      "name": "im.elf (Sony main application process)",
+      "kind": "process",
+      "address": null,
+      "aliases": [
+        "PID 149",
+        "im.elf debug s g r u l i a lazy-global"
+      ],
+      "anchor": "l3-userspace.md#process-im-elf",
+      "active_claims": [
+        "C03",
+        "C08",
+        "C09",
+        "C11",
+        "C16",
+        "C18",
+        "C23",
+        "C25",
+        "C32",
+        "C35",
+        "C37",
+        "C39",
+        "C45",
+        "C48",
+        "C49",
+        "C50",
+        "C51",
+        "C52",
+        "C53",
+        "C54",
+        "C55",
+        "C57",
+        "C60",
+        "C62",
+        "C63",
+        "C64",
+        "C65",
+        "C66",
+        "C68"
+      ],
+      "inactive_claims": [
+        "C17",
+        "R05"
+      ]
+    },
+    "tool.ro-page": {
+      "area": "hardware-live",
+      "name": "ro_page v2 (/dev/mem reader with SIGBUS handling)",
+      "kind": "tool",
+      "address": null,
+      "aliases": [
+        "8c9f360b",
+        "catching=True"
+      ],
+      "anchor": "hardware-live.md#tool-ro-page",
+      "active_claims": [
+        "C33"
       ],
       "inactive_claims": []
     },
@@ -278,7 +543,8 @@
       "active_claims": [
         "C01",
         "C02",
-        "C11"
+        "C11",
+        "C16"
       ],
       "inactive_claims": []
     },
@@ -310,7 +576,9 @@
       "active_claims": [
         "C03",
         "C04",
-        "C05"
+        "C05",
+        "C12",
+        "C14"
       ],
       "inactive_claims": []
     },
@@ -329,283 +597,7 @@
       "active_claims": [
         "C06",
         "C07",
-        "C12",
-        "C13",
-        "C14",
-        "C15",
-        "C16",
-        "C18",
-        "C21",
-        "C22",
-        "C23",
-        "C24",
-        "C31",
-        "C38",
-        "C39",
-        "C46",
-        "C48",
-        "C51",
-        "C55"
-      ],
-      "inactive_claims": [
-        "C19"
-      ]
-    },
-    "img.sele-refresh": {
-      "area": "imaging-pipeline",
-      "name": "S-Ele refresh counter and Lost CAMOUT_V latch",
-      "kind": "function",
-      "address": null,
-      "aliases": [
-        "refresh_cnt",
-        "0x64367AF0",
-        "0x644B02B9",
-        "Lost CAMOUT_V"
-      ],
-      "anchor": "imaging-pipeline.md#img-sele-refresh",
-      "active_claims": [
-        "C17",
-        "C20",
-        "C28"
-      ],
-      "inactive_claims": [
-        "C19"
-      ]
-    },
-    "img.camout-v-check": {
-      "area": "imaging-pipeline",
-      "name": "CAMOUT frame commit check and Lost CAMOUT_V",
-      "kind": "function",
-      "address": null,
-      "aliases": [
-        "Lost CAMOUT_V",
-        "0x63907D00",
-        "0x643679A8",
-        "camout_vfc"
-      ],
-      "anchor": "imaging-pipeline.md#img-camout-v-check",
-      "active_claims": [
-        "C20",
-        "C21",
-        "C29",
-        "C31",
-        "C32",
-        "C34",
-        "C35",
-        "C41",
-        "C44",
-        "C45"
-      ],
-      "inactive_claims": [
-        "C27"
-      ]
-    },
-    "img.runtime-imaging-object": {
-      "area": "imaging-pipeline",
-      "name": "ImagingMain singleton 0x643691FC and the 0x645C1798 pointer graph",
-      "kind": "address",
-      "address": null,
-      "aliases": [
-        "0x643691FC",
-        "0x645C1798",
-        "0x6420128C",
-        "0x64200A48",
-        "rt_t14"
-      ],
-      "anchor": "imaging-pipeline.md#img-runtime-imaging-object",
-      "active_claims": [
-        "C25",
-        "C48"
-      ],
-      "inactive_claims": [
-        "C26"
-      ]
-    },
-    "img.size-rows": {
-      "area": "imaging-pipeline",
-      "name": "size_rows mode records 0x63E24F70",
-      "kind": "field",
-      "address": null,
-      "aliases": [
-        "size_rows",
-        "0x63E24F70",
-        "0x63E25430",
-        "0x63E2547C"
-      ],
-      "anchor": "imaging-pipeline.md#img-size-rows",
-      "active_claims": [
-        "C32",
-        "C43"
-      ],
-      "inactive_claims": [
-        "C26"
-      ]
-    },
-    "img.sgc-timing": {
-      "area": "imaging-pipeline",
-      "name": "SGC1/SGC2 hvcycle and rt_t10/rt_t14/rt_t18/rt_t1c",
-      "kind": "device",
-      "address": null,
-      "aliases": [
-        "SGC1",
-        "SGC2",
-        "hvcycle",
-        "0xF3120220",
-        "rt_t10",
-        "rt_t14"
-      ],
-      "anchor": "imaging-pipeline.md#img-sgc-timing",
-      "active_claims": [
-        "C18",
-        "C29",
-        "C30",
-        "C33",
-        "C40",
-        "C51",
-        "C52"
-      ],
-      "inactive_claims": [
-        "C19",
-        "C26",
-        "C27"
-      ]
-    },
-    "img.fe-rcv": {
-      "area": "imaging-pipeline",
-      "name": "FE records and rcv_desc vertical fields",
-      "kind": "field",
-      "address": null,
-      "aliases": [
-        "fe_rec_0a",
-        "fe_rec_19",
-        "rcv_desc",
-        "0x63E14E94",
-        "0x63E19720"
-      ],
-      "anchor": "imaging-pipeline.md#img-fe-rcv",
-      "active_claims": [
-        "C15",
-        "C21",
-        "C23",
-        "C24",
-        "C25",
-        "C31",
-        "C32",
-        "C34",
-        "C35",
-        "C37",
-        "C47"
-      ],
-      "inactive_claims": [
-        "C19",
-        "C27"
-      ]
-    },
-    "img.dmm-config": {
-      "area": "imaging-pipeline",
-      "name": "DmmConfig.bin movie pools and the av-cam canvas table",
-      "kind": "source",
-      "address": null,
-      "aliases": [
-        "DmmConfig.bin",
-        "0x63DF199C",
-        "0x2EF9200"
-      ],
-      "anchor": "imaging-pipeline.md#img-dmm-config",
-      "active_claims": [
-        "C14"
-      ],
-      "inactive_claims": []
-    },
-    "img.fe-band": {
-      "area": "imaging-pipeline",
-      "name": "FE band register file and the 21-register offset table",
-      "kind": "field",
-      "address": null,
-      "aliases": [
-        "0x6454AC44",
-        "0x6376ECFC",
-        "FE band",
-        "0x438",
-        "0x43C"
-      ],
-      "anchor": "imaging-pipeline.md#img-fe-band",
-      "active_claims": [
-        "C35",
-        "C36",
-        "C42",
-        "C43",
-        "C44",
-        "C45",
-        "C48",
-        "C50",
-        "C52",
-        "C53",
-        "C56"
-      ],
-      "inactive_claims": []
-    },
-    "img.sgc-trim": {
-      "area": "imaging-pipeline",
-      "name": "SgcDev::UpdateWindow trim and phase servo 0x6376910C",
-      "kind": "function",
-      "address": null,
-      "aliases": [
-        "0x6376910C",
-        "UpdateWindow",
-        "0xF312032C",
-        "0xF3120438"
-      ],
-      "anchor": "imaging-pipeline.md#img-sgc-trim",
-      "active_claims": [
-        "C40",
-        "C42"
-      ],
-      "inactive_claims": []
-    },
-    "img.camout-publish": {
-      "area": "imaging-pipeline",
-      "name": "CAMOUT frame publish side (p = *(0x643691FC+4))",
-      "kind": "address",
-      "address": null,
-      "aliases": [
-        "0x643691FC",
-        "p[0]",
-        "0x645CAA40",
-        "0x639303D0"
-      ],
-      "anchor": "imaging-pipeline.md#img-camout-publish",
-      "active_claims": [
-        "C41",
-        "C42",
-        "C50",
-        "C53",
-        "C54",
-        "C55",
-        "C56"
-      ],
-      "inactive_claims": []
-    },
-    "img.imx284-window": {
-      "area": "imaging-pipeline",
-      "name": "IMX284 Y window registers 0x000A-0x000D",
-      "kind": "device",
-      "address": null,
-      "aliases": [
-        "Y_START",
-        "Y_SIZE",
-        "0x000A",
-        "0x000C",
-        "IMX284"
-      ],
-      "anchor": "imaging-pipeline.md#img-imx284-window",
-      "active_claims": [
-        "C16",
-        "C22",
-        "C34",
-        "C38",
-        "C46",
-        "C49"
+        "C17"
       ],
       "inactive_claims": []
     },
@@ -624,7 +616,45 @@
         "C07",
         "C08",
         "C09",
-        "C10"
+        "C10",
+        "C17"
+      ],
+      "inactive_claims": []
+    },
+    "app.android-spektrafilm": {
+      "area": "imaging-pipeline",
+      "name": "CinemaHUD Android SpektraFilm engine (candidate)",
+      "kind": "host",
+      "address": null,
+      "aliases": [
+        "SpektraFilm",
+        "CinemaHUD Android",
+        "ARW2 GPU",
+        "film roll"
+      ],
+      "anchor": "imaging-pipeline.md#app-android-spektrafilm",
+      "active_claims": [
+        "C12",
+        "C13"
+      ],
+      "inactive_claims": []
+    },
+    "app.mobile-fotufilm": {
+      "area": "imaging-pipeline",
+      "name": "Mobile fotufilm-engine GPU darkroom (candidate)",
+      "kind": "host",
+      "address": null,
+      "aliases": [
+        "fotufilm-engine",
+        "fotufilm",
+        "FotufilmHalide",
+        "FilmTileMetalBuilder"
+      ],
+      "anchor": "imaging-pipeline.md#app-mobile-fotufilm",
+      "active_claims": [
+        "C14",
+        "C15",
+        "C16"
       ],
       "inactive_claims": []
     },
@@ -795,29 +825,6 @@
       ],
       "inactive_claims": []
     },
-    "process.im-elf": {
-      "area": "l3-userspace",
-      "name": "im.elf (Sony main application process)",
-      "kind": "process",
-      "address": null,
-      "aliases": [
-        "PID 149",
-        "im.elf debug s g r u l i a lazy-global"
-      ],
-      "anchor": "l3-userspace.md#process-im-elf",
-      "active_claims": [
-        "C03",
-        "C08",
-        "C09",
-        "C11",
-        "C16",
-        "C17",
-        "C18",
-        "C23",
-        "C25"
-      ],
-      "inactive_claims": []
-    },
     "tool.interpreter-probe": {
       "area": "l3-userspace",
       "name": "InterpreterProbe (L3 user-space executor)",
@@ -827,7 +834,15 @@
       "anchor": "l3-userspace.md#tool-interpreter-probe",
       "active_claims": [
         "C01",
-        "C20"
+        "C20",
+        "C28",
+        "C29",
+        "C30",
+        "C31",
+        "C36",
+        "C40",
+        "C41",
+        "C61"
       ],
       "inactive_claims": []
     },
@@ -842,25 +857,102 @@
         "C01",
         "C02",
         "C16",
-        "C21"
+        "C21",
+        "C28",
+        "C29",
+        "C30",
+        "C31",
+        "C32",
+        "C33",
+        "C39",
+        "C41",
+        "C42",
+        "C43",
+        "C44",
+        "C45",
+        "C46"
       ],
-      "inactive_claims": []
+      "inactive_claims": [
+        "R04"
+      ]
     },
-    "lib.libobj": {
+    "lib.libimdb": {
       "area": "l3-userspace",
-      "name": "libObj.so (application object library)",
+      "name": "libIMDB.so (module entry database)",
       "kind": "module",
       "address": null,
       "aliases": [],
-      "anchor": "l3-userspace.md#lib-libobj",
+      "anchor": "l3-userspace.md#lib-libimdb",
       "active_claims": [
-        "C11",
-        "C15"
+        "C38",
+        "C55"
       ],
-      "inactive_claims": [
-        "R01",
-        "R02"
-      ]
+      "inactive_claims": []
+    },
+    "dev.fb0": {
+      "area": "l3-userspace",
+      "name": "/dev/fb0 (major 29, minor 0)",
+      "kind": "device",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#dev-fb0",
+      "active_claims": [
+        "C58"
+      ],
+      "inactive_claims": []
+    },
+    "dev.urandom": {
+      "area": "l3-userspace",
+      "name": "/dev/urandom (1:9)",
+      "kind": "device",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#dev-urandom",
+      "active_claims": [
+        "C60",
+        "C61"
+      ],
+      "inactive_claims": []
+    },
+    "module.liro": {
+      "area": "l3-userspace",
+      "name": "liro.ko",
+      "kind": "module",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#module-liro",
+      "active_claims": [
+        "C66"
+      ],
+      "inactive_claims": []
+    },
+    "src.original-init": {
+      "area": "l3-userspace",
+      "name": "nflasha7 /sbin/init",
+      "kind": "source",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#src-original-init",
+      "active_claims": [
+        "C35",
+        "C36",
+        "C37"
+      ],
+      "inactive_claims": []
+    },
+    "fs.original-ext2-images": {
+      "area": "l3-userspace",
+      "name": "Original ext2 images (nflasha7, nflasha15)",
+      "kind": "source",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#fs-original-ext2-images",
+      "active_claims": [
+        "C33",
+        "C34",
+        "C67"
+      ],
+      "inactive_claims": []
     },
     "dev.uipc-osal": {
       "area": "l3-userspace",
@@ -875,7 +967,15 @@
         "C09",
         "C23",
         "C24",
-        "C26"
+        "C26",
+        "C46",
+        "C47",
+        "C48",
+        "C50",
+        "C53",
+        "C54",
+        "C56",
+        "C59"
       ],
       "inactive_claims": []
     },
@@ -1031,7 +1131,11 @@
         "C02",
         "C03",
         "C05",
-        "C06"
+        "C06",
+        "C11",
+        "C08",
+        "C09",
+        "C10"
       ],
       "inactive_claims": []
     },
@@ -1043,9 +1147,11 @@
       "aliases": [],
       "anchor": "mods.md#mod-a6100-picture-profile",
       "active_claims": [
-        "C04"
+        "C16"
       ],
-      "inactive_claims": []
+      "inactive_claims": [
+        "C04"
+      ]
     },
     "mod.zve10-adapted-menu": {
       "area": "mods",
@@ -1056,6 +1162,21 @@
       "anchor": "mods.md#mod-zve10-adapted-menu",
       "active_claims": [
         "C07"
+      ],
+      "inactive_claims": []
+    },
+    "mod.film-roll-36": {
+      "area": "mods",
+      "name": "36-exposure Film Roll mode (candidate)",
+      "kind": "module",
+      "address": null,
+      "aliases": [
+        "FilmRoll.mod",
+        "36-exposure roll"
+      ],
+      "anchor": "mods.md#mod-film-roll-36",
+      "active_claims": [
+        "C10"
       ],
       "inactive_claims": []
     },
@@ -1071,10 +1192,10 @@
       ],
       "anchor": "mods.md#mod-wifisync",
       "active_claims": [
-        "C08",
-        "C09",
-        "C10",
-        "C11"
+        "C12",
+        "C13",
+        "C14",
+        "C15"
       ],
       "inactive_claims": []
     },
@@ -1161,7 +1282,8 @@
         "C05",
         "C08",
         "C11",
-        "C13"
+        "C13",
+        "C14"
       ],
       "inactive_claims": []
     },
@@ -1242,7 +1364,9 @@
         "C11",
         "C14",
         "C16",
-        "C21"
+        "C21",
+        "C22",
+        "C23"
       ],
       "inactive_claims": []
     },
@@ -1264,7 +1388,8 @@
         "C07",
         "C08",
         "C10",
-        "C18"
+        "C18",
+        "C23"
       ],
       "inactive_claims": [
         "R02",
@@ -1284,7 +1409,8 @@
       "anchor": "qemu-a6400.md#qemu-submicro",
       "active_claims": [
         "C03",
-        "C17"
+        "C17",
+        "C23"
       ],
       "inactive_claims": []
     },
@@ -1307,7 +1433,9 @@
         "C10",
         "C15",
         "C19",
-        "C20"
+        "C20",
+        "C22",
+        "C23"
       ],
       "inactive_claims": []
     },
@@ -1324,7 +1452,8 @@
       "anchor": "qemu-a6400.md#qemu-handover",
       "active_claims": [
         "C12",
-        "C13"
+        "C13",
+        "C24"
       ],
       "inactive_claims": [
         "R01"
@@ -1964,6 +2093,20 @@
         "id": "C16",
         "file": "0001-platform-and-loader.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C39",
+        "file": "0001-platform-and-loader.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C40",
+        "file": "0001-platform-and-loader.md",
+        "status": "verified-offline"
       }
     ],
     "E0002": [
@@ -1971,6 +2114,27 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C16",
+        "file": "0002-original-process-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C32",
+        "file": "0002-original-process-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C37",
+        "file": "0002-original-process-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C38",
         "file": "0002-original-process-startup.md",
         "status": "verified-offline"
       }
@@ -1982,6 +2146,13 @@
         "id": "C01",
         "file": "0003-original-interpreter-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C28",
+        "file": "0003-original-interpreter-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0004": [
@@ -1989,6 +2160,13 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C01",
+        "file": "0004-guest-brk-contract.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C29",
         "file": "0004-guest-brk-contract.md",
         "status": "verified-offline"
       }
@@ -2000,6 +2178,13 @@
         "id": "C01",
         "file": "0005-guarded-kernel-identity.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C30",
+        "file": "0005-guarded-kernel-identity.md",
+        "status": "verified-offline"
       }
     ],
     "E0006": [
@@ -2007,6 +2192,13 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C01",
+        "file": "0006-read-only-guest-filesystem.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C31",
         "file": "0006-read-only-guest-filesystem.md",
         "status": "verified-offline"
       }
@@ -2018,9 +2210,37 @@
         "id": "C01",
         "file": "0007-guarded-inode-metadata.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C33",
+        "file": "0007-guarded-inode-metadata.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C34",
+        "file": "0007-guarded-inode-metadata.md",
+        "status": "verified-offline"
       }
     ],
     "E0008": [
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C35",
+        "file": "0008-runtime-mount-boundaries.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C36",
+        "file": "0008-runtime-mount-boundaries.md",
+        "status": "verified-offline"
+      },
       {
         "area": "storage-sd-backup",
         "kind": "claim",
@@ -2090,6 +2310,27 @@
         "id": "C02",
         "file": "0015-guarded-mmap2-and-library-load.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C41",
+        "file": "0015-guarded-mmap2-and-library-load.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C42",
+        "file": "0015-guarded-mmap2-and-library-load.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "R04",
+        "file": "0015-guarded-mmap2-and-library-load.md",
+        "status": "retracted"
       }
     ],
     "E0016": [
@@ -2097,6 +2338,34 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C02",
+        "file": "0016-kuser-helpers-and-shared-library-init.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C43",
+        "file": "0016-kuser-helpers-and-shared-library-init.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C44",
+        "file": "0016-kuser-helpers-and-shared-library-init.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C45",
+        "file": "0016-kuser-helpers-and-shared-library-init.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C46",
         "file": "0016-kuser-helpers-and-shared-library-init.md",
         "status": "verified-offline"
       }
@@ -2108,6 +2377,20 @@
         "id": "C03",
         "file": "0017-application-entry-and-uipc-contract.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C47",
+        "file": "0017-application-entry-and-uipc-contract.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C48",
+        "file": "0017-application-entry-and-uipc-contract.md",
+        "status": "verified-offline"
       }
     ],
     "E0018": [
@@ -2115,6 +2398,20 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C03",
+        "file": "0018-standard-io-and-uipc-callbacks.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C49",
+        "file": "0018-standard-io-and-uipc-callbacks.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C50",
         "file": "0018-standard-io-and-uipc-callbacks.md",
         "status": "verified-offline"
       }
@@ -2126,6 +2423,48 @@
         "id": "C03",
         "file": "0019-multithreading-and-sys-clone.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "R04",
+        "file": "0019-multithreading-and-sys-clone.md",
+        "status": "retracted"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C51",
+        "file": "0019-multithreading-and-sys-clone.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "R05",
+        "file": "0019-multithreading-and-sys-clone.md",
+        "status": "refuted"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C52",
+        "file": "0019-multithreading-and-sys-clone.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C53",
+        "file": "0019-multithreading-and-sys-clone.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C68",
+        "file": "0019-multithreading-and-sys-clone.md",
+        "status": "verified-offline"
       }
     ],
     "E0020": [
@@ -2133,6 +2472,13 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C04",
+        "file": "0020-uipc-semaphores-and-event-loop.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C54",
         "file": "0020-uipc-semaphores-and-event-loop.md",
         "status": "verified-offline"
       }
@@ -2143,6 +2489,27 @@
         "kind": "claim",
         "id": "C17",
         "file": "0021-event-dispatch-and-display-subsystem.md",
+        "status": "retracted"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C55",
+        "file": "0021-event-dispatch-and-display-subsystem.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C58",
+        "file": "0021-event-dispatch-and-display-subsystem.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C59",
+        "file": "0021-event-dispatch-and-display-subsystem.md",
         "status": "verified-offline"
       }
     ],
@@ -2151,6 +2518,27 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C17",
+        "file": "0022-task94-boot-events-and-plugin-subsystems.md",
+        "status": "retracted"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C55",
+        "file": "0022-task94-boot-events-and-plugin-subsystems.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C56",
+        "file": "0022-task94-boot-events-and-plugin-subsystems.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C57",
         "file": "0022-task94-boot-events-and-plugin-subsystems.md",
         "status": "verified-offline"
       }
@@ -2162,6 +2550,27 @@
         "id": "C18",
         "file": "0023-package-h-entropy-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C57",
+        "file": "0023-package-h-entropy-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C58",
+        "file": "0023-package-h-entropy-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C60",
+        "file": "0023-package-h-entropy-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0024": [
@@ -2171,6 +2580,13 @@
         "id": "C18",
         "file": "0024-urandom-dispatch-and-read-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C61",
+        "file": "0024-urandom-dispatch-and-read-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0025": [
@@ -2178,6 +2594,27 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C17",
+        "file": "0025-boot-producers-and-argument-selected-startup.md",
+        "status": "retracted"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C62",
+        "file": "0025-boot-producers-and-argument-selected-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C63",
+        "file": "0025-boot-producers-and-argument-selected-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C68",
         "file": "0025-boot-producers-and-argument-selected-startup.md",
         "status": "verified-offline"
       }
@@ -2189,6 +2626,20 @@
         "id": "C02",
         "file": "0026-thread-tls-and-stack-discard.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C64",
+        "file": "0026-thread-tls-and-stack-discard.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C68",
+        "file": "0026-thread-tls-and-stack-discard.md",
+        "status": "verified-offline"
       }
     ],
     "E0027": [
@@ -2198,6 +2649,20 @@
         "id": "C03",
         "file": "0027-original-clone-return-and-phase-survey.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C65",
+        "file": "0027-original-clone-return-and-phase-survey.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C68",
+        "file": "0027-original-clone-return-and-phase-survey.md",
+        "status": "verified-offline"
       }
     ],
     "E0028": [
@@ -2205,6 +2670,20 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C16",
+        "file": "0028-readonly-inode-metadata-and-module-request.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C66",
+        "file": "0028-readonly-inode-metadata-and-module-request.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C67",
         "file": "0028-readonly-inode-metadata-and-module-request.md",
         "status": "verified-offline"
       }
@@ -2462,6 +2941,12 @@
       },
       {
         "area": "storage-sd-backup",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0056-sd-card-inputs-and-update-surface.md"
+      },
+      {
+        "area": "storage-sd-backup",
         "kind": "hazard",
         "id": "H02",
         "file": "0056-sd-card-inputs-and-update-surface.md"
@@ -2573,6 +3058,13 @@
         "id": "C01",
         "file": "0068-gpio-contract-and-usbg-buspower-module-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C11",
+        "file": "0068-gpio-contract-and-usbg-buspower-module-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0069": [
@@ -2580,6 +3072,13 @@
         "area": "hardware-live",
         "kind": "claim",
         "id": "C01",
+        "file": "0069-usb-buspower-driver-contract-and-100m-instruction-milestone.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C12",
         "file": "0069-usb-buspower-driver-contract-and-100m-instruction-milestone.md",
         "status": "verified-offline"
       }
@@ -2600,6 +3099,13 @@
         "id": "C09",
         "file": "0071-setting-overlay-media-detection-and-usb-event-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C13",
+        "file": "0071-setting-overlay-media-detection-and-usb-event-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0072": [
@@ -2607,6 +3113,27 @@
         "area": "hardware-live",
         "kind": "claim",
         "id": "C02",
+        "file": "0072-usb-otgcore-contract-and-hdmi-subsystem-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C12",
+        "file": "0072-usb-otgcore-contract-and-hdmi-subsystem-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0072-usb-otgcore-contract-and-hdmi-subsystem-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C15",
         "file": "0072-usb-otgcore-contract-and-hdmi-subsystem-boundary.md",
         "status": "verified-offline"
       }
@@ -2618,6 +3145,27 @@
         "id": "C03",
         "file": "0073-live-hardware-ground-truth-and-a6400-boot-telemetry.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C16",
+        "file": "0073-live-hardware-ground-truth-and-a6400-boot-telemetry.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C18",
+        "file": "0073-live-hardware-ground-truth-and-a6400-boot-telemetry.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C19",
+        "file": "0073-live-hardware-ground-truth-and-a6400-boot-telemetry.md",
+        "status": "verified-physical"
       }
     ],
     "E0074": [
@@ -2627,6 +3175,13 @@
         "id": "C03",
         "file": "0074-native-hardware-tally-frame-milestone.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C20",
+        "file": "0074-native-hardware-tally-frame-milestone.md",
+        "status": "verified-physical"
       }
     ],
     "E0075": [
@@ -2634,6 +3189,13 @@
         "area": "hardware-live",
         "kind": "claim",
         "id": "C02",
+        "file": "0075-hdmi-contract-and-pipe-subsystem-boundary.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C17",
         "file": "0075-hdmi-contract-and-pipe-subsystem-boundary.md",
         "status": "verified-offline"
       }
@@ -2716,10 +3278,38 @@
         "kind": "claim",
         "id": "C04",
         "file": "0084-live-hardware-touch-subsystem-and-input-event-architecture.md",
+        "status": "retracted"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0084-live-hardware-touch-subsystem-and-input-event-architecture.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C38",
+        "file": "0084-live-hardware-touch-subsystem-and-input-event-architecture.md",
         "status": "verified-physical"
       }
     ],
     "E0085": [
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0085-touch-hook-false-matches-and-live-disable.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C39",
+        "file": "0085-touch-hook-false-matches-and-live-disable.md",
+        "status": "verified-offline"
+      },
       {
         "area": "menu-touch-ui",
         "kind": "claim",
@@ -2729,6 +3319,20 @@
       }
     ],
     "E0086": [
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0086-live-touch-enodev-and-menu-instruction-audit.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C39",
+        "file": "0086-live-touch-enodev-and-menu-instruction-audit.md",
+        "status": "verified-offline"
+      },
       {
         "area": "menu-touch-ui",
         "kind": "claim",
@@ -4696,6 +5300,13 @@
       },
       {
         "area": "hardware-live",
+        "kind": "claim",
+        "id": "C22",
+        "file": "0297-live-display-contract-and-camera-reboot.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
         "kind": "hazard",
         "id": "H01",
         "file": "0297-live-display-contract-and-camera-reboot.md"
@@ -4708,6 +5319,34 @@
         "id": "C05",
         "file": "0298-safe-osd-capture-and-sugilite-correction.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C13",
+        "file": "0298-safe-osd-capture-and-sugilite-correction.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C21",
+        "file": "0298-safe-osd-capture-and-sugilite-correction.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C22",
+        "file": "0298-safe-osd-capture-and-sugilite-correction.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0298-safe-osd-capture-and-sugilite-correction.md",
+        "status": "verified-offline"
       },
       {
         "area": "hardware-live",
@@ -4847,6 +5486,41 @@
         "id": "C06",
         "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C24",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C25",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C26",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C29",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C30",
+        "file": "0313-readonly-physical-gpes-bar-and-grm-state.md",
+        "status": "verified-physical"
       }
     ],
     "E0314": [
@@ -4858,9 +5532,50 @@
         "status": "verified-physical"
       },
       {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C24",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C25",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C27",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C28",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "hazard",
+        "id": "H03",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md"
+      },
+      {
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C14",
+        "file": "0314-gpes-bar-irq-contract-engine-model.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C52",
         "file": "0314-gpes-bar-irq-contract-engine-model.md",
         "status": "verified-offline"
       }
@@ -6473,6 +7188,13 @@
     ],
     "E0414": [
       {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C02",
+        "file": "0414-nflasha-readonly-device-check-and-boot-area-dumps.md",
+        "status": "verified-physical"
+      },
+      {
         "area": "l2-kernel-boot",
         "kind": "claim",
         "id": "C26",
@@ -6489,6 +7211,13 @@
     ],
     "E0415": [
       {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C04",
+        "file": "0415-nflasha-boot-decode-and-full-emulation-roadmap.md",
+        "status": "verified-offline"
+      },
+      {
         "area": "l2-kernel-boot",
         "kind": "claim",
         "id": "C27",
@@ -6499,6 +7228,13 @@
         "area": "l2-kernel-boot",
         "kind": "claim",
         "id": "C28",
+        "file": "0415-nflasha-boot-decode-and-full-emulation-roadmap.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "platform-multidevice",
+        "kind": "claim",
+        "id": "C14",
         "file": "0415-nflasha-boot-decode-and-full-emulation-roadmap.md",
         "status": "verified-offline"
       }
@@ -8017,6 +8753,13 @@
         "id": "C01",
         "file": "0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C16",
+        "file": "0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md",
+        "status": "inference"
       }
     ],
     "E0506": [
@@ -8195,6 +8938,19 @@
       }
     ],
     "E0524": [
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C02",
+        "file": "0524-reproducible-captured-qemu-boot-and-liro-waits.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "hazard",
+        "id": "H02",
+        "file": "0524-reproducible-captured-qemu-boot-and-liro-waits.md"
+      },
       {
         "area": "qemu-a6400",
         "kind": "claim",
@@ -9078,6 +9834,20 @@
         "id": "C05",
         "file": "0601-arw-superpixel-2x2-prototype.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C12",
+        "file": "0601-arw-superpixel-2x2-prototype.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0601-arw-superpixel-2x2-prototype.md",
+        "status": "verified-offline"
       }
     ],
     "E0602": [
@@ -9266,12 +10036,6 @@
         "id": "C06",
         "file": "0620-a6400-open-gate-4k-and-6k-paths.md",
         "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F04",
-        "file": "0620-a6400-open-gate-4k-and-6k-paths.md"
       }
     ],
     "E0621": [
@@ -9568,8 +10332,54 @@
       },
       {
         "area": "hardware-live",
+        "kind": "claim",
+        "id": "C31",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C32",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C33",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C34",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md"
+      },
+      {
+        "area": "hardware-live",
         "kind": "hazard",
         "id": "H02",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "hazard",
+        "id": "H03",
+        "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "hazard",
+        "id": "H04",
         "file": "0647-ilce6400-devmem-reboot-root-cause-and-policy.md"
       },
       {
@@ -9586,6 +10396,26 @@
         "id": "C08",
         "file": "0648-ilce6400-bl-lens-focus-command-ids.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C35",
+        "file": "0648-ilce6400-bl-lens-focus-command-ids.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C36",
+        "file": "0648-ilce6400-bl-lens-focus-command-ids.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "0648-ilce6400-bl-lens-focus-command-ids.md"
       }
     ],
     "E0649": [
@@ -9595,6 +10425,19 @@
         "id": "C08",
         "file": "0649-ilce6400-live-lens-info-linux-side-negative.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C37",
+        "file": "0649-ilce6400-live-lens-info-linux-side-negative.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "hardware-live",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "0649-ilce6400-live-lens-info-linux-side-negative.md"
       }
     ],
     "E0650": [
@@ -9775,6 +10618,12 @@
         "id": "C05",
         "file": "0662-file-access-is-a-camera-mode.md",
         "status": "verified-physical"
+      },
+      {
+        "area": "wifi-and-remote",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0662-file-access-is-a-camera-mode.md"
       }
     ],
     "E0663": [
@@ -9949,497 +10798,315 @@
         "file": "0677-unicorn-sio-gpio-oracle.md"
       }
     ],
-    "E0692": [
+    "E0680": [
       {
         "area": "mods",
         "kind": "claim",
         "id": "C08",
-        "file": "0692-wifisync-camera-side-mod.md",
+        "file": "0680-photonbin-6mp-and-mlv2-nested-submenus.md",
         "status": "verified-offline"
       },
+      {
+        "area": "mods",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0680-photonbin-6mp-and-mlv2-nested-submenus.md"
+      }
+    ],
+    "E0681": [
       {
         "area": "mods",
         "kind": "claim",
         "id": "C09",
-        "file": "0692-wifisync-camera-side-mod.md",
+        "file": "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
         "status": "verified-offline"
       },
       {
         "area": "mods",
         "kind": "claim",
         "id": "C10",
-        "file": "0692-wifisync-camera-side-mod.md",
+        "file": "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md",
         "status": "verified-offline"
       },
       {
         "area": "mods",
-        "kind": "claim",
-        "id": "C11",
-        "file": "0692-wifisync-camera-side-mod.md",
-        "status": "open"
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md"
       }
     ],
-    "E0693": [
-      {
-        "area": "hardware-live",
-        "kind": "claim",
-        "id": "C10",
-        "file": "0693-ilce6400-bl-gate-bitmap-and-1d-mode.md",
-        "status": "verified-offline"
-      }
-    ],
-    "E0694": [
-      {
-        "area": "hardware-live",
-        "kind": "claim",
-        "id": "C11",
-        "file": "0694-ttartisan-af35-command-surface-and-patch-feasibility.md",
-        "status": "verified-offline"
-      }
-    ],
-    "E0695": [
+    "E0688": [
       {
         "area": "imaging-pipeline",
         "kind": "claim",
         "id": "C12",
-        "file": "0695-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md",
         "status": "verified-offline"
-      }
-    ],
-    "E0696": [
+      },
       {
         "area": "imaging-pipeline",
         "kind": "claim",
         "id": "C13",
-        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C19",
-        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md",
-        "status": "refuted"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C21",
-        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md",
-        "status": "verified-physical"
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md",
+        "status": "inference"
       },
       {
         "area": "imaging-pipeline",
         "kind": "frontier",
         "id": "F02",
-        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md"
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md"
       },
       {
         "area": "imaging-pipeline",
-        "kind": "hazard",
-        "id": "H02",
-        "file": "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md"
+        "kind": "frontier",
+        "id": "F03",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md"
+      },
+      {
+        "area": "mods",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md"
+      },
+      {
+        "area": "wifi-and-remote",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0688-android-gpu-spektrafilm-film-roll-architecture.md"
       }
     ],
-    "E0697": [
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C13",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
-        "status": "verified-physical"
-      },
+    "E0689": [
       {
         "area": "imaging-pipeline",
         "kind": "claim",
         "id": "C14",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md",
         "status": "verified-offline"
       },
       {
         "area": "imaging-pipeline",
         "kind": "claim",
         "id": "C15",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md",
         "status": "verified-offline"
       },
       {
         "area": "imaging-pipeline",
         "kind": "claim",
         "id": "C16",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C17",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C18",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C19",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md",
-        "status": "refuted"
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md",
+        "status": "inference"
       },
       {
         "area": "imaging-pipeline",
         "kind": "frontier",
-        "id": "F02",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md"
+        "id": "F03",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
       },
       {
-        "area": "imaging-pipeline",
-        "kind": "hazard",
-        "id": "H02",
-        "file": "0697-a6400-open-gate-upper-ceiling-static-analysis.md"
+        "area": "mods",
+        "kind": "claim",
+        "id": "C10",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
+      },
+      {
+        "area": "storage-sd-backup",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
+      },
+      {
+        "area": "wifi-and-remote",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md"
       }
     ],
     "E0698": [
       {
-        "area": "imaging-pipeline",
+        "area": "mods",
         "kind": "claim",
-        "id": "C20",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "id": "C12",
+        "file": "0698-wifisync-camera-side-mod.md",
         "status": "verified-offline"
       },
       {
-        "area": "imaging-pipeline",
+        "area": "mods",
         "kind": "claim",
-        "id": "C21",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C22",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "id": "C13",
+        "file": "0698-wifisync-camera-side-mod.md",
         "status": "verified-offline"
       },
       {
-        "area": "imaging-pipeline",
+        "area": "mods",
         "kind": "claim",
-        "id": "C23",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
+        "id": "C14",
+        "file": "0698-wifisync-camera-side-mod.md",
         "status": "verified-offline"
       },
       {
-        "area": "imaging-pipeline",
+        "area": "mods",
         "kind": "claim",
-        "id": "C24",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C25",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C26",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
-        "status": "refuted"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C27",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
-        "status": "refuted"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C28",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C29",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C30",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F02",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F03",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "hazard",
-        "id": "H03",
-        "file": "0698-a6400-open-gate-camout-v-plus24-root-cause.md"
-      }
-    ],
-    "E0699": [
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C31",
-        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C32",
-        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C33",
-        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C34",
-        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C40",
-        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F03",
-        "file": "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md"
+        "id": "C15",
+        "file": "0698-wifisync-camera-side-mod.md",
+        "status": "open"
       }
     ],
     "E0700": [
       {
-        "area": "imaging-pipeline",
+        "area": "qemu-a6400",
         "kind": "claim",
-        "id": "C35",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "id": "C22",
+        "file": "0700-qemu-touchscreen-peripherals-and-multimodel.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0705": [
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0705-qemu-dwc3-gadget-default-on-boot-score.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0706": [
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0706-qemu-watchdog-default-on-boot-score.md",
         "status": "verified-offline"
       },
       {
-        "area": "imaging-pipeline",
+        "area": "qemu-a6400",
         "kind": "claim",
-        "id": "C36",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "id": "C24",
+        "file": "0706-qemu-watchdog-default-on-boot-score.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0707": [
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C01",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C02",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C03",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "inference"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C04",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
         "status": "verified-offline"
       },
       {
-        "area": "imaging-pipeline",
+        "area": "firmware-dumps",
         "kind": "claim",
-        "id": "C37",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "id": "C05",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
         "status": "verified-offline"
       },
       {
-        "area": "imaging-pipeline",
+        "area": "firmware-dumps",
         "kind": "claim",
-        "id": "C38",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "id": "C06",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
         "status": "verified-offline"
       },
       {
-        "area": "imaging-pipeline",
+        "area": "firmware-dumps",
         "kind": "claim",
-        "id": "C39",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "id": "C07",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "inference"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "hazard",
+        "id": "H01",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "hazard",
+        "id": "H02",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md"
+      },
+      {
+        "area": "platform-multidevice",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0715": [
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md",
         "status": "verified-offline"
       },
       {
-        "area": "imaging-pipeline",
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C24",
+        "file": "0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "qemu-a6400",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md"
+      }
+    ],
+    "E0718": [
+      {
+        "area": "hardware-live",
         "kind": "claim",
         "id": "C40",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
-        "status": "verified-physical"
-      },
+        "file": "0718-ilce6400-bl-gate-bitmap-and-1d-mode.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0719": [
       {
-        "area": "imaging-pipeline",
+        "area": "hardware-live",
         "kind": "claim",
         "id": "C41",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
+        "file": "0719-ttartisan-af35-command-surface-and-patch-feasibility.md",
         "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C42",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
-        "status": "inference"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C43",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F03",
-        "file": "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md"
-      }
-    ],
-    "E0701": [
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C44",
-        "file": "0701-a6400-open-gate-r4-refutation-live.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F03",
-        "file": "0701-a6400-open-gate-r4-refutation-live.md"
-      }
-    ],
-    "E0702": [
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C45",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C46",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C47",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C48",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C49",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C50",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "inference"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C51",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C52",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C53",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "open"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C54",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C55",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md",
-        "status": "verified-offline"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F03",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F04",
-        "file": "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md"
-      }
-    ],
-    "E0703": [
-      {
-        "area": "imaging-pipeline",
-        "kind": "claim",
-        "id": "C56",
-        "file": "0703-a6400-open-gate-f3851-mmio-live.md",
-        "status": "verified-physical"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F03",
-        "file": "0703-a6400-open-gate-f3851-mmio-live.md"
-      },
-      {
-        "area": "imaging-pipeline",
-        "kind": "frontier",
-        "id": "F04",
-        "file": "0703-a6400-open-gate-f3851-mmio-live.md"
       }
     ],
     "E9001": [
@@ -10498,11 +11165,32 @@
     ],
     "E9101": [
       {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C03",
+        "file": "9101-a6100-picture-profile-gate.md",
+        "status": "inference"
+      },
+      {
         "area": "mods",
         "kind": "claim",
         "id": "C04",
         "file": "9101-a6100-picture-profile-gate.md",
-        "status": "verified-physical"
+        "status": "retracted"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C16",
+        "file": "9101-a6100-picture-profile-gate.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "platform-multidevice",
+        "kind": "claim",
+        "id": "C14",
+        "file": "9101-a6100-picture-profile-gate.md",
+        "status": "verified-offline"
       }
     ],
     "E9102": [
@@ -10511,16 +11199,54 @@
         "kind": "claim",
         "id": "C04",
         "file": "9102-a6100-picture-profile-camera-apply.md",
-        "status": "verified-physical"
+        "status": "retracted"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C16",
+        "file": "9102-a6100-picture-profile-camera-apply.md",
+        "status": "verified-offline"
       }
     ],
     "E9103": [
       {
         "area": "mods",
         "kind": "claim",
+        "id": "C16",
+        "file": "9103-a6100-mod-loader-port.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
         "id": "C05",
         "file": "9103-a6100-mod-loader-port.md",
         "status": "verified-offline"
+      }
+    ],
+    "E9104": [
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C11",
+        "file": "9104-a6100-photonbin-6mp-port.md",
+        "status": "verified-physical"
+      }
+    ],
+    "E9105": [
+      {
+        "area": "imaging-pipeline",
+        "kind": "claim",
+        "id": "C17",
+        "file": "9105-a6100-rcraw-aif-w2-and-fopd-gates.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "imaging-pipeline",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "9105-a6100-rcraw-aif-w2-and-fopd-gates.md"
       }
     ],
     "README": [
@@ -11857,9 +12583,11 @@
       "l2-kernel-boot"
     ],
     "0414-nflasha-readonly-device-check-and-boot-area-dumps.md": [
+      "firmware-dumps",
       "l2-kernel-boot"
     ],
     "0415-nflasha-boot-decode-and-full-emulation-roadmap.md": [
+      "firmware-dumps",
       "l2-kernel-boot"
     ],
     "0416-cxd90045-qemu-updater-bringup.md": [
@@ -12058,6 +12786,7 @@
       "usb-ep0"
     ],
     "0477-bionz-x-platform-map-13-updaters.md": [
+      "firmware-dumps",
       "platform-multidevice"
     ],
     "0478-movie-eye-af-stored-never-read-platform-wide.md": [
@@ -12202,6 +12931,7 @@
       "usb-emulated"
     ],
     "0524-reproducible-captured-qemu-boot-and-liro-waits.md": [
+      "firmware-dumps",
       "qemu-a6400"
     ],
     "0525-a6400a-jiritsu-senser-offline-packets.md": [
@@ -12711,9 +13441,6 @@
     "0680-still-high-iso-nr-crispening-and-paired-jpg.md": [
       "imaging-pipeline"
     ],
-    "0681-custom-kernel-qemu-gate-f30a-fill-and-liro-contract.md": [
-      "qemu-a6400"
-    ],
     "0681-ilce-6400a-standalone-sd-boot-and-exfat-reader.md": [
       "mods"
     ],
@@ -12724,10 +13451,10 @@
       "imaging-pipeline"
     ],
     "0684-ilce-6400-ram-only-deadman-handover-bundle.md": [
-      "qemu-a6400"
+      "hardware-live"
     ],
     "0685-full-custom-os-camera-handover-and-ui-path.md": [
-      "qemu-a6400"
+      "hardware-live"
     ],
     "0686-photo-movie-modes-and-dual-variant-presets.md": [
       "imaging-pipeline"
@@ -12735,52 +13462,132 @@
     "0687-photo-movie-fixes.md": [
       "imaging-pipeline"
     ],
-    "0688-qemu-vph-panel-composition-and-ui-buffer-ownership.md": [
+    "0688-android-gpu-spektrafilm-film-roll-architecture.md": [
+      "imaging-pipeline",
+      "mods",
+      "wifi-and-remote"
+    ],
+    "0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md": [
+      "imaging-pipeline",
+      "mods",
+      "storage-sd-backup",
+      "wifi-and-remote"
+    ],
+    "0690-qemu-camcore-f300-f312-register-models-boot-score.md": [
       "qemu-a6400"
     ],
-    "0689-qemu-ui-liveview-window-and-sdio-cmd5.md": [
+    "0691-qemu-clkrst3-f290-zero-rows-boot-score.md": [
       "qemu-a6400"
     ],
-    "0690-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md": [
+    "0692-qemu-camcore-f291-write-only-rows-boot-score.md": [
       "qemu-a6400"
     ],
-    "0691-camera-loader-branch-avcam-oops-deadman60.md": [
+    "0693-qemu-gate-force-probe-step-26-stimulus.md": [
       "qemu-a6400"
     ],
-    "0692-wifisync-camera-side-mod.md": [
+    "0694-qemu-clock-reset-f2a-zero-windows-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0695-qemu-camcore-f312-write-only-row-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0696-qemu-entry-force-probe-declared-stimulus.md": [
+      "qemu-a6400"
+    ],
+    "0697-qemu-uart3-pl011-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0698-wifisync-camera-side-mod.md": [
       "mods"
     ],
-    "0693-ilce6400-bl-gate-bitmap-and-1d-mode.md": [
+    "0699-qemu-sa-core4-id-window-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0700-qemu-touchscreen-peripherals-and-multimodel.md": [
+      "qemu-a6400"
+    ],
+    "0701-qemu-f292-otg-avcam-hdmi-windows-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0702-qemu-rcraw-idt-page-windows-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0703-qemu-f304-aif-page-windows-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0704-qemu-fusb-f022-zero-rows-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0705-qemu-dwc3-gadget-default-on-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0706-qemu-watchdog-default-on-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0707-firmware-dump-sets-a6100-a6400.md": [
+      "firmware-dumps"
+    ],
+    "0708-qemu-write-only-zero-windows-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0709-qemu-f30a0-read-back-window-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0710-custom-kernel-qemu-gate-f30a-fill-and-liro-contract.md": [
+      "qemu-a6400"
+    ],
+    "0711-qemu-vph-panel-composition-and-ui-buffer-ownership.md": [
+      "qemu-a6400"
+    ],
+    "0712-qemu-ui-liveview-window-and-sdio-cmd5.md": [
+      "qemu-a6400"
+    ],
+    "0713-qemu-ntsc-notice-press-and-black-centre.md": [
+      "qemu-a6400"
+    ],
+    "0714-qemu-pal-step32-chain.md": [
+      "qemu-a6400"
+    ],
+    "0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md": [
+      "qemu-a6400"
+    ],
+    "0716-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md": [
+      "qemu-a6400"
+    ],
+    "0717-camera-loader-branch-avcam-oops-deadman60.md": [
       "hardware-live"
     ],
-    "0694-ttartisan-af35-command-surface-and-patch-feasibility.md": [
+    "0718-ilce6400-bl-gate-bitmap-and-1d-mode.md": [
       "hardware-live"
     ],
-    "0695-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md": [
+    "0719-ttartisan-af35-command-surface-and-patch-feasibility.md": [
+      "hardware-live"
+    ],
+    "0720-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md": [
       "imaging-pipeline"
     ],
-    "0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md": [
+    "0721-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md": [
       "imaging-pipeline"
     ],
-    "0697-a6400-open-gate-upper-ceiling-static-analysis.md": [
+    "0722-a6400-open-gate-upper-ceiling-static-analysis.md": [
       "imaging-pipeline"
     ],
-    "0698-a6400-open-gate-camout-v-plus24-root-cause.md": [
+    "0723-a6400-open-gate-camout-v-plus24-root-cause.md": [
       "imaging-pipeline"
     ],
-    "0699-a6400-open-gate-plus8-and-rcv-isolation-live.md": [
+    "0724-a6400-open-gate-plus8-and-rcv-isolation-live.md": [
       "imaging-pipeline"
     ],
-    "0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md": [
+    "0725-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md": [
       "imaging-pipeline"
     ],
-    "0701-a6400-open-gate-r4-refutation-live.md": [
+    "0726-a6400-open-gate-r4-refutation-live.md": [
       "imaging-pipeline"
     ],
-    "0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md": [
+    "0727-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md": [
       "imaging-pipeline"
     ],
-    "0703-a6400-open-gate-f3851-mmio-live.md": [
+    "0728-a6400-open-gate-f3851-mmio-live.md": [
       "imaging-pipeline"
     ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
@@ -12802,6 +13609,7 @@
       "l3-userspace"
     ],
     "9101-a6100-picture-profile-gate.md": [
+      "firmware-dumps",
       "mods"
     ],
     "9102-a6100-picture-profile-camera-apply.md": [
@@ -12809,6 +13617,12 @@
     ],
     "9103-a6100-mod-loader-port.md": [
       "mods"
+    ],
+    "9104-a6100-photonbin-6mp-port.md": [
+      "mods"
+    ],
+    "9105-a6100-rcraw-aif-w2-and-fopd-gates.md": [
+      "imaging-pipeline"
     ],
     "cross_model/a6400-scalarwebapi-2026-11-20-transcript.jsonl": [
       "wifi-and-remote"

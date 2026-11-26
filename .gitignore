@@ -13,6 +13,7 @@ node_modules/
 
 # Firmware, device state, dumps and generated outputs
 /firmware
+/dumps/
 a6400-nflasha-readonly*/
 backups/
 /artifacts
@@ -96,8 +97,11 @@ tools/native_camera/zve10_uvc_tree.h
 # Local build outputs (reproducible from sources; never publish binaries)
 camera-daemon/build/
 probes/build/
-android-client-ref/**/build/
-android-client-ref/.gradle/
+android/raw-usb-ref/**/build/
+android/raw-usb-ref/.gradle/
+
+# Host-specific workspace MCP config (copy from .mcp.json.example)
+/.mcp.json
 
 # Private Custom OS repository (separate nested Git repo)
 /custom_os/

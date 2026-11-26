@@ -6,7 +6,7 @@ in this work; the Phase 1/2 gates below remain open and are the next supervised
 session. The Android application is a separate workstream.
 
 Related: [mod README](../mods/wifisync/README.md),
-[evidence E0692](evidence/0692-wifisync-camera-side-mod.md),
+[evidence E0698](evidence/0698-wifisync-camera-side-mod.md),
 [BCM4339 baseline](evidence/0406-bcm4339-wifi-bt-tuning-surface-readonly.md),
 [CLM parse](evidence/0408-clm-blob-and-wlan-baseline.md),
 [native Fsys contracts](evidence/0220-native-filesystem-contracts-and-live-volume-table.md).
@@ -124,7 +124,7 @@ useful once the Phase 2.5 BLE wake exists; the phone currently has to retry, so
 
 | Suite | Result | Artifact |
 | --- | --- | --- |
-| Core assertions (x86-64) | 72/72 | command output in E0692 |
+| Core assertions (x86-64) | 72/72 | command output in E0698 |
 | Unicorn Cortex-A5 Thumb + packaging | 93/93 | `artifacts/tests/wifisync-unicorn/receipt.json` |
 | Host protocol matrix (TCP, Range, CRC, SHA-256, ack, events, burst) | 62/62 | `artifacts/tests/wifisync-host-matrix/receipt.json` |
 | Phase 0 contracts | 22/22 | `artifacts/analysis/wifisync-contracts/manifest.json` |

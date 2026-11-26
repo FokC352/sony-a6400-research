@@ -8,24 +8,24 @@
 
 ## 0. Mission Goal & Ground Truth (Do Not Re-Prove What Is Closed)
 
-### 0.1 Proven Live & Static Baseline (`E0695`, `E0696`, `E0697`)
+### 0.1 Proven Live & Static Baseline (`E0720`, `E0721`, `E0722`)
 
 All work targets **exact byte-verified firmware**:
 - Binary: `artifacts/hardware/av-cam-camera-original.bin` (`16,803,048` B, SHA-256 `dd8f8d0cc74ad4b70100e5728cf8b159b5155e7fb50eaf1147b99c9054740209`, ORIL base VA `0x635C6000`).
 - Open-gate tool & current 158-entry patch table: `tools/research/a6400_open_gate.py`, `tools/research/a6400_og_ram_table.h`, `tools/research/a6400_og_ram.c`.
-- Prior static evidence: `docs/evidence/0697-a6400-open-gate-upper-ceiling-static-analysis.md`.
+- Prior static evidence: `docs/evidence/0722-a6400-open-gate-upper-ceiling-static-analysis.md`.
 
-**Closed facts (live camera tests in `E0696` + static proofs in `E0697`):**
+**Closed facts (live camera tests in `E0721` + static proofs in `E0722`):**
 1. **`test1` PASSES:** Patching only `IMX284` `Y_START = 30` (`% 4 == 2`) and `Y_SIZE = 4020` (`reglist` col 11 `0x000A..0x000D`) with stock FE/RCV/timing runs smoothly with normal colors and no reboot.
 2. **`timing4` PASSES:** Patching only `timing_rom_ntsc`/`pal` + `rt_t14` (`24p = (824, 1820)`, `25p = (791, 1820)`) runs smoothly with no reboot.
 3. **`shrink` (`dy = -160`) PASSES:** Applying `-160` across all `158` entries with stock timing runs smoothly at full FPS with `refresh_cnt = 0`.
 4. **`plus24` (`dy = +24`, `V_ACTIVE = 3400`, timing stock) & `test4` (`dy = +160`, `V_ACTIVE = 3536`, timing `(824, 1820)` / `(791, 1820)`) FAIL:** Both trigger `S-Ele Refresh` (`0x639078C4` increments `refresh_cnt`, `0x63907870` faults with `str r7, [r7]` when `0x0434FD7E` bit `0x40` is clear).
-5. **Live `watch` trace (`E0696` §4) answered `E0697` §8's decision gate:**
+5. **Live `watch` trace (`E0721` §4) answered `E0722` §8's decision gate:**
    - `sgc1_HV` (`0x04339E30` / `0x04339E34`, VA `0x64339E30` / `0x64339E34`) **automatically switched** from `(858, 1750)` (MSC) to **`(824, 1820)`** at `t = 19800 ms` under `test4`. `SGC1` `H/V` period is **not** stuck on stock.
    - `rcv_ovf` (`0x044B02CA`) = `0`, `sdvga_ovf` (`0x044B02C9`) = `0`, `state_byte` (`0x0434D9AB`) = `0x00` throughout.
    - Exclusively `latch` (`0x044B02B9`, `l = 1`, `Lost CAMOUT_V`) fired every `vfc + 8` ticks (`11431..11615`, i.e., missing for `8` ticks / ~133 ms), incrementing `refresh_cnt` `0 -> 24 -> 38`.
-6. **`DMM` is ruled out (`E0697` §5):** `DmmConfig.bin` (`0x63DF199C`) rule-5 slot (`0x2EF9200 = 49,254,912` B) accommodates `6000x4000x2 = 48,000,000` B.
-7. **Sensor `Y_SIZE` register names verified (`E0697` §6):** `0x000A/0x000B` = `Y_START`, `0x000C/0x000D` = `Y_SIZE`, `0x000E/0x000F` col 11 = `6152`.
+6. **`DMM` is ruled out (`E0722` §5):** `DmmConfig.bin` (`0x63DF199C`) rule-5 slot (`0x2EF9200 = 49,254,912` B) accommodates `6000x4000x2 = 48,000,000` B.
+7. **Sensor `Y_SIZE` register names verified (`E0722` §6):** `0x000A/0x000B` = `Y_START`, `0x000C/0x000D` = `Y_SIZE`, `0x000E/0x000F` col 11 = `6152`.
 
 ### 0.2 The Exact Paradox Round 2 Must Solve
 
@@ -112,7 +112,7 @@ Launch all 5 subagents in parallel in Wave 1. Each subagent owns a strictly disj
 2. **Optional bounded Unicorn check (offline only):**
    - If the coordinator finds the candidate function computing the faulty MMIO register / `CAMOUT_V` trigger / height table, optionally run a small bounded Unicorn probe on `av-cam-camera-original.bin` (read-only input!) under `C:\Python314\python.exe` with stock vs `shrink` vs `plus24` inputs to confirm the register/return difference deterministically. Record exact Unicorn inputs, start/stop VAs, and observed registers.
 3. **Update repository evidence & map (strictly English-only):**
-   - Write a thorough, structured evidence report to `docs/evidence/0698-a6400-open-gate-camout-v-plus24-root-cause.md` following `AGENTS.md` §4 (exact command/inputs, binary identity, observed disassemblies, verified root cause or exact remaining open boundary, failed/excluded hypotheses, repeatability).
+   - Write a thorough, structured evidence report to `docs/evidence/0723-a6400-open-gate-camout-v-plus24-root-cause.md` following `AGENTS.md` §4 (exact command/inputs, binary identity, observed disassemblies, verified root cause or exact remaining open boundary, failed/excluded hypotheses, repeatability).
    - Update `docs/map/sources/imaging-pipeline.toml` with all newly discovered `0698` nodes, symbols, MMIO mappings, and edges, then run:
      ```powershell
      C:\Python314\python.exe -m tools.research.knowledge_map build
@@ -126,4 +126,4 @@ Launch all 5 subagents in parallel in Wave 1. Each subagent owns a strictly disj
 4. **Final check before coordinator finishes:**
    - Verify no non-English text anywhere in modified/created files.
    - Confirm no temporary scratch files remain in the repository root.
-   - Return a clear summary citing `docs/evidence/0698-a6400-open-gate-camout-v-plus24-root-cause.md`, exact VAs/offsets, why `shrink` & `test1` pass while `plus24` triggers `Lost CAMOUT_V`, and the exact read-only live verification check (or single targeted live test) recommended next.
+   - Return a clear summary citing `docs/evidence/0723-a6400-open-gate-camout-v-plus24-root-cause.md`, exact VAs/offsets, why `shrink` & `test1` pass while `plus24` triggers `Lost CAMOUT_V`, and the exact read-only live verification check (or single targeted live test) recommended next.

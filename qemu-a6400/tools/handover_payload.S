@@ -19,19 +19,29 @@
  *   break it; WORK_DMA writes an unused work DMA channel block (no stop contract).
  *   WDMA replays the av-cam work DMA sequence (E0640); WDMA_NO_POLL skips the
  *   +0x01C busy poll and WDMA_KEEP_ENABLED skips the final disable.
+ *   XDMAC0_COPY runs a 16-byte XDMAC0 ch0 copy, clears +0x30 IRQ status, and
+ *   polls +0x30 unless XDMAC0_NO_POLL is set (XDMAC0_KEEP_PENDING skips clear).
+ * Strict kernel teardown switches (guard tlb=1 / gic=1 / l2=1 / strict_kernel=1):
+ *   TEARDOWN_TLBI (or THUMB_TEARDOWN_TLBI; TLBI_AFTER_DSB places TLBI after DSB),
+ *   GIC_ENABLE + GIC_DISABLE (GIC_KEEP_GICC / GIC_KEEP_GICD leave one side on),
+ *   PL310_ENABLE + PL310_TEARDOWN (PL310_NO_CLEAN / PL310_NO_SYNC / PL310_KEEP_ON).
  *
  * Build: arm-linux-gnueabi-gcc -mcpu=cortex-a5 -marm -nostdlib -Wl,-Ttext=0x108000
  *        [-Wa,--defsym,NO_DSB=1] handover_payload.S -o p.elf && objcopy -O binary
  */
     .syntax unified
     .arm
-    .equ TTB,        0x00400000
-    .equ NEW_ENTRY,  0x00600000
-    .equ ROGUE_LOOP, 0x00610000
-    .equ SMP_MBOX,   0xFE005010
-    .equ DWC3_DCTL,  0xF020C704
-    .equ DWC3_DSTS,  0xF020C70C
-    .equ WDMA_BASE,  0xF0102000
+    .equ TTB,         0x00400000
+    .equ NEW_ENTRY,   0x00600000
+    .equ ROGUE_LOOP,  0x00610000
+    .equ SMP_MBOX,    0xFE005010
+    .equ XDMAC0_BASE, 0xF0000000
+    .equ DWC3_DCTL,   0xF020C704
+    .equ DWC3_DSTS,   0xF020C70C
+    .equ WDMA_BASE,   0xF0102000
+    .equ GICC_CTLR,   0xF8000100
+    .equ GICD_CTLR,   0xF8001000
+    .equ L2X0_BASE,   0xF8002000
 
     .text
     .global _start
@@ -117,6 +127,36 @@ _start:
     str     r5, [r4, #0x030]            @ disable
 .endif
 .endif
+.ifdef XDMAC0_COPY
+    ldr     r4, =XDMAC0_BASE
+    mov     r5, #15
+    str     r5, [r4, #0x010]            @ TBC - 1 = 15 (16 bytes)
+    ldr     r5, =0x00500200
+    str     r5, [r4, #0x014]            @ SSA
+    ldr     r5, =0x00500300
+    str     r5, [r4, #0x018]            @ DSA
+    mov     r5, #1
+    str     r5, [r4, #0x028]            @ trigger ch0
+.ifndef XDMAC0_KEEP_PENDING
+    mov     r5, #0
+    str     r5, [r4, #0x030]            @ clear ch0 IRQ status
+.endif
+.ifndef XDMAC0_NO_POLL
+    ldr     r5, [r4, #0x030]            @ confirm ch0 status == 0
+.endif
+.endif
+.ifdef GIC_ENABLE
+    mov     r5, #1
+    ldr     r4, =GICD_CTLR
+    str     r5, [r4]
+    ldr     r4, =GICC_CTLR
+    str     r5, [r4]
+.endif
+.ifdef PL310_ENABLE
+    ldr     r4, =L2X0_BASE
+    mov     r5, #1
+    str     r5, [r4, #0x100]            @ L2X0_CTRL = 1
+.endif
 
 .ifdef ROGUE_CPU1
     ldr     r4, =ROGUE_LOOP
@@ -134,6 +174,17 @@ _start:
 
     /* ---- teardown (mainline order) ---- */
     cpsid   if
+.ifdef GIC_DISABLE
+    mov     r5, #0
+.ifndef GIC_KEEP_GICC
+    ldr     r4, =GICC_CTLR
+    str     r5, [r4]
+.endif
+.ifndef GIC_KEEP_GICD
+    ldr     r4, =GICD_CTLR
+    str     r5, [r4]
+.endif
+.endif
 .ifdef DWC3
 .ifndef DWC3_KEEP_RUNNING
     ldr     r4, =DWC3_DCTL                @ dwc3_gadget_run_stop(0)
@@ -147,6 +198,16 @@ _start:
 .endif
 .endif
 .endif
+.ifdef PL310_CLEAN_BEFORE_C_OFF
+    ldr     r4, =L2X0_BASE
+    movw    r5, #0xFFFF
+    str     r5, [r4, #0x7FC]            @ premature clean while SCTLR.C == 1
+10: ldr     r5, [r4, #0x7FC]
+    tst     r5, #0xFF
+    bne     10b
+    mov     r5, #0
+    str     r5, [r4, #0x730]
+.endif
     mrc     p15, 0, r0, c1, c0, 0       @ cpu_v7_proc_fin
 .ifndef KEEP_ICACHE
     bic     r0, r0, #0x1000
@@ -158,12 +219,79 @@ _start:
 .ifndef NO_CLEAN
     bl      v7_flush_dcache_all
 .endif
+.ifdef PL310_TEARDOWN
+    ldr     r4, =L2X0_BASE
+.ifdef PL310_LOCKDOWN
+    mov     r5, #1
+    str     r5, [r4, #0x900]            @ leave D_LOCKDOWN0 active (fault)
+.endif
+.ifdef PL310_OFF_BEFORE_CLEAN
+    mov     r5, #0
+    str     r5, [r4, #0x100]            @ disable BEFORE clean+sync (fault)
+.endif
+.ifdef PL310_LINE_IDX_FLUSH
+    /* Linux outer_disable() / l2x0_flush_all: 8 ways x 512 sets via 0x7F8 */
+    mov     r6, #0
+11: mov     r7, #0
+12: lsl     r5, r6, #28
+    orr     r5, r5, r7, lsl #5
+    str     r5, [r4, #0x7F8]            @ L2X0_CLEAN_INV_LINE_IDX
+    add     r7, r7, #1
+    cmp     r7, #512
+    blo     12b
+    add     r6, r6, #1
+    cmp     r6, #8
+    blo     11b
+.else
+.ifndef PL310_NO_CLEAN
+.ifdef PL310_PARTIAL_WAY
+    mov     r5, #0x0001                 @ clean only way 0 (fault)
+.else
+    movw    r5, #0xFFFF
+.endif
+    str     r5, [r4, #0x7FC]            @ L2X0_CLEAN_INV_WAY
+.ifndef PL310_NO_POLL
+13: ldr     r5, [r4, #0x7FC]            @ wait for background way op == 0
+    tst     r5, #0xFF
+    bne     13b
+.endif
+.endif
+.endif
+.ifndef PL310_NO_SYNC
+    mov     r5, #0
+    str     r5, [r4, #0x730]            @ L2X0_CACHE_SYNC
+.endif
+.ifndef PL310_KEEP_ON
+.ifndef PL310_OFF_BEFORE_CLEAN
+    mov     r5, #0
+    str     r5, [r4, #0x100]            @ L2X0_CTRL = 0
+.endif
+.endif
+.endif
     mov     r0, #0
 .ifndef NO_ICINV
     mcr     p15, 0, r0, c7, c5, 0       @ ICIALLU
 .endif
+.ifdef TEARDOWN_TLBI
+    mcr     p15, 0, r0, c8, c7, 0       @ TLBIALL
+.endif
+.ifdef THUMB_TEARDOWN_TLBI
+    adr     r2, .Lthumb_tlbi + 1
+    bx      r2
+    .thumb
+.Lthumb_tlbi:
+    mcr     p15, 0, r0, c8, c7, 0       @ T32 TLBIALL (0xEE08 0x0F17)
+    adr     r2, .Larm_after_tlbi
+    bx      r2
+    .balign 4
+    .arm
+.Larm_after_tlbi:
+.endif
 .ifndef NO_DSB
     dsb
+.endif
+.ifdef TLBI_AFTER_DSB
+    mcr     p15, 0, r0, c8, c7, 0       @ TLBIALL missing post-TLBI DSB
 .endif
     isb
     ldr     r0, =NEW_ENTRY              @ cpu_v7_reset(NEW_ENTRY)

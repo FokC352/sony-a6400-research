@@ -6,17 +6,17 @@
 
 ---
 
-## 0. Current Ground Truth (`E0700` + `E0701`)
+## 0. Current Ground Truth (`E0725` + `E0726`)
 
-Round 3 (`E0700`) and the subsequent live hardware test (`E0701`) retired almost every speculative theory and narrowed `F03` (`dy > 0` stalls `Lost CAMOUT_V`) to just **two** surviving candidates plus an unresolved question on full-resolution sensor height:
+Round 3 (`E0725`) and the subsequent live hardware test (`E0726`) retired almost every speculative theory and narrowed `F03` (`dy > 0` stalls `Lost CAMOUT_V`) to just **two** surviving candidates plus an unresolved question on full-resolution sensor height:
 
-1. **Both FE halves converge on `+0x438`/`+0x43C`, but `R4` is REFUTED live (`E0701`):**
-   - `E0700` showed `rec+0x002` (`[0..1)`) and `rec+0x190+4i` (`[1..66)`) converge on `+0x438`/`+0x43C` and noted that `rec+0x194` (`-> +0x428`, `0`) was unpatched while `rec+0x198` (`-> +0x42C`, `3441`) was patched (`R4`).
-   - `E0701` tested **`plus24_r4`** (`plus24` + `fe_rec_0a+0x194` [`PA 0x03E15028`] and `fe_rec_19+0x194` [`PA 0x03E15FE8`] set `0 -> 24` with `noreboot`). Result in Movie 4K 24p: **no image at all (black screen)**, requiring a battery pull. **`R4` is dead.**
-2. **SGC1/2/3 (`R3`), `rcv_desc` (`R1`), DMM, and numeric budgets (`3480`) are all REFUTED (`E0698`–`E0700`):**
+1. **Both FE halves converge on `+0x438`/`+0x43C`, but `R4` is REFUTED live (`E0726`):**
+   - `E0725` showed `rec+0x002` (`[0..1)`) and `rec+0x190+4i` (`[1..66)`) converge on `+0x438`/`+0x43C` and noted that `rec+0x194` (`-> +0x428`, `0`) was unpatched while `rec+0x198` (`-> +0x42C`, `3441`) was patched (`R4`).
+   - `E0726` tested **`plus24_r4`** (`plus24` + `fe_rec_0a+0x194` [`PA 0x03E15028`] and `fe_rec_19+0x194` [`PA 0x03E15FE8`] set `0 -> 24` with `noreboot`). Result in Movie 4K 24p: **no image at all (black screen)**, requiring a battery pull. **`R4` is dead.**
+2. **SGC1/2/3 (`R3`), `rcv_desc` (`R1`), DMM, and numeric budgets (`3480`) are all REFUTED (`E0723`–`E0725`):**
    - SGC state is byte-identical in `plus24_fe[0..1)` (FAIL `ref=17`) and `plus24_rcvonly` (PASS `ref=0`).
    - `0x6454AB60` (`"3360..3488"`) was retracted — it is a struct byte-offset table read by `0x6376E518`.
-3. **Only TWO candidates from `E0700` survive, alongside two static diffs we have not yet done:**
+3. **Only TWO candidates from `E0725` survive, alongside two static diffs we have not yet done:**
    - **`R5`:** The CAMOUT `(vfc, frc)` publish side (`p = *(0x643691FC+4)`, `p[0]/p[1]/p[8]`, callback `u32(0x645CAA40) = 0x639303D1`, and caller `0x639325C4`) has no direct ARM caller/writer traced inside `av-cam.bin`, **OR** the true sensor frame length (`IMX284` active lines emitted to receiver in 4K 24p vs 6000x4000 still) is still stock `3396`/`3442`.
    - **`R6`:** The SGC-adjacent receiver window at `0xF3122000`/`0xF3123000` (`+0x144`, `+0x148`, `+0x160`) written by `0x63799C8C` from `struct+0x10/+0x12`, reached only via `0x63799D04` (which had no static caller in the literal sweep).
 
@@ -57,18 +57,18 @@ Launch all 5 subagents in parallel. Each owns a strictly disjoint artifact/subsy
   3. Determine whether `0xF3122000`/`0xF3123000` is a receiver/CAMIN window (`R6`) that could reject FE requests `> stock` when `struct+0x10/+0x12` remains stock, OR if `R6` is populated from something already patched or unrelated.
 
 ### Subagent 3 (`imx284-all-cols-and-still-height`): Full 13-Column `reglist` Map (`col 0..12`) & True 6000x4000 Sensor Height Control
-- **Scope:** Dump ALL 13 active columns (`col 0..12`) across all 125 rows of `reglist` (`0x6454C484`), identify which column is actual 6000x4000 full-res 3:2 still (`E0700` found `col 0` had `Y_SIZE = 1132`!), and examine `0x6379B000..0x637A3000` + `0x6454CE48..0x6454E000` (including the 68 non-`reglist` staging records noted in `E0698` §4 and `0x63F109E1` `mode_to_col`).
+- **Scope:** Dump ALL 13 active columns (`col 0..12`) across all 125 rows of `reglist` (`0x6454C484`), identify which column is actual 6000x4000 full-res 3:2 still (`E0725` found `col 0` had `Y_SIZE = 1132`!), and examine `0x6379B000..0x637A3000` + `0x6454CE48..0x6454E000` (including the 68 non-`reglist` staging records noted in `E0723` §4 and `0x63F109E1` `mode_to_col`).
 - **Specific questions to answer:**
   1. For each column `0..12`, print `Y_START`, `Y_SIZE`, and any other differing rows (`row 10..13` vs **all** other rows), and match columns to modes via `mode_to_col` (`0x63F109E1` and callers) — **which column(s) actually represent 6000x4000 3:2 full-sensor readout (~4000 lines)?**
   2. Diff that true full-height `~4000`-line column (and the 1080p / `col 10` 4K30p / `col 11` 4K24p columns) across ALL 125 rows to find **every sensor register that changes between 2760p, 3396p, and 4000p**!
   3. Determine how IMX284 knows how many active vertical lines to output (`4000` vs `3396` vs `2780`) — why did `col 0` have `1132` (`4000` in some other register or packed differently?) and is there ANY secondary register or table besides rows 10-13 that must move on ILCE-6400?
 
 ### Subagent 4 (`fe-still-4000-vs-4k24p-diff`): Stock 4000-Line `fe_rec` (`idx 5/8/12`) vs `fe_rec_0a`/`fe_rec_19` (`idx 6/9`) & `0x6376E518` / `0x6376ECFC` Audit
-- **Scope:** Read ALL 16 records of the FE table (`0x63E12F14`, stride `0x540`), especially **`idx 5, 8, 12`** (which `E0700` §3 found hold `+0x002/+0x00A/+0x190 = 4108/4024/4111` stock!) vs **`idx 6` (`fe_rec_0a`) & `idx 9` (`fe_rec_19`)**, AND trace all callers/inputs of `0x6376E518` (`0x6454AB60` struct-offset table) and `0x6376ECFC` (`0x6454AC44` 21-reg table).
+- **Scope:** Read ALL 16 records of the FE table (`0x63E12F14`, stride `0x540`), especially **`idx 5, 8, 12`** (which `E0725` §3 found hold `+0x002/+0x00A/+0x190 = 4108/4024/4111` stock!) vs **`idx 6` (`fe_rec_0a`) & `idx 9` (`fe_rec_19`)**, AND trace all callers/inputs of `0x6376E518` (`0x6454AB60` struct-offset table) and `0x6376ECFC` (`0x6454AC44` 21-reg table).
 - **Specific questions to answer:**
   1. Compare **`idx 5, 8, 12`** (full-res ~4000-line stock records) field-by-field against **`idx 6/9`** across ALL `0x540` bytes: what **other** fields besides our 66 vertical offsets differ between a working stock `4024`-line FE config and `4K 24p` (`3392`)? Specifically check:
      - `rec+0x190..+0x1E0` (the 21 dwords written by `0x6376ECFC`), including `rec+0x194` (`0`), `rec+0x1C8`/`+0x19C` (`50`/`9`), `rec+0x1D0..+0x1E0` (`+0x488/+0x48C/+0x408/+0x40C/+0x3C80`),
-     - Any fields in `rec+0x000..+0x107` or `rec+0x1E4..+0x53F` (such as vertical scalars, start offsets, line-rate dividers, `FE` mode flags, `E0698` `+0x2C8`/`+0x2CE`, or the `0x6376E518` / `[r1+r3+0x3D8]` struct fields!).
+     - Any fields in `rec+0x000..+0x107` or `rec+0x1E4..+0x53F` (such as vertical scalars, start offsets, line-rate dividers, `FE` mode flags, `E0723` `+0x2C8`/`+0x2CE`, or the `0x6376E518` / `[r1+r3+0x3D8]` struct fields!).
   2. Trace `0x6376E518` (`called from 0x63CD0C66`, reading `[r1+r3+0x3D8]`) back to where `r1+0x3D8..` is populated: could any of those 19 dwords come from an **unpatched** table/constant or capped FE stage (`0x0D20..0x0DA0`, `0x150CC`)?
 
 ### Subagent 5 (`a7iii-vs-a6400-contract-diff`): Why Did A7 III (`og_m3_v2`) Work With 65 FE Offsets While ILCE-6400 Stalls?
@@ -81,14 +81,14 @@ Launch all 5 subagents in parallel. Each owns a strictly disjoint artifact/subsy
 
 ## 3. Coordinator Synthesis Protocol
 
-1. **Synthesize against ALL 16 live outcomes (`E0696`, `E0699`, `E0701`) + static facts (`E0697`, `E0698`, `E0700`):**
+1. **Synthesize against ALL 16 live outcomes (`E0721`, `E0724`, `E0726`) + static facts (`E0722`, `E0723`, `E0725`):**
    - Must cleanly account for: `test1`/`timing4`/`plus24_rcvonly`/`shrink` PASS, `plus8`/`plus24`/`test4`/`plus24_norcv`/`plus24_fe[0..1)`/`plus24_fe[1..66)` FAIL with `Lost CAMOUT_V`, and `plus24_r4` black screen.
 2. **Actionable decision gate:**
    - **If offline analysis identifies the exact missing unpatched register/table/sub-firmware field** (e.g., an IMX284 real-height register outside rows 10-13, a `0xF3122000` `R6` table, an `idx 5/8/12` FE field difference, or an `.elf`/`.ko` module holding the `R5` stock height copy), specify the exact VA/PA/module, verify offset math offline (and bounded Unicorn if in `av-cam.bin`), and propose the single decisive RAM test or read check.
    - **If offline analysis proves `R5` or `R6` lives outside static ARM code (`sub-LSI`/DSP/unclosed struct)**, name the exact binary boundary and list only the minimal `E0647`-governed per-address MMIO / `.ko` inspection needed next.
 3. **Update repository docs & verify (strictly English-only):**
-   - Write `docs/evidence/0702-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md` (`AGENTS.md` §4 compliant).
-   - Update `docs/map/sources/imaging-pipeline.toml` with `E0702` claims & updated `F03`.
+   - Write `docs/evidence/0727-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md` (`AGENTS.md` §4 compliant).
+   - Update `docs/map/sources/imaging-pipeline.toml` with `E0727` claims & updated `F03`.
    - Run & verify:
      ```powershell
      C:\Python314\python.exe -m tools.research.knowledge_map build

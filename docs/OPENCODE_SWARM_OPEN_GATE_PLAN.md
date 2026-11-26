@@ -7,9 +7,9 @@ Target binary: `artifacts/hardware/av-cam-camera-original.bin`
 - SHA-256: `dd8f8d0cc74ad4b70100e5728cf8b159b5155e7fb50eaf1147b99c9054740209`
 - ORIL VA base: `0x635C6000` (`PA = VA - 0x60000000`, physical `0x035C6000`)
 - Existing offline verifier & patch model: `tools/research/a6400_open_gate.py`, `tests/test_a6400_open_gate.py`
-- Existing evidence: `docs/evidence/0695-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md` and `docs/evidence/0696-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md`
+- Existing evidence: `docs/evidence/0720-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md` and `docs/evidence/0721-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md`
 
-Physical ILCE-6400 (`CXD90045` / `IMX284`) live RAM experiments (`E0696`) proved this exact boundary in 4K 24p/25p (`mode 16 = 0x1f`, `mode 17 = 0x89`):
+Physical ILCE-6400 (`CXD90045` / `IMX284`) live RAM experiments (`E0721`) proved this exact boundary in 4K 24p/25p (`mode 16 = 0x1f`, `mode 17 = 0x89`):
 1. `test1` (`reglist` col 11 ONLY: `Y_START=30 (%4==2)`, `Y_SIZE=4020`, FE & timing stock) -> **PASS** (normal colors, smooth FPS, no reboot).
 2. `timing4` (`timing_rom` + `rt_t14` ONLY: `24p=(824,1820)`, `25p=(791,1820)`, sensor & FE stock) -> **PASS** (smooth FPS, no reboot).
 3. `shrink` (`dy = -160` across ALL 158 entries: `reglist` `Y_START=422, Y_SIZE=3236`, 66 vertical FE fields incl. `+0x0fa` & `+0x20e=5544`, `V_ACTIVE=3216` in `size_rows+0x3c`/`rt_t14+0x50`, 6 `rcv_desc` fields `0x63e19740`/`0x63e19780` -> `3287`, timing stock) -> **PASS** (full smooth FPS, `S-Ele refresh_cnt = 0`).
@@ -81,7 +81,7 @@ Spawn these 5 subagents in parallel (each works read-only on its own subsystem a
    - Update `tools/research/a6400_open_gate.py` & `tests/test_a6400_open_gate.py` with the newly identified contract(s) and Unicorn verification.
    - Run `python -m tools.research.a6400_open_gate --verify` and `python -m unittest tests/test_a6400_open_gate.py tests/test_sensor_tables.py tests/test_knowledge_map.py -q`.
 4. **Update repository knowledge map & evidence (English-only):**
-   - Write `docs/evidence/0697-a6400-open-gate-upper-ceiling-static-analysis.md` documenting all 5 subsystems (`S-Ele`, `SGC1/SGC2`, `FE/RCV`, `DmmConfig.bin`, `IMX284`), exact VAs, call chains, and the synthesized fix/next boundary.
-   - Update `docs/map/sources/imaging-pipeline.toml` with the new entities/claims and `E0697`.
+   - Write `docs/evidence/0722-a6400-open-gate-upper-ceiling-static-analysis.md` documenting all 5 subsystems (`S-Ele`, `SGC1/SGC2`, `FE/RCV`, `DmmConfig.bin`, `IMX284`), exact VAs, call chains, and the synthesized fix/next boundary.
+   - Update `docs/map/sources/imaging-pipeline.toml` with the new entities/claims and `E0722`.
    - Run `python -m tools.research.knowledge_map build` and `python -m tools.research.knowledge_map check` (must exit 0: `knowledge map OK`).
 5. **Do NOT touch the physical camera.** Present the final root cause, exact new RAM patch table (ready for a single-shot live test), and verification receipts.

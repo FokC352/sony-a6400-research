@@ -8,16 +8,14 @@ data class SyncConfig(
     val psk: String = DEFAULT_PSK,
     val host: String = DEFAULT_HOST,
     val port: Int = DEFAULT_PORT,
-    val autoSuggestWifi: Boolean = true,
-    val arwInstantPreview: Boolean = false
+    val autoSuggestWifi: Boolean = true
 ) {
     fun toMap(): Map<String, Any> = mapOf(
         "ssid" to ssid,
         "psk" to psk,
         "host" to host,
         "port" to port,
-        "autoSuggestWifi" to autoSuggestWifi,
-        "arwInstantPreview" to arwInstantPreview
+        "autoSuggestWifi" to autoSuggestWifi
     )
 
     companion object {
@@ -34,8 +32,7 @@ data class SyncConfig(
                 psk = prefs.getString("psk", DEFAULT_PSK) ?: DEFAULT_PSK,
                 host = prefs.getString("host", DEFAULT_HOST) ?: DEFAULT_HOST,
                 port = prefs.getInt("port", DEFAULT_PORT).coerceIn(1, 65535),
-                autoSuggestWifi = prefs.getBoolean("autoSuggestWifi", true),
-                arwInstantPreview = prefs.getBoolean("arwInstantPreview", false)
+                autoSuggestWifi = prefs.getBoolean("autoSuggestWifi", true)
             )
         }
 
@@ -46,7 +43,6 @@ data class SyncConfig(
                 .putString("host", cfg.host.trim().ifEmpty { DEFAULT_HOST })
                 .putInt("port", cfg.port.coerceIn(1, 65535))
                 .putBoolean("autoSuggestWifi", cfg.autoSuggestWifi)
-                .putBoolean("arwInstantPreview", cfg.arwInstantPreview)
                 .apply()
         }
     }

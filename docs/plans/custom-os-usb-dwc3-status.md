@@ -2,7 +2,7 @@
 
 Tracks `usb_custom_os_qemu_plan.md` (external plan document) against repository evidence. One
 line per phase gate, with what is actually verified and what remains. The evidence record is
-authoritative: [E0690](../evidence/0690-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md).
+authoritative: [E0716](../evidence/0716-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md).
 
 ## Phase 1 - diagnosis and DWC3 audit (Gate 1)
 

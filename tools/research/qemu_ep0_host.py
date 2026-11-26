@@ -77,11 +77,26 @@ class Ep0Host:
             raise ValueError('Malformed status acknowledgement')
         return data
 
+    def connect(self):
+        self.channel.sendall(b'CONN\n')
+        self.events.append({'tx': 'CONN'})
+
+    def bus_reset(self):
+        self.channel.sendall(b'RESET\n')
+        self.events.append({'tx': 'RESET'})
+
+    def disconnect(self):
+        self.channel.sendall(b'DISC\n')
+        self.events.append({'tx': 'DISC'})
+
     def bulk_in(self, ep_idx: int, *, retries=400) -> bytes:
         if ep_idx < 2 or (ep_idx & 1) == 0:
             raise ValueError(f'Expected odd non-EP0 IN endpoint index, got {ep_idx}')
         prefix = f'IN {ep_idx} '
         return bytes.fromhex(self.token(f'IN {ep_idx}', prefix, retries=retries))
+
+    def interrupt_in(self, ep_idx: int, retries: int = 200) -> bytes:
+        return self.bulk_in(ep_idx, retries=retries)
 
     def bulk_out(self, ep_idx: int, data: bytes):
         if not 2 <= ep_idx < 16 or ep_idx & 1:
@@ -90,6 +105,42 @@ class Ep0Host:
             raise ValueError('Bulk OUT command must contain 1..1024 bytes')
         if self.token(f'OUT {ep_idx} {data.hex()}', f'ACK {ep_idx} {len(data)}'):
             raise ValueError('Malformed bulk OUT acknowledgement')
+
+    def bulk_out_zlp(self, ep_idx: int):
+        if not 2 <= ep_idx < 16 or ep_idx & 1:
+            raise ValueError(f'Expected an even non-EP0 OUT endpoint index, got {ep_idx}')
+        if self.token(f'OUT {ep_idx} -', f'ACK {ep_idx} 0'):
+            raise ValueError('Malformed bulk OUT ZLP acknowledgement')
+
+    def bulk_out_transfer(self, ep_idx: int, data: bytes, max_packet: int = 512,
+                          send_zlp: bool = False) -> int:
+        if not 2 <= ep_idx < 16 or ep_idx & 1:
+            raise ValueError(f'Expected an even non-EP0 OUT endpoint index, got {ep_idx}')
+        if not 1 <= max_packet <= 1024:
+            raise ValueError('max_packet must be within 1..1024 bytes')
+        raw = bytes(data)
+        if not raw:
+            if not send_zlp:
+                raise ValueError('Empty bulk OUT transfer requires send_zlp=True')
+            self.bulk_out_zlp(ep_idx)
+            return 0
+        for offset in range(0, len(raw), max_packet):
+            self.bulk_out(ep_idx, raw[offset:offset + max_packet])
+        if send_zlp and len(raw) % max_packet == 0:
+            self.bulk_out_zlp(ep_idx)
+        return len(raw)
+
+    def clear_halt(self, ep_address: int):
+        if (type(ep_address) is not int or ep_address & ~0x8F or
+                not 1 <= (ep_address & 0x0F) <= 15):
+            raise ValueError(f'Invalid non-EP0 USB endpoint address: {ep_address!r}')
+        self.control(f'02010000{ep_address:02x}000000')
+
+    def set_interface(self, interface_num: int, alt_setting: int):
+        if (type(interface_num) is not int or not 0 <= interface_num <= 0xFF or
+                type(alt_setting) is not int or not 0 <= alt_setting <= 0xFF):
+            raise ValueError('Interface and alternate setting must be uint8 values')
+        self.control(f'010b{alt_setting:02x}00{interface_num:02x}000000')
 
     def enumerate_device(self):
         device = self.control('8006000100001200')

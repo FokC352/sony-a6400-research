@@ -4,7 +4,6 @@ import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.net.Uri
 import android.os.Build
@@ -27,25 +26,6 @@ data class ExportResult(
     val height: Int
 )
 
-data class PreviewWithHistogram(
-    val jpegBytes: ByteArray,
-    val histR: IntArray,
-    val histG: IntArray,
-    val histB: IntArray,
-    val histL: IntArray
-)
-
-data class EditorSessionData(
-    val rgbaBytes: ByteArray,
-    val width: Int,
-    val height: Int,
-    val histRgb: ByteArray,
-    val histW: Int,
-    val histH: Int,
-    val isLog2: Boolean,
-    val isTrueRaw: Boolean
-)
-
 /**
  * Decodes synced Sony .JPG / .ARW files (including fast embedded-JPEG extraction
  * from Sony ARW TIFF IFDs), caches preview bitmaps, renders SpektraFilm looks,
@@ -65,176 +45,12 @@ object LookLabImageIO {
         return bytes
     }
 
-    /**
-     * Populates Look Lab thumbnail and 1080px preview caches immediately from an
-     * on-camera ARW embedded JPEG preview before the full RAW completes downloading.
-     */
-    fun putCachedPreviewBytes(dcfName: String, jpegBytes: ByteArray) {
-        if (jpegBytes.size < 2) return
-        val orient = readExifOrientation(jpegBytes)
-        decodeByteArrayScaled(jpegBytes, 360, orient)?.let { thumbBmp ->
-            try {
-                thumbCache.put("$dcfName:360", compressJpeg(thumbBmp, 84))
-            } finally {
-                thumbBmp.recycle()
-            }
-        }
-        decodeByteArrayScaled(jpegBytes, 1080, orient)?.let { prevBmp ->
-            previewCache.put("$dcfName:1080", prevBmp)
-        }
-    }
-
-    fun invalidateCache(dcfName: String) {
-        thumbCache.remove("$dcfName:360")
-        previewCache.remove("$dcfName:1080")
-    }
-
-    /**
-     * Loads a GPU-ready editor session texture:
-     * - For Sony .ARW: decodes true 14-bit sensor data via NativeRawDecoder into a
-     *   14-stop scene-referred Log2 RGBA8888 texture (isLog2=true, isTrueRaw=true).
-     * - For .JPG / cached _preview.jpg: decodes sRGB RGBA8888 (isLog2=false).
-     */
-    fun loadEditorSession(
-        context: Context,
-        dcfName: String,
-        maxDim: Int = 1600
-    ): EditorSessionData? {
-        val isArw = dcfName.lowercase(Locale.US).endsWith(".arw")
-        if (isArw && NativeRawDecoder.isAvailable) {
-            decodeArwProxyNative(context, dcfName, maxDim)?.let { res ->
-                android.util.Log.i(
-                    "LookLabImageIO",
-                    "loadEditorSession($dcfName): NDK 14-bit RAW ${res.width}x${res.height} isTrueRaw=${res.isTrueRaw} isLog2=${res.isLog2}"
-                )
-                return EditorSessionData(
-                    rgbaBytes = res.rgbaBytes,
-                    width = res.width,
-                    height = res.height,
-                    histRgb = res.histRgb,
-                    histW = res.histW,
-                    histH = res.histH,
-                    isLog2 = res.isLog2,
-                    isTrueRaw = res.isTrueRaw
-                )
-            }
-        }
-
-        val bmp = loadDecodedBitmap(context, dcfName, null, maxDim)
-            ?: previewCache.get("$dcfName:1080")
-            ?: return null
-        val shouldRecycle = previewCache.get("$dcfName:1080") !== bmp
-        try {
-            return bitmapToEditorSession(bmp, isTrueRaw = false)
-        } finally {
-            if (shouldRecycle) bmp.recycle()
-        }
-    }
-
-    private fun decodeArwProxyNative(
-        context: Context,
-        dcfName: String,
-        maxDim: Int
-    ): NativeRawProxyResult? {
-        val directPublic = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-            "BionzLookLab/$dcfName"
-        )
-        if (directPublic.isFile && directPublic.canRead()) {
-            NativeRawDecoder.decodeProxyFromFile(directPublic, maxDim)?.let { return it }
-        }
-        val uri = findMediaUriByName(context, dcfName) ?: return null
-        return try {
-            context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                NativeRawDecoder.decodeProxyFromFd(pfd.fd, maxDim)
-            }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun decodeArwLinearNative(
-        context: Context,
-        dcfName: String,
-        directFile: File?,
-        maxDim: Int
-    ): NativeRawLinearResult? {
-        if (directFile != null && directFile.isFile) {
-            NativeRawDecoder.decodeFullResLinearFromFile(directFile, maxDim)?.let { return it }
-        }
-        val directPublic = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-            "BionzLookLab/$dcfName"
-        )
-        if (directPublic.isFile && directPublic.canRead()) {
-            NativeRawDecoder.decodeFullResLinearFromFile(directPublic, maxDim)?.let { return it }
-        }
-        val uri = findMediaUriByName(context, dcfName) ?: return null
-        return try {
-            context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                NativeRawDecoder.decodeFullResLinearFromFd(pfd.fd, maxDim)
-            }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun bitmapToEditorSession(bmp: Bitmap, isTrueRaw: Boolean): EditorSessionData {
-        val w = bmp.width
-        val h = bmp.height
-        val n = w * h
-        val px = IntArray(n)
-        bmp.getPixels(px, 0, w, 0, 0, w, h)
-        val rgba = ByteArray(n * 4)
-        var j = 0
-        for (i in 0 until n) {
-            val c = px[i]
-            rgba[j++] = ((c ushr 16) and 0xFF).toByte()
-            rgba[j++] = ((c ushr 8) and 0xFF).toByte()
-            rgba[j++] = (c and 0xFF).toByte()
-            rgba[j++] = 0xFF.toByte()
-        }
-
-        val histW = if (w >= h) 160 else 106
-        val histH = if (w >= h) 106 else 160
-        val small = Bitmap.createScaledBitmap(bmp, histW, histH, true)
-        val hPx = IntArray(histW * histH)
-        small.getPixels(hPx, 0, histW, 0, 0, histW, histH)
-        if (small !== bmp) small.recycle()
-        val histRgb = ByteArray(histW * histH * 3)
-        var k = 0
-        for (i in hPx.indices) {
-            val c = hPx[i]
-            histRgb[k++] = ((c ushr 16) and 0xFF).toByte()
-            histRgb[k++] = ((c ushr 8) and 0xFF).toByte()
-            histRgb[k++] = (c and 0xFF).toByte()
-        }
-
-        return EditorSessionData(
-            rgbaBytes = rgba,
-            width = w,
-            height = h,
-            histRgb = histRgb,
-            histW = histW,
-            histH = histH,
-            isLog2 = false,
-            isTrueRaw = isTrueRaw
-        )
-    }
-
     fun renderPreviewJpeg(
         context: Context,
         dcfName: String,
         preset: LookPreset,
         maxDim: Int = 1080
-    ): ByteArray? = renderPreviewWithHistogram(context, dcfName, preset, maxDim)?.jpegBytes
-
-    fun renderPreviewWithHistogram(
-        context: Context,
-        dcfName: String,
-        preset: LookPreset,
-        maxDim: Int = 1080
-    ): PreviewWithHistogram? {
+    ): ByteArray? {
         val key = "$dcfName:$maxDim"
         val base = previewCache.get(key) ?: loadDecodedBitmap(context, dcfName, null, maxDim)?.also {
             previewCache.put(key, it)
@@ -242,15 +58,7 @@ object LookLabImageIO {
 
         val graded = SpektraFilmEngine.render(base, preset)
         return try {
-            val hist = SpektraFilmEngine.computeHistogram(graded, 64)
-            val jpeg = compressJpeg(graded, 90)
-            PreviewWithHistogram(
-                jpegBytes = jpeg,
-                histR = hist["r"] ?: IntArray(64),
-                histG = hist["g"] ?: IntArray(64),
-                histB = hist["b"] ?: IntArray(64),
-                histL = hist["l"] ?: IntArray(64)
-            )
+            compressJpeg(graded, 90)
         } finally {
             if (graded !== base) graded.recycle()
         }
@@ -264,41 +72,12 @@ object LookLabImageIO {
         maxDim: Int = 3000
     ): ExportResult {
         val t0 = System.currentTimeMillis()
-        val isArw = dcfName.lowercase(Locale.US).endsWith(".arw")
-        val linearRaw = if (isArw && NativeRawDecoder.isAvailable) {
-            decodeArwLinearNative(context, dcfName, sourceFile, maxDim)
-        } else {
-            null
-        }
-        val graded = if (linearRaw != null) {
-            val n = linearRaw.width * linearRaw.height
-            val linR = FloatArray(n)
-            val linG = FloatArray(n)
-            val linB = FloatArray(n)
-            val floats = linearRaw.rgbFloats
-            var idx = 0
-            for (i in 0 until n) {
-                linR[i] = floats[idx++]
-                linG[i] = floats[idx++]
-                linB[i] = floats[idx++]
-            }
-            SpektraFilmEngine.renderLinear(
-                linR,
-                linG,
-                linB,
-                linearRaw.width,
-                linearRaw.height,
-                preset,
-                fromTrueRaw = true
-            )
-        } else {
-            val src = loadDecodedBitmap(context, dcfName, sourceFile, maxDim)
-                ?: throw IOException("Unable to decode $dcfName for grading")
-            try {
-                SpektraFilmEngine.render(src, preset)
-            } finally {
-                src.recycle()
-            }
+        val src = loadDecodedBitmap(context, dcfName, sourceFile, maxDim)
+            ?: throw IOException("Unable to decode $dcfName for grading")
+        val graded = try {
+            SpektraFilmEngine.render(src, preset)
+        } finally {
+            src.recycle()
         }
         val outName = buildGradedFilename(dcfName, preset)
         val outW = graded.width
@@ -308,7 +87,6 @@ object LookLabImageIO {
         } finally {
             graded.recycle()
         }
-        LookPresetStore(context).markPhotoGraded(dcfName, preset.id)
         val elapsed = (System.currentTimeMillis() - t0).coerceAtLeast(1L)
         return ExportResult(relPath, elapsed, outW, outH)
     }
@@ -321,7 +99,7 @@ object LookLabImageIO {
 
     private fun saveBitmapToMediaStore(context: Context, bmp: Bitmap, outName: String): String {
         val resolver = context.contentResolver
-        val relPath = "${Environment.DIRECTORY_DCIM}/BionzLookLab"
+        val relPath = "${Environment.DIRECTORY_DCIM}/BionzLookLab/Graded"
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, outName)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
@@ -412,9 +190,6 @@ object LookLabImageIO {
     private fun decodeFileOrArw(file: File, maxDim: Int): Bitmap? {
         val isArw = file.name.lowercase(Locale.US).endsWith(".arw")
         if (isArw) {
-            if (maxDim >= 2400 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                decodeArwWithImageDecoder(file, maxDim)?.let { return it }
-            }
             extractEmbeddedJpegFromArwFile(file)?.let { (jpgBytes, orientation) ->
                 return decodeByteArrayScaled(jpgBytes, maxDim, orientation)
             }
@@ -429,27 +204,6 @@ object LookLabImageIO {
         }
         val rawBmp = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
         return finalizeBitmap(rawBmp, maxDim, orientation)
-    }
-
-    private fun decodeArwWithImageDecoder(file: File, maxDim: Int): Bitmap? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
-        return try {
-            val src = ImageDecoder.createSource(file)
-            ImageDecoder.decodeBitmap(src) { decoder, info, _ ->
-                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                val sz = info.size
-                val longer = max(sz.width, sz.height)
-                if (longer > maxDim && longer > 0) {
-                    val scale = maxDim.toFloat() / longer.toFloat()
-                    decoder.setTargetSize(
-                        max(1, (sz.width * scale).toInt()),
-                        max(1, (sz.height * scale).toInt())
-                    )
-                }
-            }
-        } catch (_: Throwable) {
-            null
-        }
     }
 
     private fun decodeUriOrArw(context: Context, uri: Uri, dcfName: String, maxDim: Int): Bitmap? {

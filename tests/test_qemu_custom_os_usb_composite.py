@@ -29,8 +29,10 @@ OTG = PROJECT_ROOT / "artifacts/tests/custom-os-usb-otg-3/usb_otg_bringup"
 COMPOSITE = PROJECT_ROOT / "artifacts/tests/custom-os-usbmods-9/a6400_composite_fn.ko"
 FRAME = PROJECT_ROOT / "tools/native_camera/test_pattern_720p.jpg"
 NATIVE_AVAILABLE = os.name == "posix" and QEMU.is_file()
+CUSTOM_OS_AVAILABLE = (PROJECT_ROOT / "custom_os/usb/a6400_composite_fn.c").is_file()
 
 
+@unittest.skipUnless(CUSTOM_OS_AVAILABLE, "Optional gitignored custom_os tree absent")
 class CompositeSourceTests(unittest.TestCase):
     def test_start_helper_builds_uvc_interfaces(self):
         text = (PROJECT_ROOT / "custom_os/launcher/usb_gift_start.c").read_text()

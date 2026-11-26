@@ -100,8 +100,7 @@ class MainActivity : FlutterActivity() {
                     psk = (args["psk"] as? String) ?: current.psk,
                     host = (args["host"] as? String) ?: current.host,
                     port = (args["port"] as? Number)?.toInt() ?: current.port,
-                    autoSuggestWifi = (args["autoSuggestWifi"] as? Boolean) ?: current.autoSuggestWifi,
-                    arwInstantPreview = (args["arwInstantPreview"] as? Boolean) ?: current.arwInstantPreview
+                    autoSuggestWifi = (args["autoSuggestWifi"] as? Boolean) ?: current.autoSuggestWifi
                 )
                 SyncConfig.save(this, updated)
                 result.success(updated.toMap())
@@ -152,39 +151,6 @@ class MainActivity : FlutterActivity() {
                 WifiSyncForegroundService.refreshHookLabel(this)
                 result.success(buildLookCatalogMap())
             }
-            "getGradedPhotos" -> {
-                result.success(LookPresetStore(this).getGradedPhotoNames().toList())
-            }
-            "loadRawEditorSession" -> {
-                val args = call.arguments as? Map<*, *> ?: emptyMap<String, Any>()
-                val dcfName = (args["dcfName"] as? String) ?: ""
-                val maxDim = (args["maxDim"] as? Number)?.toInt() ?: 1600
-                lookExecutor.execute {
-                    val session = try {
-                        LookLabImageIO.loadEditorSession(this@MainActivity, dcfName, maxDim)
-                    } catch (_: Throwable) {
-                        null
-                    }
-                    mainHandler.post {
-                        if (session == null) {
-                            result.success(null)
-                        } else {
-                            result.success(
-                                mapOf(
-                                    "rgba" to session.rgbaBytes,
-                                    "width" to session.width,
-                                    "height" to session.height,
-                                    "histRgb" to session.histRgb,
-                                    "histW" to session.histW,
-                                    "histH" to session.histH,
-                                    "isLog2" to session.isLog2,
-                                    "isTrueRaw" to session.isTrueRaw
-                                )
-                            )
-                        }
-                    }
-                }
-            }
             "loadPhotoThumbnail" -> {
                 val args = call.arguments as? Map<*, *> ?: emptyMap<String, Any>()
                 val dcfName = (args["dcfName"] as? String) ?: ""
@@ -214,43 +180,6 @@ class MainActivity : FlutterActivity() {
                         null
                     }
                     mainHandler.post { result.success(bytes) }
-                }
-            }
-            "renderPhotoPreviewWithHistogram" -> {
-                val args = call.arguments as? Map<*, *> ?: emptyMap<String, Any>()
-                val dcfName = (args["dcfName"] as? String) ?: ""
-                val presetMap = args["preset"] as? Map<*, *> ?: emptyMap<String, Any>()
-                val preset = LookPreset.fromMap(presetMap)
-                val gen = previewGen.incrementAndGet()
-                lookExecutor.execute {
-                    if (gen != previewGen.get()) {
-                        mainHandler.post { result.success(null) }
-                        return@execute
-                    }
-                    val rendered = try {
-                        LookLabImageIO.renderPreviewWithHistogram(
-                            this@MainActivity,
-                            dcfName,
-                            preset
-                        )
-                    } catch (_: Throwable) {
-                        null
-                    }
-                    mainHandler.post {
-                        if (rendered == null) {
-                            result.success(null)
-                        } else {
-                            result.success(
-                                mapOf(
-                                    "jpeg" to rendered.jpegBytes,
-                                    "r" to rendered.histR.toList(),
-                                    "g" to rendered.histG.toList(),
-                                    "b" to rendered.histB.toList(),
-                                    "l" to rendered.histL.toList()
-                                )
-                            )
-                        }
-                    }
                 }
             }
             "exportGradedPhoto" -> {

@@ -5,7 +5,6 @@ class SyncConfig {
     this.host = '192.168.122.1',
     this.port = 8765,
     this.autoSuggestWifi = true,
-    this.arwInstantPreview = false,
   });
 
   final String ssid;
@@ -13,7 +12,6 @@ class SyncConfig {
   final String host;
   final int port;
   final bool autoSuggestWifi;
-  final bool arwInstantPreview;
 
   factory SyncConfig.fromMap(Map<dynamic, dynamic> map) {
     return SyncConfig(
@@ -22,25 +20,6 @@ class SyncConfig {
       host: (map['host'] as String?) ?? '192.168.122.1',
       port: (map['port'] as num?)?.toInt() ?? 8765,
       autoSuggestWifi: (map['autoSuggestWifi'] as bool?) ?? true,
-      arwInstantPreview: (map['arwInstantPreview'] as bool?) ?? false,
-    );
-  }
-
-  SyncConfig copyWith({
-    String? ssid,
-    String? psk,
-    String? host,
-    int? port,
-    bool? autoSuggestWifi,
-    bool? arwInstantPreview,
-  }) {
-    return SyncConfig(
-      ssid: ssid ?? this.ssid,
-      psk: psk ?? this.psk,
-      host: host ?? this.host,
-      port: port ?? this.port,
-      autoSuggestWifi: autoSuggestWifi ?? this.autoSuggestWifi,
-      arwInstantPreview: arwInstantPreview ?? this.arwInstantPreview,
     );
   }
 
@@ -50,7 +29,6 @@ class SyncConfig {
         'host': host,
         'port': port,
         'autoSuggestWifi': autoSuggestWifi,
-        'arwInstantPreview': arwInstantPreview,
       };
 }
 
@@ -76,8 +54,6 @@ class SyncedFile {
   double get sizeMb => sizeBytes / (1024.0 * 1024.0);
 
   bool get isRaw => dcfName.toUpperCase().endsWith('.ARW');
-
-  bool get isPreview => crc32Hex == 'preview';
 
   factory SyncedFile.fromMap(Map<dynamic, dynamic> map) {
     return SyncedFile(

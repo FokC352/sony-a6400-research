@@ -13,8 +13,19 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
-if [[ "$TARGET" != "ilce_6400a" ]]; then
-  echo "Unsupported target: $TARGET (PhotonBin 6MP coordinates verified for ilce_6400a 1.01)" >&2
+if [[ "$TARGET" == "ilce_6100" ]]; then
+  TARGET="a6100"
+fi
+if [[ "$TARGET" == "ilce_6400a" ]]; then
+  TARGET_DEF="-DTARGET_ILCE6400A=1"
+  HOOK_TARGET="0x06d3a61c"
+  RELOC_LAYOUT="tools/native_camera/mlv2/reference_layout_ilce6400a.txt"
+elif [[ "$TARGET" == "a6100" ]]; then
+  TARGET_DEF="-DTARGET_A6100=1"
+  HOOK_TARGET="0x06b04bcc"
+  RELOC_LAYOUT="tools/native_camera/mlv2/reference_layout_ilce6400.txt"
+else
+  echo "Unsupported target: $TARGET (supported: ilce_6400a, a6100 / ilce_6100)" >&2
   exit 2
 fi
 
@@ -24,8 +35,8 @@ common=(-mthumb -mcpu=cortex-a5 -mfloat-abi=softfp -Os -ffreestanding -fno-built
         -nostartfiles -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -Werror
         -fpie -fvisibility=hidden)
 
-arm-linux-gnueabi-gcc "${common[@]}" -DTARGET_ILCE6400A=1 -c "$MD/photon_bin_6mp.c" -o "$OUT/photon_bin_6mp.o"
-arm-linux-gnueabi-gcc "${common[@]}" -DTARGET_ILCE6400A=1 -c "$MD/photon_bin_6mp_trampoline.S" -o "$OUT/photon_bin_6mp_tramp.o"
+arm-linux-gnueabi-gcc "${common[@]}" "$TARGET_DEF" -c "$MD/photon_bin_6mp.c" -o "$OUT/photon_bin_6mp.o"
+arm-linux-gnueabi-gcc "${common[@]}" "$TARGET_DEF" -c "$MD/photon_bin_6mp_trampoline.S" -o "$OUT/photon_bin_6mp_tramp.o"
 for o in "$OUT/photon_bin_6mp.o" "$OUT/photon_bin_6mp_tramp.o"; do
   if arm-linux-gnueabi-readelf -rW "$o" | grep -E "R_ARM_(ABS32|GOT|TARGET1|PLT32|JUMP_SLOT|GLOB_DAT)"; then
     echo "$o has absolute or GOT relocations; not position-independent" >&2
@@ -44,16 +55,16 @@ fi
 arm-linux-gnueabi-objdump -d "$OUT/photon_bin_6mp.elf" > "$OUT/photon_bin_6mp.dis"
 arm-linux-gnueabi-nm -n "$OUT/photon_bin_6mp.elf" > "$OUT/photon_bin_6mp.sym"
 
-# sizeof(struct pb_bss_state) = 40 + 4096 + 96768 + 6048 = 106952 -> 108544 (page-aligned)
+# sizeof(struct pb_bss_state) = 40 + 4096 + 96768 + 6048 + 12096 + 6048 = 125096 -> 126976 (page-aligned)
 python3 -m tools.research.pack_mod_v2 \
   --elf "$OUT/photon_bin_6mp.elf" \
   --name "PhotonBin 6MP" \
   --on pb_on --off pb_off \
-  --bss 108544 \
+  --bss 126976 \
   --submenu-bss-off 4 \
   --submenu-cfg pb_cfg \
-  --hook "0x06d3a61c:2de9f04f85b002af04460e46:pb_hook_make_raw_info_area" \
-  --reloc-layout tools/native_camera/mlv2/reference_layout_ilce6400a.txt \
+  --hook "${HOOK_TARGET}:2de9f04f85b002af04460e46:pb_hook_make_raw_info_area" \
+  --reloc-layout "$RELOC_LAYOUT" \
   --submenu-item "Binning Mode:0:4x4->2x2 Bayer|2x2 Mono Quad|Sensor Only" \
   --submenu-item "Photon Gain:0:+2 EV Sum (4x)|+1 EV Mid (2x)|+0 EV Avg (1x)" \
   --submenu-item "Spatial Kernel:0:[1,2,1] Phase|2x2 Box Sum" \

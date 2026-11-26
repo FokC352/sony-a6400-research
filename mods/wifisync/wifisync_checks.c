@@ -35,13 +35,11 @@ static void chk(const char *name, int cond) {
 /* ---------------------------------------------------------- fake platform */
 
 typedef struct fake_file {
-    uint32_t       index;
-    uint32_t       size;
-    uint32_t       pos;
-    const uint8_t *blob;
-    uint32_t       blob_len;
-    uint8_t        ext;
-    uint8_t        used;
+    uint32_t index;
+    uint32_t size;
+    uint32_t pos;
+    uint8_t  ext;
+    uint8_t  used;
 } fake_file;
 
 #define FAKE_FILES 16u
@@ -140,10 +138,7 @@ static int fs_read(void *ctx, void *handle, void *buf, uint32_t len) {
     if (!f) return -1;
     if (f->pos >= f->size) return 0;
     if (len > f->size - f->pos) len = f->size - f->pos;
-    for (i = 0; i < len; i++) {
-        uint32_t p = f->pos + i;
-        out[i] = (f->blob && p < f->blob_len) ? f->blob[p] : pattern_byte(f->index, p);
-    }
+    for (i = 0; i < len; i++) out[i] = pattern_byte(f->index, f->pos + i);
     f->pos += len;
     return (int)len;
 }
@@ -454,161 +449,6 @@ static void run_protocol_checks(void) {
 #undef c
 }
 
-static void put_le16(uint8_t *p, uint16_t v) {
-    p[0] = (uint8_t)(v & 0xFFu);
-    p[1] = (uint8_t)((v >> 8) & 0xFFu);
-}
-
-static void put_le32(uint8_t *p, uint32_t v) {
-    p[0] = (uint8_t)(v & 0xFFu);
-    p[1] = (uint8_t)((v >> 8) & 0xFFu);
-    p[2] = (uint8_t)((v >> 16) & 0xFFu);
-    p[3] = (uint8_t)((v >> 24) & 0xFFu);
-}
-
-static uint8_t g_arw_near[4096];
-static uint8_t g_arw_far[10240];
-
-static void build_synthetic_arw(uint8_t *buf, uint32_t total_len,
-                                uint32_t prev_off, uint32_t prev_len) {
-    uint32_t i;
-    for (i = 0; i < total_len; i++) buf[i] = (uint8_t)((i * 29u + 5u) & 0xFFu);
-    /* TIFF LE header: "II", 42, first IFD at offset 8 */
-    buf[0] = 'I'; buf[1] = 'I';
-    put_le16(buf + 2, 42u);
-    put_le32(buf + 4, 8u);
-    /* IFD0 at 8: 2 tags (0x0201 offset, 0x0202 length), next IFD = 0 */
-    put_le16(buf + 8, 2u);
-    put_le16(buf + 10, 0x0201u); put_le16(buf + 12, 4u); put_le32(buf + 14, 1u); put_le32(buf + 18, prev_off);
-    put_le16(buf + 22, 0x0202u); put_le16(buf + 24, 4u); put_le32(buf + 26, 1u); put_le32(buf + 30, prev_len);
-    put_le32(buf + 34, 0u);
-    /* JPEG SOI..EOI at prev_off..prev_off+prev_len */
-    buf[prev_off] = 0xFFu;
-    buf[prev_off + 1u] = 0xD8u;
-    buf[prev_off + 2u] = 0xFFu;
-    buf[prev_off + 3u] = 0xE0u;
-    buf[prev_off + prev_len - 2u] = 0xFFu;
-    buf[prev_off + prev_len - 1u] = 0xD9u;
-}
-
-static void run_phase1_checks(void) {
-    ws_conn k;
-    fake_file *ff;
-    uint32_t crc_expected = 0xFFFFFFFFu;
-    uint32_t i;
-#define c g_conn
-
-    reset_all();
-    build_synthetic_arw(g_arw_near, sizeof(g_arw_near), 2048u, 1536u);
-    build_synthetic_arw(g_arw_far, sizeof(g_arw_far), 8192u, 2048u);
-
-    fake_put(1, WS_EXT_ARW, 200000u);
-    ff = fake_lookup(1, WS_EXT_ARW);
-    ff->blob = g_arw_near;
-    ff->blob_len = sizeof(g_arw_near);
-
-    fake_put(2, WS_EXT_JPG, 5000u);
-
-    fake_put(3, WS_EXT_ARW, 200000u);
-    ff = fake_lookup(3, WS_EXT_ARW);
-    ff->blob = g_arw_far;
-    ff->blob_len = sizeof(g_arw_far);
-
-    ws_scan(&g_srv);
-    chk("phase1_setup_3_pending", ws_queue_pending(&g_srv) == 3u);
-
-    /* Mode 2: near preview (inside initial header read buffer). */
-    conn_init(&c, &g_srv, "GET /preview/1 HTTP/1.1\r\nHost: x\r\n\r\n");
-    k = conn_ops(&c);
-    {
-        int rc = ws_http_serve(&g_srv, &k);
-        const char *body = resp_body(c.resp);
-        chk("preview_near_200", rc == 0 && contains(c.resp, "HTTP/1.1 200 OK"));
-        chk("preview_near_len", resp_content_length(c.resp) == 1536u);
-        chk("preview_near_hdr", contains(c.resp, "X-Preview-Size: 1536"));
-        chk("preview_near_soi",
-            body && (uint8_t)body[0] == 0xFFu && (uint8_t)body[1] == 0xD8u &&
-            (uint8_t)body[1534] == 0xFFu && (uint8_t)body[1535] == 0xD9u);
-    }
-
-    /* Mode 2: far preview (past g_io 4096-byte initial read buffer). */
-    conn_init(&c, &g_srv, "GET /preview/3 HTTP/1.1\r\nHost: x\r\n\r\n");
-    k = conn_ops(&c);
-    {
-        int rc = ws_http_serve(&g_srv, &k);
-        const char *body = resp_body(c.resp);
-        chk("preview_far_200", rc == 0 && contains(c.resp, "HTTP/1.1 200 OK"));
-        chk("preview_far_len", resp_content_length(c.resp) == 2048u);
-        chk("preview_far_soi",
-            body && (uint8_t)body[0] == 0xFFu && (uint8_t)body[1] == 0xD8u &&
-            (uint8_t)body[2046] == 0xFFu && (uint8_t)body[2047] == 0xD9u);
-    }
-
-    /* Mode 2: JPG has no ARW embedded preview -> 404. */
-    conn_init(&c, &g_srv, "GET /preview/2 HTTP/1.1\r\nHost: x\r\n\r\n");
-    k = conn_ops(&c);
-    {
-        int rc = ws_http_serve(&g_srv, &k);
-        chk("preview_jpg_404", rc == 0 && contains(c.resp, "404") && contains(c.resp, "no_preview"));
-    }
-
-    /* A4: Range resume computes full-file CRC in one pass without pre-pass. */
-    for (i = 0; i < 200000u; i++) {
-        uint8_t b = (i < sizeof(g_arw_near)) ? g_arw_near[i] : pattern_byte(1, i);
-        crc_expected = ws_crc32_update(&g_srv, crc_expected, &b, 1u);
-    }
-    crc_expected ^= 0xFFFFFFFFu;
-    conn_init(&c, &g_srv, "GET /file/1 HTTP/1.1\r\nRange: bytes=100000-\r\n\r\n");
-    k = conn_ops(&c);
-    {
-        int rc = ws_http_serve(&g_srv, &k);
-        chk("a4_range_206", rc == 0 && contains(c.resp, "HTTP/1.1 206 Partial Content"));
-        chk("a4_range_pending_hdr", contains(c.resp, "X-CRC32: pending"));
-        chk("a4_range_crc_populated",
-            g_srv.q.slot[0].crc_state == WS_CRC_KNOWN &&
-            g_srv.q.slot[0].crc32 == crc_expected);
-    }
-
-    /* A1: Non-contiguous ack is rejected with 409; contiguous order succeeds. */
-    conn_init(&c, &g_srv, "POST /ack/2 HTTP/1.1\r\nContent-Length: 13\r\n\r\n{\"size\":5000}");
-    k = conn_ops(&c);
-    {
-        int rc = ws_http_serve(&g_srv, &k);
-        chk("a1_noncontig_409", rc == 0 && contains(c.resp, "409") &&
-                                contains(c.resp, "non_contiguous_ack"));
-        chk("a1_noncontig_keeps_ack", g_srv.q.ack == 0u);
-    }
-    conn_init(&c, &g_srv, "POST /ack/1 HTTP/1.1\r\nContent-Length: 15\r\n\r\n{\"size\":200000}");
-    k = conn_ops(&c);
-    {
-        int rc = ws_http_serve(&g_srv, &k);
-        chk("a1_seq1_200", rc == 0 && g_srv.q.ack == 1u);
-    }
-    conn_init(&c, &g_srv, "POST /ack/2 HTTP/1.1\r\nContent-Length: 13\r\n\r\n{\"size\":5000}");
-    k = conn_ops(&c);
-    {
-        int rc = ws_http_serve(&g_srv, &k);
-        chk("a1_seq2_200", rc == 0 && g_srv.q.ack == 2u);
-    }
-
-    /* A5: HTTP/1.1 keep-alive reuses one connection across sequential GETs. */
-    conn_init(&c, &g_srv,
-              "GET /status HTTP/1.1\r\nHost: x\r\n\r\n"
-              "GET /manifest?since=0 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
-    k = conn_ops(&c);
-    {
-        int rc = ws_http_serve_conn(&g_srv, &k, 4u);
-        chk("a5_keepalive_ok", rc == 0);
-        chk("a5_keepalive_hdrs",
-            contains(c.resp, "Connection: keep-alive") &&
-            contains(c.resp, "Connection: close"));
-        chk("a5_both_bodies",
-            contains(c.resp, "\"queue_head\":") &&
-            contains(c.resp, "DSC00003.ARW"));
-    }
-#undef c
-}
-
 int ws_run_checks(void);
 
 int ws_run_checks(void) {
@@ -758,8 +598,6 @@ int ws_run_checks(void) {
 
     reset_all();
     chk("scan_budget_bounds_work", g_srv.cfg.scan_budget == 128u);
-
-    run_phase1_checks();
 
     return (int)g_check_fail;
 }

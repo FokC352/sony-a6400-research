@@ -6,11 +6,11 @@
 
 ---
 
-## 0. New Live Ground Truth (`E0699`, Do Not Re-Test or Re-Prove Closed Facts)
+## 0. New Live Ground Truth (`E0724`, Do Not Re-Test or Re-Prove Closed Facts)
 
-Since Round 2 (`E0698`), a live camera isolation & binary-search campaign (`E0699`) eliminated `R1` (`rcv_desc`), ruled out any numeric ceiling above stock, and narrowed the entire failure mechanism to an astonishingly sharp paradox inside `fe_rec_0a` (`0x63E14E94`) / `fe_rec_19` (`0x63E15E54`):
+Since Round 2 (`E0723`), a live camera isolation & binary-search campaign (`E0724`) eliminated `R1` (`rcv_desc`), ruled out any numeric ceiling above stock, and narrowed the entire failure mechanism to an astonishingly sharp paradox inside `fe_rec_0a` (`0x63E14E94`) / `fe_rec_19` (`0x63E15E54`):
 
-### 0.1 Proven Live Results (`E0696` + `E0699`)
+### 0.1 Proven Live Results (`E0721` + `E0724`)
 
 1. **`plus8` (`dy = +8`, minimal Bayer-aligned upward step) FAILS:**
    - `Y=(338, 3404)`, `FE=(3450, 3400, 5832)`, `rcv_desc +8`, timing stock.
@@ -41,7 +41,7 @@ Both subsets are **independently fatal**:
 Therefore the failure is **NOT** a mismatch *between* `fe_rec + 0x002` and `fe_rec[1..65]`. Rather, **every FE stage whose programmed vertical count exceeds stock waits for lines that never arrive at FE** — meaning something **upstream of (or at the entry to) FE** is STILL capped at the stock line count (`3396` active / `3442` total lines), **even when `reglist` col 11 `0x000A..0x000D` is patched**!
 
 We must pinpoint **in exact ARM/Thumb disassembly + MMIO writes**:
-1. What hardware MMIO register(s) `fe_rec + 0x002` (`3442`) and `+0x00A` (`3392`) map to (computed addresses `0xF3xxxxxx + offset` in `0x63CD3xxx`/`0x63CD4xxx`, left open in `E0698` §5.4), AND
+1. What hardware MMIO register(s) `fe_rec + 0x002` (`3442`) and `+0x00A` (`3392`) map to (computed addresses `0xF3xxxxxx + offset` in `0x63CD3xxx`/`0x63CD4xxx`, left open in `E0723` §5.4), AND
 2. Why the FE input stream still stops at `3396` / `3442` lines (whether `IMX284` col 11 vs col 0 leaves an actual height/SLVS/OB/timing register untouched, OR `CAMIN` / `SLVS` receiver driver between sensor and FE crops/caps at `3396` / `3442`, OR `SGC2` gates `CAMOUT_V` via `0x6376910C`).
 
 ---
@@ -64,7 +64,7 @@ Launch all 5 subagents in parallel. Each owns a strictly disjoint code slice.
 ### Subagent 1 (`fe-002-mmio-tracer`): Exact Computed MMIO Destinations of `fe_rec + 0x002` (`3442`) and `+0x00A` (`3392`)
 - **Scope:** Trace dataflow forward from `0x63771C78` -> `0x63CCF5A2` -> `0x63CCF5C6` -> descriptor object `+0x438..+0x658`, specifically tracing **`rec+0x002` (`3442`)** and **`rec+0x00A` (`3392`)** through `0x63CCBFD0`, `0x63CD3xxx`, `0x63CD4xxx`, `0x63768DBA..F0`, and `0x63CD463C`/`0x63CD4600`.
 - **Specific questions to answer:**
-  1. Recall `E0698` §5.4 flagged that computed `0xF3xxxxxx + field` MMIO addresses inside `0x63CD3xxx`/`0x63CD4xxx` were not resolved by a literal sweep. Disassemble `0x63CD2000..0x63CD7000` (and callers from `0x63CC0000..0x63CD2000`) to decode **every computed MMIO offset** (`[base + #off]`) written from the descriptor slots fed by `+0x002` (`3442`) and `+0x00A` (`3392`).
+  1. Recall `E0723` §5.4 flagged that computed `0xF3xxxxxx + field` MMIO addresses inside `0x63CD3xxx`/`0x63CD4xxx` were not resolved by a literal sweep. Disassemble `0x63CD2000..0x63CD7000` (and callers from `0x63CC0000..0x63CD2000`) to decode **every computed MMIO offset** (`[base + #off]`) written from the descriptor slots fed by `+0x002` (`3442`) and `+0x00A` (`3392`).
   2. Identify which hardware subunit (`CAMIN`, `FE` stage-0/1/2/3, `OB` clamp, `H/V` crop, `DMA`, `VSYNC` wait-line / IRQ trigger) owns the register programmed by **`fe_rec + 0x002` (`3442`)** vs **`fe_rec + 0x00A` (`3392`)**.
   3. Explain why raising **ONLY** `fe_rec + 0x002` (`3442 -> 3466`) without touching any of the other 65 FE fields (`+0x00A`, etc.) already halts `CAMOUT_V` (`ref=17`), and simultaneously why keeping `+0x002 = 3442` stock while raising `[1..66)` (`+0x00A = 3392 -> 3416`, etc.) ALSO halts `CAMOUT_V` (`ref=22`). What exact hardware stage sits immediately upstream of `fe_rec + 0x002`?
 
@@ -78,12 +78,12 @@ Launch all 5 subagents in parallel. Each owns a strictly disjoint code slice.
 ### Subagent 3 (`camin-slvs-receiver-tracer`): Upstream `CAMIN` / SLVS-EC / Sub-LVDS Receiver Between Sensor & FE
 - **Scope:** Trace all hardware blocks and driver modules sitting **before `FE`** (receiving raw pixels from IMX284 into FE/RCV): search strings & code for `CAMIN`, `SLVS`, `MIPI`, `CSI`, `RCV`, `S-Ele` receiver config, `0xF310xxxx` / `0xF311xxxx` / `0xF3120xxx` / `0xF300xxxx` receiver base addresses, and check any non-`fe_rec` readers/tables (including checking whether any of the small unpatched `.data` clusters near `0x6454AB60`, `0x64547d20`, `0x644f9330`, `0x64022a40`, `0x64025b00` are read by code).
 - **Specific questions to answer:**
-  1. Locate the exact driver functions that configure the sensor-to-FE receiver (`CAMIN` / `SLVS` / `RCV` hardware MMIO registers, NOT `fe_rec` and NOT the unused `rcv_desc` ROM `0x63E19720` that `E0699` already proved inert!).
+  1. Locate the exact driver functions that configure the sensor-to-FE receiver (`CAMIN` / `SLVS` / `RCV` hardware MMIO registers, NOT `fe_rec` and NOT the unused `rcv_desc` ROM `0x63E19720` that `E0724` already proved inert!).
   2. Determine **which table or constant** programs the receiver's expected vertical line count / end-of-frame / crop / EMB-skip / OB-line count in Movie 4K 24p (`mode 16/17`). Remember `plus24_rcvonly` proved `rcv_desc` (`0x63E19720`) does NOT cause or fix the stall — so WHERE does the *real* receiver line count come from?
   3. Verify whether the real receiver stops passing lines after `3396`/`3442` lines (which would immediately pass `test1`/`plus24_rcvonly`/`shrink` yet stall BOTH `fe[0..1)` `3442->3466` AND `fe[1..66)` `3392->3416`!).
 
 ### Subagent 4 (`sgc2-trim-loop-tracer`): Full Disassembly of `0x6376910C` (`/8` Loop) & `SGC1` `win=(0x01, 0x1d, 0x1b)` Consumers
-- **Scope:** Complete disassembly and caller/callee trace of `0x6376910C` (and nearby `0x63768xxx..0x6376Axxx`), plus tracking where `SGC1` `block[+0x40..+0x42] = (0x01, 0x1d, 0x1b)` (observed live in `E0699`) is produced (e.g., via `0x638B6124` `memcpy` or siblings) and how `0xF3120264`/`0xF312026C` interact with FE/SGC2.
+- **Scope:** Complete disassembly and caller/callee trace of `0x6376910C` (and nearby `0x63768xxx..0x6376Axxx`), plus tracking where `SGC1` `block[+0x40..+0x42] = (0x01, 0x1d, 0x1b)` (observed live in `E0724`) is produced (e.g., via `0x638B6124` `memcpy` or siblings) and how `0xF3120264`/`0xF312026C` interact with FE/SGC2.
 - **Specific questions to answer:**
   1. Fully reconstruct `0x6376910C`: what hardware registers does it read, how does the `/8` decimation work, and what does `0xF312032C..0xF312035C` (`measured + trim`) actually drive (sync generator trimming vs frame-abort/gating)?
   2. Trace the source struct copied at `0x638B6124` where `(0x01, 0x1d, 0x1b)` comes from in Movie 4K 24p (`mode 16/17`): what do `0x1d` (29) and `0x1b` (27) mean physically (e.g. H/V phase/blanking offset?), and can they depend on FE line count?
@@ -109,8 +109,8 @@ Launch all 5 subagents in parallel. Each owns a strictly disjoint code slice.
 2. **Identify the exact missing upstream/sensor/FE contract:**
    - Either name the exact unpatched register/table/instruction (with VA + file offset) that keeps the FE input stream at stock `3396`/`3442` lines (and verify in bounded Unicorn if applicable), OR identify the exact architectural boundary if runtime-computed/external (`av-cam` vs `bootin`/micro).
 3. **Update repository docs (strictly English-only):**
-   - Write `docs/evidence/0700-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md` (`AGENTS.md` §4 compliant).
-   - Update `docs/map/sources/imaging-pipeline.toml` with `E0700` claims & updated `F03`.
+   - Write `docs/evidence/0725-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md` (`AGENTS.md` §4 compliant).
+   - Update `docs/map/sources/imaging-pipeline.toml` with `E0725` claims & updated `F03`.
    - Run & verify:
      ```powershell
      C:\Python314\python.exe -m tools.research.knowledge_map build

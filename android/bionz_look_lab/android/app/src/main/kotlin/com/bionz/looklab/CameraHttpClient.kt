@@ -3,7 +3,6 @@ package com.bionz.looklab
 import android.content.ContentValues
 import android.content.Context
 import android.net.Network
-import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import org.json.JSONObject
@@ -32,7 +31,6 @@ data class DownloadResult(
 class CameraHttpClient(
     private val host: String,
     private val port: Int,
-    private val requireBoundNetwork: Boolean = true,
     private val networkProvider: () -> Network?
 ) {
     private data class HttpResponse(
@@ -43,9 +41,6 @@ class CameraHttpClient(
 
     private fun openBoundSocket(readTimeoutMs: Int): Socket {
         val net = networkProvider()
-        if (requireBoundNetwork && net == null) {
-            throw CameraHttpException("Camera Wi-Fi network not bound")
-        }
         val sock = net?.socketFactory?.createSocket() ?: Socket()
         sock.soTimeout = readTimeoutMs
         sock.tcpNoDelay = true
@@ -280,107 +275,6 @@ class CameraHttpClient(
         }
     }
 
-    /**
-     * Fetches the embedded JPEG preview from a Sony .ARW file via GET /preview/<seqId>.
-     * Returns null when the camera reports 404 (no preview available, e.g. for .JPG).
-     */
-    fun downloadPreview(seqId: Int): ByteArray? {
-        val resp = requestText("GET", "/preview/$seqId", readTimeoutMs = DEFAULT_READ_TIMEOUT_MS)
-        if (resp.statusCode == 404) return null
-        if (resp.statusCode != 200) {
-            throw CameraHttpException("/preview/$seqId failed with HTTP ${resp.statusCode}", resp.statusCode)
-        }
-        val bytes = resp.bodyBytes
-        if (bytes.size < 2 || bytes[0] != 0xFF.toByte() || bytes[1] != 0xD8.toByte()) {
-            return null
-        }
-        return bytes
-    }
-
-    /**
-     * Streams a fresh full file directly into an IS_PENDING MediaStore entry while
-     * hashing CRC-32 inline, avoiding the extra 25 MB temp-to-MediaStore copy.
-     */
-    fun downloadToMediaStoreDirect(
-        context: Context,
-        entry: ManifestEntry,
-        onProgress: (bytesReceived: Long, totalBytes: Long) -> Unit
-    ): Pair<DownloadResult, String> {
-        openBoundSocket(STREAM_READ_TIMEOUT_MS).use { sock ->
-            val req = StringBuilder()
-            req.append("GET /file/").append(entry.seqId).append(" HTTP/1.1\r\n")
-            req.append("Host: ").append(host).append(':').append(port).append("\r\n")
-            req.append("Connection: close\r\n\r\n")
-            val os = sock.getOutputStream()
-            os.write(req.toString().toByteArray(StandardCharsets.US_ASCII))
-            os.flush()
-
-            val input = BufferedInputStream(sock.getInputStream(), IO_CHUNK)
-            val (code, headers) = readHeaderBlock(input)
-            if (code != 200) {
-                throw CameraHttpException("/file/${entry.seqId} HTTP $code", code)
-            }
-            val serverSize = headers["x-file-size"]?.toLongOrNull() ?: entry.sizeBytes
-            val serverCrc = (headers["x-crc32"] ?: entry.crc32Hex).lowercase(Locale.US)
-            val contentLength = headers["content-length"]?.toLongOrNull()
-                ?: throw CameraHttpException("Missing Content-Length on /file/${entry.seqId}")
-            if (serverSize > 0L && contentLength != serverSize) {
-                throw CameraHttpException("Content-Length mismatch: header=$contentLength server=$serverSize")
-            }
-
-            val resolver = context.contentResolver
-            val (uri, relPath) = insertPendingMediaStoreEntry(context, entry.name)
-            var ok = false
-            try {
-                var written = 0L
-                val buf = ByteArray(IO_CHUNK)
-                val inlineCrc = CRC32()
-                resolver.openOutputStream(uri, "w")?.use { rawOut ->
-                    val bos = BufferedOutputStream(rawOut, IO_CHUNK)
-                    while (written < contentLength) {
-                        val want = minOf(buf.size.toLong(), contentLength - written).toInt()
-                        val n = input.read(buf, 0, want)
-                        if (n <= 0) break
-                        inlineCrc.update(buf, 0, n)
-                        bos.write(buf, 0, n)
-                        written += n
-                        onProgress(written, if (serverSize > 0L) serverSize else contentLength)
-                    }
-                    bos.flush()
-                } ?: throw IOException("Failed to open MediaStore OutputStream for ${entry.name}")
-
-                if (written != contentLength) {
-                    throw CameraHttpException("Short transfer: got $written of $contentLength bytes")
-                }
-                if (serverSize > 0L && written != serverSize) {
-                    throw CameraHttpException("Size mismatch: local=$written server=$serverSize")
-                }
-                val localCrc = String.format(Locale.US, "%08x", inlineCrc.value and 0xFFFFFFFFL)
-                if (serverCrc.isNotEmpty() && serverCrc != "pending" && localCrc != serverCrc) {
-                    throw CameraHttpException("CRC-32 mismatch: local=$localCrc server=$serverCrc")
-                }
-
-                val publishValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.IS_PENDING, 0)
-                }
-                resolver.update(uri, publishValues, null, null)
-                ok = true
-                return Pair(
-                    DownloadResult(
-                        sizeBytes = written,
-                        crc32Hex = localCrc,
-                        resumedFromBytes = 0L
-                    ),
-                    "$relPath/${entry.name}"
-                )
-            } finally {
-                if (!ok) {
-                    resolver.delete(uri, null, null)
-                }
-            }
-        }
-    }
-
     fun postAck(seqId: Int, sizeBytes: Long, crc32Hex: String): Int {
         val payload = JSONObject().apply {
             put("size", sizeBytes)
@@ -415,16 +309,12 @@ class CameraHttpClient(
             return String.format(Locale.US, "%08x", crc.value and 0xFFFFFFFFL)
         }
 
-        private fun insertPendingMediaStoreEntry(
-            context: Context,
-            dcfName: String,
-            dcimSubdir: String = "BionzLookLab"
-        ): Pair<Uri, String> {
+        fun publishToMediaStore(context: Context, verifiedFile: File, dcfName: String): String {
             val lower = dcfName.lowercase(Locale.US)
             val isJpg = lower.endsWith(".jpg") || lower.endsWith(".jpeg")
             val mimeType = if (isJpg) "image/jpeg" else "image/x-sony-arw"
             val resolver = context.contentResolver
-            var relPath = "${Environment.DIRECTORY_DCIM}/$dcimSubdir"
+            var relPath = "${Environment.DIRECTORY_DCIM}/BionzLookLab"
             val uri = try {
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, dcfName)
@@ -440,7 +330,7 @@ class CameraHttpClient(
                 if (isJpg || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
                     throw e
                 }
-                relPath = "${Environment.DIRECTORY_DOWNLOADS}/$dcimSubdir"
+                relPath = "${Environment.DIRECTORY_DOWNLOADS}/BionzLookLab"
                 val dlValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, dcfName)
                     put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
@@ -452,59 +342,31 @@ class CameraHttpClient(
                     dlValues
                 )
             } ?: throw IOException("MediaStore insert returned null for $dcfName")
-            return Pair(uri, relPath)
-        }
-
-        private fun publishStreamToMediaStore(
-            context: Context,
-            fileName: String,
-            dcimSubdir: String,
-            writer: (java.io.OutputStream) -> Unit
-        ): String {
-            val resolver = context.contentResolver
-            val (uri, relPath) = insertPendingMediaStoreEntry(context, fileName, dcimSubdir)
 
             var ok = false
             try {
                 resolver.openOutputStream(uri, "w")?.use { out ->
-                    writer(out)
+                    val buf = ByteArray(IO_CHUNK)
+                    FileInputStream(verifiedFile).use { fis ->
+                        while (true) {
+                            val n = fis.read(buf)
+                            if (n <= 0) break
+                            out.write(buf, 0, n)
+                        }
+                    }
                     out.flush()
-                } ?: throw IOException("Failed to open MediaStore OutputStream for $fileName")
+                } ?: throw IOException("Failed to open MediaStore OutputStream for $dcfName")
 
                 val publishValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.IS_PENDING, 0)
                 }
                 resolver.update(uri, publishValues, null, null)
                 ok = true
-                return "$relPath/$fileName"
+                return "$relPath/$dcfName"
             } finally {
                 if (!ok) {
                     resolver.delete(uri, null, null)
                 }
-            }
-        }
-
-        fun publishToMediaStore(context: Context, verifiedFile: File, dcfName: String): String {
-            return publishStreamToMediaStore(context, dcfName, "BionzLookLab") { out ->
-                val buf = ByteArray(IO_CHUNK)
-                FileInputStream(verifiedFile).use { fis ->
-                    while (true) {
-                        val n = fis.read(buf)
-                        if (n <= 0) break
-                        out.write(buf, 0, n)
-                    }
-                }
-            }
-        }
-
-        fun publishBytesToMediaStore(
-            context: Context,
-            bytes: ByteArray,
-            fileName: String,
-            dcimSubdir: String = "BionzLookLab"
-        ): String {
-            return publishStreamToMediaStore(context, fileName, dcimSubdir) { out ->
-                out.write(bytes)
             }
         }
     }

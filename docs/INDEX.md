@@ -50,6 +50,9 @@ For subject lookups (an address, symbol, device, or "is E0xxx still valid?") use
 | [ARCHITECTURE_UVC_MONITOR.md](ARCHITECTURE_UVC_MONITOR.md) | UVC monitor architecture (hash-pinned by `E0348`) |
 | [UVC_HANDOVER_PLAN.md](UVC_HANDOVER_PLAN.md) | UVC/PTP handover plan |
 | [CINEMAHUD_STOCK_PTP.md](CINEMAHUD_STOCK_PTP.md) | CinemaHUD stock PTP reference |
+| [BIONZ_LOOK_LAB.md](BIONZ_LOOK_LAB.md) | Host Rust/`wgpu` Look Lab (`isp-studio/`) and `.bzlook` / `SMOD v2` film-simulation workflow |
+| [Android SpektraFilm GPU roll architecture (E0688)](evidence/0688-android-gpu-spektrafilm-film-roll-architecture.md) | Candidate two-tier film simulation & 3-pass NDK Vulkan 36-exposure `.ARW` darkroom engine for `CinemaHUD Android` |
+| [Mobile fotufilm-engine GPU roll architecture (E0689)](evidence/0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md) | Apache-2.0 `DhaliwalX/fotufilm-engine` audit, Halide Metal/Vulkan bottlenecks, and `<350 MB` 36-exposure `.ARW` mobile GPU blueprint |
 | [ISP_TRANSFORM_CATALOG.md](ISP_TRANSFORM_CATALOG.md) | Transform formats, control dependencies, evidence, and open verification for ARRI tuning |
 | [ROADMAP.md](ROADMAP.md) | Long-term project roadmap |
 | [WIFISYNC_MOD.md](WIFISYNC_MOD.md) | Camera-side WiFiSync mod design: 5 GHz AP, read-only Sony Fsys transfer, HTTP `:8765`, Smart Single-Best, power states, Phase 0–2 gates |
@@ -68,6 +71,7 @@ For subject lookups (an address, symbol, device, or "is E0xxx still valid?") use
 | [Local a6400A E0673](evidence/0673-a6400a-first-actual-nflasha5-capture.md) | Actual 60 MiB nflasha5 capture, independent host hash, failed idle handoff, unacknowledged exit/recovery boundary and remaining-partition research |
 | [Local a6400A E0674](evidence/0674-a6400a-readonly-msc-lun-capture-and-flash-boundary.md) | Actual read-only 2 MiB MSC LUN 1 capture, unverified nflasha23 backing, native postflight, unchanged guards and blocked remaining firmware scope |
 | [Local a6400A E0675](evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md) | Expanded-scope bootstrap investigation, fresh identity/postflight, existing capture integrity, Jiritsu internal-flash and MPR file-write effects; no new partition capture |
+| [ILCE-6100 E9103](evidence/9103-a6100-mod-loader-port.md) & [E9104](evidence/9104-a6100-photonbin-6mp-port.md) | `ILCE-6100` 1.00 `Mod Loader v2` port and `PhotonBin 6MP` hardware verification (`_DSC5765.ARW`, `Force HCG`, `SMNU` `v4` `core.bin`, `/setting/mlv2_sd_boot.sh` SHA-256 pinning) |
 | [decisions/](decisions/) | Architectural decision records (ADRs) |
 | [archives/agent-notes-2026-11-13-e0210-to-e0476.md](archives/agent-notes-2026-11-13-e0210-to-e0476.md) | Complete verbatim archive of `AGENTS.md` experiment logs `E0210–E0476` |
 | [archives/agent-notes-2026-11-09.md](archives/agent-notes-2026-11-09.md) | Earlier `AGENTS.md` historical notes (prior to 2026-11-09) |

@@ -52,12 +52,7 @@ data class LookPreset(
     val halation: Int = 20,
     val grain: Int = 25,
     val fade: Int = 0,
-    val vignette: Int = 0,
-    val whites: Int = 0,
-    val blacks: Int = 0,
-    val vibrance: Int = 0,
-    val clarity: Int = 0,
-    val sharpen: Int = 0
+    val vignette: Int = 0
 ) {
     fun slug(): String {
         val clean = name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
@@ -82,12 +77,7 @@ data class LookPreset(
         "halation" to halation,
         "grain" to grain,
         "fade" to fade,
-        "vignette" to vignette,
-        "whites" to whites,
-        "blacks" to blacks,
-        "vibrance" to vibrance,
-        "clarity" to clarity,
-        "sharpen" to sharpen
+        "vignette" to vignette
     )
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -109,11 +99,6 @@ data class LookPreset(
         put("grain", grain)
         put("fade", fade)
         put("vignette", vignette)
-        put("whites", whites)
-        put("blacks", blacks)
-        put("vibrance", vibrance)
-        put("clarity", clarity)
-        put("sharpen", sharpen)
     }
 
     companion object {
@@ -144,12 +129,7 @@ data class LookPreset(
                 halation = clampUni(intVal("halation", 20)),
                 grain = clampUni(intVal("grain", 25)),
                 fade = clampUni(intVal("fade", 0)),
-                vignette = clampUni(intVal("vignette", 0)),
-                whites = clampBi(intVal("whites", 0)),
-                blacks = clampBi(intVal("blacks", 0)),
-                vibrance = clampBi(intVal("vibrance", 0)),
-                clarity = clampBi(intVal("clarity", 0)),
-                sharpen = clampUni(intVal("sharpen", 0))
+                vignette = clampUni(intVal("vignette", 0))
             )
         }
 
@@ -171,12 +151,7 @@ data class LookPreset(
             halation = clampUni(obj.optInt("halation", 20)),
             grain = clampUni(obj.optInt("grain", 25)),
             fade = clampUni(obj.optInt("fade", 0)),
-            vignette = clampUni(obj.optInt("vignette", 0)),
-            whites = clampBi(obj.optInt("whites", 0)),
-            blacks = clampBi(obj.optInt("blacks", 0)),
-            vibrance = clampBi(obj.optInt("vibrance", 0)),
-            clarity = clampBi(obj.optInt("clarity", 0)),
-            sharpen = clampUni(obj.optInt("sharpen", 0))
+            vignette = clampUni(obj.optInt("vignette", 0))
         )
     }
 }
@@ -240,35 +215,6 @@ class LookPresetStore(context: Context) {
     @Synchronized
     fun getAutoApplyPreset(): LookPreset? = getPresetById(getAutoApplyPresetId())
 
-    @Synchronized
-    fun markPhotoGraded(dcfName: String, presetId: String) {
-        if (dcfName.isBlank()) return
-        val map = loadGradedMapMutable()
-        map[dcfName] = presetId
-        val obj = JSONObject()
-        for ((k, v) in map) obj.put(k, v)
-        prefs.edit().putString(KEY_GRADED_PHOTOS, obj.toString()).apply()
-    }
-
-    @Synchronized
-    fun getGradedPhotoNames(): Set<String> = loadGradedMapMutable().keys
-
-    private fun loadGradedMapMutable(): MutableMap<String, String> {
-        val raw = prefs.getString(KEY_GRADED_PHOTOS, null) ?: return LinkedHashMap()
-        return try {
-            val obj = JSONObject(raw)
-            val out = LinkedHashMap<String, String>()
-            val keys = obj.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                out[k] = obj.optString(k, "")
-            }
-            out
-        } catch (_: Throwable) {
-            LinkedHashMap()
-        }
-    }
-
     private fun loadCustomPresets(): List<LookPreset> {
         val raw = prefs.getString(KEY_CUSTOM_PRESETS, null) ?: return emptyList()
         return try {
@@ -296,7 +242,6 @@ class LookPresetStore(context: Context) {
         private const val PREFS_NAME = "bionz_looklab_presets"
         private const val KEY_CUSTOM_PRESETS = "custom_presets_json"
         private const val KEY_AUTO_PRESET_ID = "auto_apply_preset_id"
-        private const val KEY_GRADED_PHOTOS = "graded_photos_json"
 
         val BUILTIN_PRESETS: List<LookPreset> = listOf(
             LookPreset(

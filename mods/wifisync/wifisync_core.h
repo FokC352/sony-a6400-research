@@ -201,8 +201,6 @@ uint32_t ws_power_state(const ws_server *s);
 /* ---- HTTP/1.1 subset --------------------------------------------------- */
 /* Serve exactly one request on `c` and return. The adapter closes the socket. */
 int ws_http_serve(ws_server *s, ws_conn *c);
-/* Serve up to `max_reqs` HTTP/1.1 requests on one persistent connection `c`. */
-int ws_http_serve_conn(ws_server *s, ws_conn *c, uint32_t max_reqs);
 
 /* ---- helpers shared with the adapters and tests ----------------------- */
 uint32_t ws_strlen(const char *s);

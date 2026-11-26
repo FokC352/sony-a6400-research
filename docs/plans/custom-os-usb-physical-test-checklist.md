@@ -1,7 +1,7 @@
 # Custom OS USB physical-test checklist (not executed)
 
 Prepared from the offline evidence in
-[E0690](../evidence/0690-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md) and the plan's
+[E0716](../evidence/0716-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md) and the plan's
 Phase 4. **Nothing in this file has been run on a camera.** It is a proposal for a future,
 explicitly authorized RAM-only session with a deadman timer.
 

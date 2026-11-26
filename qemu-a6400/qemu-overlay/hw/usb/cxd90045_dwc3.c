@@ -111,6 +111,7 @@ typedef struct CxdDwc3Ep {
     uint32_t cfg0;
     uint32_t cfg1;
     uint64_t trb_addr;
+    uint32_t out_offset;
     bool trb_active;
     bool stalled;
     uint8_t pending_out[1024];
@@ -151,6 +152,7 @@ struct CxdDwc3State {
     bool captured_start_gate;
     bool strict_ep0;
     bool strict_bulk;
+    bool allow_setup_abort;
     uint8_t control_stage; /* 0 SETUP, 1 DATA, 2 STATUS; host protocol bookkeeping */
     bool control_data_in;
     bool control_has_data;
@@ -345,23 +347,35 @@ static void dwc3_handle_ep_cmd(CxdDwc3State *s, uint32_t ep_idx, uint32_t val)
         break;
     case DEPCMD_CLEARSTALL:
         ep->stalled = false;
+        ep->out_offset = 0;
+        ep->nrdy_pending = false;
         break;
     case DEPCMD_STARTTRANSFER:
         ep->trb_addr = ((uint64_t)ep->par0 << 32) | ep->par1;
         ep->trb_active = true;
+        ep->out_offset = 0;
         ep->nrdy_pending = false;
         val = (val & ~0x007F0000U) | ((ep_idx + 1U) << 16);
         ep->cmd = val & ~DEPCMD_CMDACT;
         dwc3_ep_process_trb(s, ep_idx);
         return;
     case DEPCMD_UPDATETRANSFER:
+        ep->nrdy_pending = false;
         ep->cmd = val & ~DEPCMD_CMDACT;
         dwc3_ep_process_trb(s, ep_idx);
         return;
     case DEPCMD_ENDTRANSFER:
         ep->trb_active = false;
+        ep->out_offset = 0;
+        ep->nrdy_pending = false;
         if (val & DEPCMD_CMDIOC) {
             dwc3_push_depevt(s, ep_idx, DEPEVT_EPCMDCMPLT, 0, cmd << 8);
+        }
+        break;
+    case DEPCMD_STARTNEWCONFIG:
+        for (uint32_t i = 2; i < DWC3_MAX_EPS; i++) {
+            s->eps[i].out_offset = 0;
+            s->eps[i].nrdy_pending = false;
         }
         break;
     default:
@@ -657,14 +671,21 @@ static void strict_token(CxdDwc3State *s, uint32_t ep_idx, bool setup,
         s->eps[0].stalled = false;
         s->eps[1].stalled = false;
     }
-    if (ep->stalled) {
+    if (ep->stalled || s->eps[0].stalled) {
+        s->control_stage = 0;
         snprintf(reply, sizeof(reply), "STALL %u\n", ep_idx);
         strict_reply(s, reply);
         return;
     }
     if (setup && s->control_stage != 0) {
-        strict_reply(s, "ERROR unsupported-control-abort\n");
-        return;
+        if (!s->allow_setup_abort) {
+            strict_reply(s, "ERROR unsupported-control-abort\n");
+            return;
+        }
+        s->control_stage = 0;
+        s->eps[0].nrdy_pending = false;
+        s->eps[1].trb_active = false;
+        s->eps[1].nrdy_pending = false;
     }
     expected = setup ? 2 : (s->control_stage == 1 ? 5 :
                            (s->control_stage == 2 ? (s->control_has_data ? 4 : 3) : 0));
@@ -778,7 +799,7 @@ static CxdDwc3Ep *strict_resolve_bulk_in_ep(CxdDwc3State *s, uint32_t ep_idx,
 
     *ambiguous = false;
     for (uint32_t i = 2; i < DWC3_MAX_EPS; i++) {
-        if (((s->dalepena & (1U << i)) || (s->dalepena & (1U << ep_idx))) &&
+        if ((s->dalepena & (1U << i)) &&
             ((s->eps[i].cfg1 >> 25) & 0x1FU) == ep_idx) {
             if (match) {
                 *ambiguous = true;
@@ -790,8 +811,22 @@ static CxdDwc3Ep *strict_resolve_bulk_in_ep(CxdDwc3State *s, uint32_t ep_idx,
     if (match) {
         return match;
     }
-    if (s->dalepena & (1U << ep_idx)) {
-        return &s->eps[ep_idx];
+    if (ep_idx < DWC3_MAX_EPS && (s->dalepena & (1U << ep_idx))) {
+        for (uint32_t i = 2; i < DWC3_MAX_EPS; i++) {
+            if (((s->eps[i].cfg1 >> 25) & 0x1FU) == ep_idx) {
+                if (match) {
+                    *ambiguous = true;
+                    return NULL;
+                }
+                match = &s->eps[i];
+            }
+        }
+        if (match) {
+            return match;
+        }
+        if (((s->eps[ep_idx].cfg1 >> 25) & 0x1FU) == 0) {
+            return &s->eps[ep_idx];
+        }
     }
     return NULL;
 }
@@ -912,7 +947,8 @@ static void strict_bulk_out(CxdDwc3State *s, uint32_t logical,
     CxdDwc3Ep *ep = NULL;
     CxdDwc3Trb trb;
     char reply[64];
-    uint32_t phys = 0, ctrl, capacity, max_packet;
+    uint32_t phys = 0, ctrl, capacity, max_packet, new_offset;
+    unsigned ep_type;
     uint32_t ring_bytes = s->gevntsiz & 0xFFFCU;
     uint64_t ring = ((uint64_t)s->gevntadrhi << 32) | s->gevntadrlo;
     uint64_t address;
@@ -931,10 +967,16 @@ static void strict_bulk_out(CxdDwc3State *s, uint32_t logical,
             phys = i;
         }
     }
+    if (!ep && logical < DWC3_MAX_EPS && (s->dalepena & (1U << logical)) &&
+        ((s->eps[logical].cfg1 >> 25) & 0x1FU) == 0) {
+        ep = &s->eps[logical];
+        phys = logical;
+    }
     if (!ep) {
         goto nak;
     }
-    if (((ep->cfg0 >> 1) & 3U) != 2 || !(ep->cfg1 & (1U << 8))) {
+    ep_type = (ep->cfg0 >> 1) & 3U;
+    if ((ep_type != 2 && ep_type != 3) || !(ep->cfg1 & (1U << 8))) {
         strict_reply(s, "ERROR unsupported-bulk-out-endpoint\n");
         return;
     }
@@ -966,14 +1008,13 @@ static void strict_bulk_out(CxdDwc3State *s, uint32_t logical,
     capacity = le32_to_cpu(trb.size);
     if (((ctrl >> 4) & 0x3fU) != TRBCTL_NORMAL ||
         (ctrl & (TRB_CTRL_LST | TRB_CTRL_CHN)) != TRB_CTRL_LST ||
-        capacity > 1024) {
+        capacity > STRICT_BULK_MAX_BYTES) {
         strict_reply(s, "ERROR unsupported-bulk-out-trb\n");
         return;
     }
     max_packet = (ep->cfg0 >> 3) & 0x7ffU;
-    /* A full packet with residual capacity would not complete this TRB. */
-    if (!length || length > capacity || length > max_packet ||
-        (length == max_packet && length < capacity)) {
+    if (max_packet == 0 || length > max_packet ||
+        ep->out_offset > capacity || length > capacity - ep->out_offset) {
         strict_reply(s, "ERROR unsupported-bulk-out-length\n");
         return;
     }
@@ -984,28 +1025,37 @@ static void strict_bulk_out(CxdDwc3State *s, uint32_t logical,
         (ep->trb_addr < ring + ring_bytes && ring < ep->trb_addr + sizeof(trb)) ||
         !address_space_access_valid(&address_space_memory, ep->trb_addr,
                                     sizeof(trb), true, MEMTXATTRS_UNSPECIFIED) ||
-        dma_memory_write(&address_space_memory, address, payload,
-                         length, MEMTXATTRS_UNSPECIFIED) != MEMTX_OK) {
+        (length > 0 &&
+         dma_memory_write(&address_space_memory, address + ep->out_offset,
+                          payload, length, MEMTXATTRS_UNSPECIFIED) != MEMTX_OK)) {
         strict_reply(s, "ERROR payload-dma-write\n");
         return;
     }
-    trb.size = cpu_to_le32(capacity - length);
-    trb.ctrl = cpu_to_le32(ctrl & ~TRB_CTRL_HWO);
-    if (dma_memory_write(&address_space_memory, ep->trb_addr, &trb,
-                         sizeof(trb), MEMTXATTRS_UNSPECIFIED) != MEMTX_OK) {
-        strict_reply(s, "ERROR trb-dma-write\n");
-        return;
+    new_offset = ep->out_offset + length;
+    if (new_offset == capacity || length < max_packet) {
+        trb.size = cpu_to_le32(capacity - new_offset);
+        trb.ctrl = cpu_to_le32(ctrl & ~TRB_CTRL_HWO);
+        if (dma_memory_write(&address_space_memory, ep->trb_addr, &trb,
+                             sizeof(trb), MEMTXATTRS_UNSPECIFIED) != MEMTX_OK) {
+            strict_reply(s, "ERROR trb-dma-write\n");
+            return;
+        }
+        ep->trb_active = false;
+        ep->out_offset = 0;
+        ep->nrdy_pending = false;
+        dwc3_push_depevt(s, phys, DEPEVT_XFERCOMPLETE,
+                         DEPEVT_STATUS_LST |
+                         (length < max_packet ? DEPEVT_STATUS_SHORT : 0), 0);
+    } else {
+        ep->out_offset = new_offset;
+        ep->nrdy_pending = false;
     }
-    ep->trb_active = false;
-    ep->nrdy_pending = false;
-    dwc3_push_depevt(s, phys, DEPEVT_XFERCOMPLETE,
-                     DEPEVT_STATUS_LST |
-                     (length < max_packet ? DEPEVT_STATUS_SHORT : 0), 0);
     snprintf(reply, sizeof(reply), "ACK %u %u\n", logical, length);
     strict_reply(s, reply);
     return;
 
 notify_nak:
+    ep->out_offset = 0;
     if (!ep->nrdy_pending && (ep->cfg1 & (1U << 10))) {
         dwc3_push_depevt(s, phys, DEPEVT_XFERNOTREADY, 0, 0);
         ep->nrdy_pending = true;
@@ -1049,12 +1099,14 @@ static void strict_host_line(CxdDwc3State *s, const char *line)
         unsigned long ep_idx = strtoul(line + 4, &end, 10);
         if (!g_ascii_isdigit(line[4]) || *end != ' ' ||
             ep_idx < 2 || ep_idx >= DWC3_MAX_EPS ||
-            dwc3_ep_is_in(ep_idx)) {
+            dwc3_ep_is_in((uint32_t)ep_idx)) {
             strict_reply(s, "ERROR unsupported-host-command\n");
+        } else if (!strcmp(end + 1, "-")) {
+            strict_bulk_out(s, (uint32_t)ep_idx, NULL, 0);
         } else if (!strict_hex(end + 1, data, &length) || !length) {
             strict_reply(s, "ERROR out-encoding\n");
         } else {
-            strict_bulk_out(s, ep_idx, data, length);
+            strict_bulk_out(s, (uint32_t)ep_idx, data, length);
         }
     } else {
         strict_reply(s, "ERROR unsupported-host-command\n");
@@ -1066,16 +1118,49 @@ static void dwc3_handle_host_line(CxdDwc3State *s, const char *line)
     if (strcmp(line, "CONN") == 0) {
         s->host_connected = true;
         s->control_stage = 0;
+        s->dcfg &= ~(0x7FU << 3);
         s->eps[0].stalled = false;
         s->eps[1].stalled = false;
+        for (uint32_t i = 0; i < DWC3_MAX_EPS; i++) {
+            s->eps[i].out_offset = 0;
+            s->eps[i].nrdy_pending = false;
+        }
         if (s->dctl & DCTL_RUN_STOP) {
             dwc3_push_devt(s, DEVT_USBRESET, 0);
             dwc3_push_devt(s, DEVT_CONNECTDONE, 0);
         }
     } else if (strcmp(line, "DISC") == 0) {
         s->host_connected = false;
+        for (uint32_t i = 0; i < DWC3_MAX_EPS; i++) {
+            s->eps[i].out_offset = 0;
+            s->eps[i].nrdy_pending = false;
+        }
         if (s->dctl & DCTL_RUN_STOP) {
             dwc3_push_devt(s, DEVT_DISCONNECT, 0);
+        }
+    } else if (strcmp(line, "RESET") == 0) {
+        if (s->host_connected) {
+            s->control_stage = 0;
+            s->dcfg &= ~(0x7FU << 3);
+            s->eps[0].stalled = false;
+            s->eps[0].out_offset = 0;
+            s->eps[0].nrdy_pending = false;
+            s->eps[1].stalled = false;
+            s->eps[1].trb_active = false;
+            s->eps[1].out_offset = 0;
+            s->eps[1].nrdy_pending = false;
+            for (uint32_t i = 2; i < DWC3_MAX_EPS; i++) {
+                s->eps[i].stalled = false;
+                s->eps[i].trb_active = false;
+                s->eps[i].out_offset = 0;
+                s->eps[i].nrdy_pending = false;
+                s->eps[i].has_pending_out = false;
+                s->eps[i].pending_out_len = 0;
+            }
+            if (s->dctl & DCTL_RUN_STOP) {
+                dwc3_push_devt(s, DEVT_USBRESET, 0);
+                dwc3_push_devt(s, DEVT_CONNECTDONE, 0);
+            }
         }
     } else if (s->strict_ep0) {
         strict_host_line(s, line);
@@ -1203,6 +1288,7 @@ static const Property cxd_dwc3_props[] = {
     DEFINE_PROP_BOOL("captured-start-gate", CxdDwc3State, captured_start_gate, false),
     DEFINE_PROP_BOOL("strict-ep0", CxdDwc3State, strict_ep0, false),
     DEFINE_PROP_BOOL("strict-bulk", CxdDwc3State, strict_bulk, false),
+    DEFINE_PROP_BOOL("allow-setup-abort", CxdDwc3State, allow_setup_abort, false),
 };
 
 static const VMStateDescription vmstate_cxd_dwc3_ep = {

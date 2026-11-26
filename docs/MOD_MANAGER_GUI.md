@@ -14,6 +14,8 @@ Double-click [`scripts/launch_mod_manager.bat`](../scripts/launch_mod_manager.ba
 .\.venv\Scripts\python.exe -m tools.mod_manager_gui --web
 ```
 
+On macOS or Linux run `scripts/launch_mod_manager.sh` (same `.venv-gui/` provisioning, without `pywin32`/`comtypes`; on Linux it adds `pywebview[qt]` because an isolated venv cannot see the system GTK bindings). `scripts/build_mod_manager_exe.sh` is the matching PyInstaller packager.
+
 `launch_mod_manager.bat` isolates optional GUI/USB packages (`requirements-gui.txt`) in `.venv-gui/` so the preserved offline test `.venv/` stays untouched.
 
 ## What You Can Toggle

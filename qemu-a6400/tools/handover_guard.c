@@ -22,9 +22,15 @@
  *      park_window instructions ago and it had SCTLR.C == 0 there
  *
  *   G10 (with dma=FILE) every DMA contract is quiescent: see dma_load() below
+ *   G11 (with tlb=1 or strict_kernel=1) unconditional TLBI on the handover
+ *       CPU after turning SCTLR.C off (or SCTLR.M off) and before the final DSB
+ *   G12 (with gic=1 or strict_kernel=1) GICv1 distributor (0xF8001000) and CPU
+ *       interface (0xF8000100) disabled at entry if either was ever enabled
+ *   G13 (with l2=1 or strict_kernel=1) PL310 L2C-310 (0xF8002000) cleaned and
+ *       invalidated by way, cache-synced, and disabled if ever enabled
  *
- * Not checked (reported as such): outer (L2/PL310) cache maintenance, DMA
- * engines outside the contract file, interrupt-controller state, TLB maintenance.
+ * Unconfigured optional checks (outer L2, DMA, GIC, TLB, and DMA engines
+ * outside the contract file) are reported explicitly in the summary footer.
  *
  * Arguments:
  *   entry=0xADDR     handover target virtual address (required)
@@ -39,6 +45,10 @@
  *   events=N         log the first N tracked events (default 64)
  *   dma=FILE         DMA quiescence contracts (E0639); adds MMIO tracking
  *   strict_unknown=0 report "observe" engines without failing (default 1)
+ *   tlb=1            enable G11 TLB invalidation check (default 0)
+ *   gic=1            enable G12 GICv1 quiescence check (default 0)
+ *   l2=1             enable G13 PL310 outer cache clean & disable check (default 0)
+ *   strict_kernel=1  shorthand enabling tlb=1, gic=1, l2=1 (default 0)
  *   trace=START:END  log PC/PA/value of IO accesses in [START, END) (E0640)
  *   trace_limit=N    maximum traced accesses (default 256)
  *   trace_ram=1      trace CPU RAM accesses in the range as well (E0642); device
@@ -90,6 +100,19 @@ static unsigned g_min_setway = 1024;
 static unsigned g_park_window = 8;
 static bool g_exit;
 static unsigned g_events_max = 64;
+static bool g_check_tlb, g_check_gic, g_check_l2;
+
+#define GICC_CTLR_PA                0xF8000100ULL
+#define GICD_CTLR_PA                0xF8001000ULL
+#define L2X0_CTRL_PA                0xF8002100ULL
+#define L2X0_AUX_CTRL_PA            0xF8002104ULL
+#define L2X0_CACHE_SYNC_PA          0xF8002730ULL
+#define L2X0_CLEAN_INV_LINE_IDX_PA  0xF80027F8ULL
+#define L2X0_CLEAN_INV_WAY_PA       0xF80027FCULL
+#define L2X0_LOCKDOWN_START_PA      0xF8002900ULL
+#define L2X0_LOCKDOWN_END_PA        0xF8002940ULL
+#define L2X0_DEBUG_CTRL_PA          0xF8002F40ULL
+#define L2X0_MAX_IDX_WORDS          1024U /* up to 65,536 (way, set) slots */
 
 static RegSet g_regs[MAX_CPUS];
 static struct qemu_plugin_scoreboard *g_sb;
@@ -103,11 +126,57 @@ static bool g_checked;
 /* Handover-CPU state */
 static uint32_t g_sctlr_written;
 static bool g_sctlr_known;
-static uint64_t g_last_sctlr_seq, g_c_off_seq;
+static uint64_t g_last_sctlr_seq, g_c_off_seq, g_m_off_seq;
 static uint64_t g_dccisw_after_coff, g_dccisw_total, g_dc_cond;
 static uint64_t g_last_dccisw_seq, g_last_cmo_seq, g_last_ic_seq;
 static uint64_t g_last_dsb_seq, g_last_isb_seq;
+static uint64_t g_last_tlbi_seq, g_tlbi_total, g_tlbi_cond;
 static uint64_t g_dc_other;
+
+/* GICv1 Distributor & CPU Interface state (G12) */
+static bool g_ever_gicc_en, g_ever_gicd_en;
+static uint32_t g_last_gicc_ctlr, g_last_gicd_ctlr;
+
+/* PL310 L2C-310 state (G13) */
+static bool g_ever_l2_en, g_l2_aux_while_en;
+static uint32_t g_last_l2_ctrl, g_l2_aux_ctrl = 0x02020000U;
+static uint32_t g_l2_debug_ctrl, g_last_l2_clean_inv, g_l2_req_way_mask;
+static uint32_t g_l2_lockdown[16];
+static uint64_t g_l2_idx_bitmap[L2X0_MAX_IDX_WORDS];
+static unsigned g_l2_idx_seen_count;
+static uint64_t g_l2_last_en_seq, g_l2_clean_inv_way_seq, g_l2_clean_inv_poll_seq;
+static uint64_t g_l2_clean_inv_idx_seq, g_l2_sync_seq, g_l2_off_seq;
+
+static bool l2_all_unlocked(void)
+{
+    for (unsigned i = 0; i < G_N_ELEMENTS(g_l2_lockdown); i++) {
+        if (g_l2_lockdown[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void l2_reset_clean_progress(void)
+{
+    g_l2_clean_inv_way_seq = 0;
+    g_l2_clean_inv_poll_seq = 0;
+    g_l2_clean_inv_idx_seq = 0;
+    memset(g_l2_idx_bitmap, 0, sizeof(g_l2_idx_bitmap));
+    g_l2_idx_seen_count = 0;
+}
+
+static void l2_geometry(unsigned *ways_out, unsigned *sets_out,
+                        uint32_t *way_mask_out)
+{
+    unsigned ways = (g_l2_aux_ctrl & (1U << 16)) ? 16U : 8U;
+    unsigned ws_code = (g_l2_aux_ctrl >> 17) & 7U;
+    unsigned way_kb = (ws_code <= 1U) ? 16U :
+                      (ws_code >= 6U ? 512U : (8U << ws_code));
+    *ways_out = ways;
+    *sets_out = (way_kb * 1024U) / 32U;
+    *way_mask_out = (ways == 16U) ? 0xFFFFU : 0x00FFU;
+}
 
 /* Per-vCPU park state */
 static bool g_ran[MAX_CPUS];
@@ -427,6 +496,82 @@ static void on_mem(unsigned int cpu, qemu_plugin_meminfo_t info, uint64_t vaddr,
              PRIx64 " val=0x%08x\n", io ? "mmio" : "ram", cpu,
              (uint64_t)(uintptr_t)udata, lr_ok ? "" : "?", lr, store ? "W" : "R", pa, v);
     }
+    if (io && store) {
+        if (pa == GICC_CTLR_PA) {
+            g_last_gicc_ctlr = v;
+            g_ever_gicc_en |= (v & 1) != 0;
+        } else if (pa == GICD_CTLR_PA) {
+            g_last_gicd_ctlr = v;
+            g_ever_gicd_en |= (v & 1) != 0;
+        } else if (pa == L2X0_AUX_CTRL_PA) {
+            if (g_last_l2_ctrl & 1) {
+                g_l2_aux_while_en = true;
+            } else {
+                g_l2_aux_ctrl = v;
+            }
+        } else if (pa == L2X0_CTRL_PA) {
+            bool was_en = (g_last_l2_ctrl & 1) != 0;
+            g_last_l2_ctrl = v;
+            if (v & 1) {
+                g_ever_l2_en = true;
+                g_l2_last_en_seq = g_seq;
+                l2_reset_clean_progress();
+            } else if (was_en) {
+                g_l2_off_seq = g_seq;
+            }
+        } else if (pa == L2X0_CLEAN_INV_WAY_PA) {
+            unsigned ways = 0, sets = 0;
+            uint32_t req_mask = 0;
+            l2_geometry(&ways, &sets, &req_mask);
+            g_last_l2_clean_inv = v;
+            g_l2_req_way_mask = req_mask;
+            if ((g_last_l2_ctrl & 1) && g_c_off_seq && l2_all_unlocked() &&
+                !(g_l2_debug_ctrl & 0x3U) && (v & req_mask) == req_mask) {
+                g_l2_clean_inv_way_seq = g_seq;
+                g_l2_clean_inv_poll_seq = 0;
+            } else {
+                g_l2_clean_inv_way_seq = 0;
+                g_l2_clean_inv_poll_seq = 0;
+            }
+        } else if (pa == L2X0_CLEAN_INV_LINE_IDX_PA) {
+            unsigned ways = 0, sets = 0;
+            uint32_t req_mask = 0;
+            l2_geometry(&ways, &sets, &req_mask);
+            if ((g_last_l2_ctrl & 1) && g_c_off_seq && l2_all_unlocked() &&
+                !(g_l2_debug_ctrl & 0x3U)) {
+                unsigned way = (v >> 28) & 0xFU;
+                unsigned idx = (v >> 5) & 0xFFFU;
+                unsigned total = ways * sets;
+                if (way < ways && idx < sets &&
+                    total <= L2X0_MAX_IDX_WORDS * 64U) {
+                    unsigned bit = way * sets + idx;
+                    uint64_t mask = 1ULL << (bit & 63U);
+                    if (!(g_l2_idx_bitmap[bit >> 6] & mask)) {
+                        g_l2_idx_bitmap[bit >> 6] |= mask;
+                        g_l2_idx_seen_count++;
+                        if (g_l2_idx_seen_count == total) {
+                            g_l2_clean_inv_idx_seq = g_seq;
+                        }
+                    }
+                }
+            }
+        } else if (pa == L2X0_CACHE_SYNC_PA) {
+            g_l2_sync_seq = g_seq;
+        } else if (pa >= L2X0_LOCKDOWN_START_PA && pa < L2X0_LOCKDOWN_END_PA &&
+                   (pa & 3ULL) == 0) {
+            g_l2_lockdown[(pa - L2X0_LOCKDOWN_START_PA) >> 2] = v;
+        } else if (pa == L2X0_DEBUG_CTRL_PA) {
+            g_l2_debug_ctrl = v;
+        }
+    } else if (io && !store && pa == L2X0_CLEAN_INV_WAY_PA) {
+        unsigned ways = 0, sets = 0;
+        uint32_t req_mask = 0;
+        l2_geometry(&ways, &sets, &req_mask);
+        if (g_l2_clean_inv_way_seq && (g_last_l2_ctrl & 1) &&
+            !(v & req_mask)) {
+            g_l2_clean_inv_poll_seq = g_seq;
+        }
+    }
     for (unsigned i = 0; io && i < g_ndma; i++) {
         DmaContract *c = &g_dma[i];
         if (store && pa >= c->start && pa < c->end) {
@@ -564,11 +709,87 @@ static void check_and_report(unsigned cpu, uint64_t pc)
     if (g_ndma) {
         G("G10", dma_report(), "DMA engines quiescent (%u contracts from %s, strict_unknown=%d)",
           g_ndma, g_dma_path, g_strict_unknown);
-        outf("handover-guard: not checked: outer L2 cache, GIC state, TLB, "
-             "DMA engines outside the contract file\n");
     } else {
         outf("handover-guard: G10 not configured (no dma= contract file)\n");
-        outf("handover-guard: not checked: outer L2 cache, DMA quiescence, GIC state, TLB\n");
+    }
+    if (g_check_tlb) {
+        uint64_t tlbi_base = g_c_off_seq ? g_c_off_seq
+                             : (!(sctlr & 4) ? g_m_off_seq : 0);
+        bool tlbi_ok = tlbi_base && g_last_tlbi_seq > tlbi_base &&
+                       g_last_dsb_seq > g_last_tlbi_seq;
+        G("G11", tlbi_ok,
+          "TLBI seq=%" PRIu64 " after teardown off seq=%" PRIu64
+          " and before DSB seq=%" PRIu64 " (total %" PRIu64 ", conditional %" PRIu64 ")",
+          g_last_tlbi_seq, tlbi_base, g_last_dsb_seq, g_tlbi_total, g_tlbi_cond);
+    }
+    if (g_check_gic) {
+        if (!(g_ever_gicc_en || g_ever_gicd_en)) {
+            G("G12", true, "%s", "GIC never enabled");
+        } else {
+            bool gicc_ok = !g_ever_gicc_en || !(g_last_gicc_ctlr & 1);
+            bool gicd_ok = !g_ever_gicd_en || !(g_last_gicd_ctlr & 1);
+            G("G12", gicc_ok && gicd_ok,
+              "GIC quiesced (GICD_CTLR=%s0x%08x GICC_CTLR=%s0x%08x)",
+              g_ever_gicd_en ? "" : "never-enabled/", g_last_gicd_ctlr,
+              g_ever_gicc_en ? "" : "never-enabled/", g_last_gicc_ctlr);
+        }
+    }
+    if (g_check_l2) {
+        if (!g_ever_l2_en) {
+            G("G13", true, "%s", "PL310 never enabled");
+        } else {
+            bool way_done = g_l2_clean_inv_way_seq > g_l2_last_en_seq &&
+                            g_l2_clean_inv_way_seq > g_c_off_seq &&
+                            g_l2_clean_inv_poll_seq > g_l2_clean_inv_way_seq;
+            bool idx_done = g_l2_clean_inv_idx_seq > g_l2_last_en_seq &&
+                            g_l2_clean_inv_idx_seq > g_c_off_seq;
+            uint64_t clean_done_seq = way_done ? g_l2_clean_inv_poll_seq
+                                               : (idx_done ? g_l2_clean_inv_idx_seq : 0);
+            bool sync_ok = clean_done_seq && g_l2_sync_seq > clean_done_seq;
+            bool off_ok = sync_ok && !(g_last_l2_ctrl & 1) &&
+                          g_l2_off_seq > g_l2_sync_seq;
+            bool dsb_ok = off_ok && g_last_dsb_seq > g_l2_off_seq;
+            bool cfg_ok = !g_l2_aux_while_en && l2_all_unlocked() &&
+                          !(g_l2_debug_ctrl & 0x3U);
+            G("G13", clean_done_seq && sync_ok && off_ok && dsb_ok && cfg_ok,
+              "PL310 outer cache cleaned, synced and disabled "
+              "(en_seq=%" PRIu64 " coff_seq=%" PRIu64 " way_seq=%" PRIu64
+              " poll_seq=%" PRIu64 " idx_seq=%" PRIu64 " way=0x%04x/0x%04x "
+              "sync_seq=%" PRIu64 " off_seq=%" PRIu64 " dsb_seq=%" PRIu64
+              " CTRL=0x%08x unlocked=%d dbg=0x%x)",
+              g_l2_last_en_seq, g_c_off_seq, g_l2_clean_inv_way_seq,
+              g_l2_clean_inv_poll_seq, g_l2_clean_inv_idx_seq,
+              g_last_l2_clean_inv, g_l2_req_way_mask, g_l2_sync_seq,
+              g_l2_off_seq, g_last_dsb_seq, g_last_l2_ctrl,
+              l2_all_unlocked(), g_l2_debug_ctrl);
+        }
+    }
+    {
+        const char *unchecked[6];
+        int nu = 0;
+        if (!g_check_l2) {
+            unchecked[nu++] = "outer L2 cache";
+        }
+        if (!g_ndma) {
+            unchecked[nu++] = "DMA quiescence";
+        }
+        if (!g_check_gic) {
+            unchecked[nu++] = "GIC state";
+        }
+        if (!g_check_tlb) {
+            unchecked[nu++] = "TLB";
+        }
+        if (g_ndma) {
+            unchecked[nu++] = "DMA engines outside the contract file";
+        }
+        g_autoptr(GString) nc = g_string_new(NULL);
+        for (int i = 0; i < nu; i++) {
+            if (i) {
+                g_string_append(nc, ", ");
+            }
+            g_string_append(nc, unchecked[i]);
+        }
+        outf("handover-guard: not checked: %s\n", nc->len ? nc->str : "none");
     }
     outf("handover-guard: RESULT %s (%d failing)\n", fails ? "FAIL" : "PASS", fails);
 #undef G
@@ -653,6 +874,14 @@ static void on_exec(unsigned int cpu, void *udata)
                 } else {
                     g_c_off_seq = 0;
                     g_dccisw_after_coff = 0;
+                    l2_reset_clean_progress();
+                }
+                if (!(val & 1)) {
+                    if (!g_m_off_seq) {
+                        g_m_off_seq = g_seq;
+                    }
+                } else {
+                    g_m_off_seq = 0;
                 }
             }
         }
@@ -691,6 +920,12 @@ static void on_exec(unsigned int cpu, void *udata)
         g_last_isb_seq = g_seq;
         break;
     case EV_TLBI:
+        if (!op.cond) {
+            g_last_tlbi_seq = g_seq;
+            g_tlbi_total++;
+        } else {
+            g_tlbi_cond++;
+        }
         log_event(cpu, pc, op, 0, false);
         break;
     }
@@ -738,11 +973,13 @@ static void tb_trans(struct qemu_plugin_tb *tb, void *userdata)
 
         qemu_plugin_register_vcpu_insn_exec_inline_per_vcpu(
             insn, QEMU_PLUGIN_INLINE_ADD_U64, g_icount, 1);
-        if (g_ndma || g_trace_end) {
+        if (g_ndma || g_trace_end || g_check_gic || g_check_l2) {
+            enum qemu_plugin_mem_rw rw = (g_ndma || g_trace_end || g_check_l2)
+                                         ? QEMU_PLUGIN_MEM_RW : QEMU_PLUGIN_MEM_W;
             qemu_plugin_register_vcpu_mem_cb(insn, on_mem,
                                              g_trace_end ? QEMU_PLUGIN_CB_R_REGS
                                                          : QEMU_PLUGIN_CB_NO_REGS,
-                                             QEMU_PLUGIN_MEM_RW, (void *)(uintptr_t)pc);
+                                             rw, (void *)(uintptr_t)pc);
         }
         if (i == 0) {
             qemu_plugin_register_vcpu_insn_exec_cb(insn, on_first_exec,
@@ -845,6 +1082,15 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
             g_exec_limit = strtoul(v, NULL, 0);
         } else if (!strcmp(argv[i], "strict_unknown")) {
             g_strict_unknown = strtoul(v, NULL, 0) != 0;
+        } else if (!strcmp(argv[i], "tlb")) {
+            g_check_tlb = strtoul(v, NULL, 0) != 0;
+        } else if (!strcmp(argv[i], "gic")) {
+            g_check_gic = strtoul(v, NULL, 0) != 0;
+        } else if (!strcmp(argv[i], "l2")) {
+            g_check_l2 = strtoul(v, NULL, 0) != 0;
+        } else if (!strcmp(argv[i], "strict_kernel")) {
+            bool en = strtoul(v, NULL, 0) != 0;
+            g_check_tlb = g_check_gic = g_check_l2 = en;
         } else {
             fprintf(stderr, "handover-guard: unknown argument %s\n", argv[i]);
             return -1;
