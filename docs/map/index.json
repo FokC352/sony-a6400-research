@@ -13444,6 +13444,9 @@
     "0707-firmware-dump-sets-a6100-a6400.md": [
       "firmware-dumps"
     ],
+    "0708-qemu-write-only-zero-windows-boot-score.md": [
+      "qemu-a6400"
+    ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"
     ],
