@@ -195,7 +195,7 @@ evidence = ["E0505", "E0689"]
 id = "C17"
 entities = ["img.rcraw", "img.recording-paths"]
 status = "verified-offline"
-text = "In ILCE-6100 av-cam.bin (58b2118d...), RCRAW_EN (0x643EE0F4) and RDRAW_EN (0x643EE4B0) only drive FOPD (0x63777380) and AIF W0/W1 (0x63DC4D94/0x63DC4DA0); AIF0 W2 (0xF3002480 via 0x63DC4DA6 -> 0x63777064) is separately gated by 0x643EDF60, written via S_SetFOPD (0x63B483C0) <- 0x6393BDA8 <- SyncGetPrcFlow (0x63B2E80C, fc_prc_request_controller.cpp) and DFS clock state (0x6455F1B0 in {2, 3}), plus [0x644B8604] == 0 and ([r4,#8]|[r4,#9]) == 1."
+text = "In ILCE-6100 av-cam.bin (58b2118d...), RCRAW_EN (0x643EE0F4) and RDRAW_EN (0x643EE4B0) only drive FOPD (0x63777380) and AIF W0/W1 (0x63DC4D94/0x63DC4DA0); AIF0 W2 (0xF3002480 via 0x63DC4DA6 -> 0x63777064) is separately gated by 0x643EDF60 (S_SetFOPD 0x63B483C0 <- 0x6393BDA8 <- SyncGetPrcFlow 0x63B2E80C and DFS 0x6455F1B0 in {2, 3}), and CalcSdevOutSize (0x63DBEFBA) hard-caps SyncGetPrcFlow/Astra output at 640x360, 640x426, or 640x480."
 evidence = ["E9105"]
 
 [[frontier]]
@@ -204,7 +204,7 @@ title = "From RCRAW enable to an actual RAW/high-bit-depth recording"
 state = "open"
 entities = ["img.rcraw", "img.recording-paths"]
 evidence = ["E0634", "E0635", "E0621", "E9105"]
-next = "RCRAW_EN only feeds FOPD/W0; AIF0 W2 is gated by S_SetFOPD/SyncGetPrcFlow (0x643EDF60) and DFS (0x6455F1B0 in {2,3}). Next: qualify whether SyncGetPrcFlow/Astra (debug_out_phy_addr or W2 ch 0x14) admits full-sensor frames or whether SET_RAW_EXTERNAL_OUTPUT (0x2044/0x2042) is required."
+next = "Static proof (E9105) rules out both RCRAW_EN (FOPD/W0) and SyncGetPrcFlow/AIF0 W2 (CalcSdevOutSize <= 640x480) as full-sensor video RAW paths. Next: qualify SET_RAW_EXTERNAL_OUTPUT (0x63BEFFA0, 0x2044/0x2042 IPC, 0x00BF0274 gate) and IMX284/IDT 0xF3000200..0xF3000422 capture in Unicorn/QEMU and on real hardware."
 
 [[frontier]]
 id = "F02"

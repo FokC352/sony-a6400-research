@@ -28,14 +28,14 @@
 4. The sole runtime writer to `0x643EDF60` is `0x63B4AF1C` (via `0x63B47674` / `0x63B476F4` from `0x63B483C0` `S:S_SetFOPD`, whose sole caller is `0x6393C194` in `0x6393C0C4`).
 5. `0x6393C0C4` copies `[r4, #0x654..#0x67B]` and `[r4, #0x640]` (`0x63D4DD0E` checks `[r4, #0x640] == 1`) into `S_SetFOPD`. Those fields are populated by `0x6393BDA8`, which requires:
    - `0x63930A90([r4, #0xE94])->[+8]` having non-zero `u16` dimensions at `+0x6A8` and `+0x6AA`;
-   - `0x63DBAA82` (`0x63B2E80C`, `FC/Misc/fc_prc_request_controller.cpp::SyncGetPrcFlow`) returning `1` (checking `[0x645C1798+0x1200]->[+0xF4]` in `1..4`, `CheckSyncGetPrcFlow` `0x63B2E254`, `GetPrcRequestPreFlag` `0x63B2E4B8` / `0x63D8F2B0`, and optional `[r6, #0xF3]` -> `0x63B2C234` `debug_out_phy_addr`);
+   - `0x63DBAA82` (`0x63B2E80C`, `FC/Misc/fc_prc_request_controller.cpp::SyncGetPrcFlow`) returning `1` (which calls `0x63B2E254` `CheckSyncGetPrcFlow` and `0x63B2DF20` in `FC/Misc/fc_prc_controller.cpp`; both call `0x63DBEFBA` `CalcSdevOutSize`, which switches on `0..4` and hardcodes output dimensions `640×360`, `640×426`, or `640×480` — proving `Astra`/`SDEV` on `AIF0 W2` is also `<= 640×480` FOPD-sized, not full-sensor video);
    - `0x638F89DC()` (`[0x6455F1B0]` DFS clock state in `{2, 3}`); otherwise `0x6393BFEE` clears `[r4, #0x640]` back to `0`.
 
 ### 2.3 `SET_RAW_EXTERNAL_OUTPUT` (`0x63BEFFA0`)
 
-- Referenced from the command table at `0x645973A0` (`0x63BEFF9D` Thumb), `0x63BEFFA0` stores payload fields into `0x6442452C + 0x878/+0x87C/+0x880`, invokes `0x63BEF634`, and its companion handler `0x63BEF694` dispatches `0x2044` / `0x2042` messages via `0x63D51E90(4, ...)`; `0x63BF0034` gates on `[GOT+0x4A38]+0xE0` and `*[GOT+0x454] == 0x00BF0274`.
+- Referenced from the command table at `0x645973A0` (`0x63BEFF9D` Thumb), `0x63BEFFA0` stores payload fields into `0x6442452C + 0x878/+0x87C/+0x880`, invokes `0x63BEF634`, and its companion handler `0x63BEF694` dispatches `0x2044` / `0x2042` messages via `0x63D51E90(4, ...)`; command dispatcher `0x63BF06A6` calls `0x63BF0034`, which gates on `[GOT+0x4A38]+0xE0` and `*[GOT+0x454] == 0x00BF0274`.
 
 ## 3. Conclusion & Next Boundary
 
-- `RCRAW_EN` (`0x643EE0F4` / `ILCE-6400` `0x643D1810`) does not touch `AIF0 W2` (`0xF3002480`): `W2` is gated by `0x6393BDA8` → `SyncGetPrcFlow` (`0x63B2E80C`) → `DFS` (`0x6455F1B0 ∈ {2, 3}`) → `S_SetFOPD` (`0x63B483C0`) → `0x643EDF60`.
-- Next: qualify whether `SyncGetPrcFlow` / `Astra` (`[r6, #0xF3]` `debug_out_phy_addr` or `W2` channel `0x14`) can be configured for full-sensor dimensions vs FOPD-only `frm_canvas`, or whether `SET_RAW_EXTERNAL_OUTPUT` (`0x2044`/`0x2042`) is required for >8-bit video output.
+- Both `RCRAW_EN` (`0x643EE0F4` / `ILCE-6400` `0x643D1810` -> `0x63777380` `160..640` FOPD) **and** `S_SetFOPD` / `SyncGetPrcFlow` (`0x63B2E80C` -> `0x63DBEFBA` `CalcSdevOutSize` `640×360/426/480` -> `AIF0 W2` `0xF3002480`) are hard-capped at `<= 640×480` FOPD/Astra frames, not full-sensor >8-bit video RAW.
+- Remaining boundary for **F01**: qualifying `SET_RAW_EXTERNAL_OUTPUT` (`0x63BEFFA0`, `0x2044`/`0x2042` IPC, `0x00BF0274` gate) and `IMX284` / `IDT` `0xF3000200..0xF3000422` capture in Unicorn/QEMU and on real hardware (cannot be completed offline without `unicorn`, WSL/QEMU, and camera access).
