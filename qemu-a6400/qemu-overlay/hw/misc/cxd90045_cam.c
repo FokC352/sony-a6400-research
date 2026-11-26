@@ -1124,7 +1124,7 @@ static const VMStateDescription vmstate_cxd90045_aif = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
-        VMSTATE_UINT32_ARRAY(regs, Cxd90045AifState, AIF_MMIO_SIZE / 4),
+        VMSTATE_UINT32_ARRAY(regs, Cxd90045AifState, AIF_MAX_MMIO_SZ / 4),
         VMSTATE_UINT32(st, Cxd90045AifState),
         VMSTATE_UINT32(armed, Cxd90045AifState),
         VMSTATE_UINT32(pending, Cxd90045AifState),
