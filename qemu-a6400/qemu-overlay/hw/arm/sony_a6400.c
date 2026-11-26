@@ -4028,8 +4028,10 @@ static const Cxd90045F292Rule cxd90045_combophy_mon_rules[] = {
 };
 
 static const Cxd90045F292Rule cxd90045_pbl_aic0_rules[] = {
+    { 0x000, CXD90045_F292_RF, "av-cam PBL AIC0 CTRL +0x00" },
     { 0x004, CXD90045_F292_RF, "av-cam PBL AIC0 DICARB +0x04" },
     { 0x008, CXD90045_F292_RF, "av-cam PBL AIC0 EICARB +0x08" },
+    { 0x00C, CXD90045_F292_RF, "av-cam PBL AIC0 MASK +0x0C" },
     { 0x010, CXD90045_F292_RF, "av-cam PBL AIC0 DIC0_VMC +0x10" },
     { 0x014, CXD90045_F292_RF, "av-cam PBL AIC0 DIC1_VMC +0x14" },
     { 0x018, CXD90045_F292_RF, "av-cam PBL AIC0 EIC0_VMC +0x18" },
@@ -4047,9 +4049,9 @@ static const Cxd90045F292Rule cxd90045_cal_nor_rules[] = {
 /*
  * GP-DMAC Unit 1 at 0xF0103000 (av-cam 0x63a68c42..0x63a693cd, twin of Unit 0
  * at 0xF0102000): models IRQ_CLR (+0x08 W1C), IRQ_EN (+0x10), DMA_EN (+0x30),
- * ARB_MASK (+0x34), and Ch0/Ch3 CFG/CTRL (+0x10C/+0x110, +0x16C/+0x170 with
- * self-clearing BIT(0) start and BIT(18) busy == 0). Unlisted offsets still
- * log as cxd90045.gpdmac1.unmodelled.
+ * ARB_MASK (+0x34), and Ch0/Ch3/Ch4 CFG/CTRL (+0x10C/+0x110, +0x16C/+0x170,
+ * +0x18C/+0x190 with self-clearing BIT(0) start and BIT(18) busy == 0).
+ * Unlisted offsets still log as cxd90045.gpdmac1.unmodelled.
  */
 typedef struct Cxd90045GpDmac1 {
     MemoryRegion mmio;
@@ -4067,6 +4069,8 @@ static bool cxd90045_gpdmac1_known(hwaddr off)
     case 0x110:
     case 0x16C:
     case 0x170:
+    case 0x18C:
+    case 0x190:
         return true;
     default:
         return false;
@@ -4086,7 +4090,7 @@ static uint64_t cxd90045_gpdmac1_read(void *opaque, hwaddr off, unsigned size)
         return 0;
     }
     uint32_t v = s->regs[w >> 2];
-    if (w == 0x110 || w == 0x170) {
+    if (w == 0x110 || w == 0x170 || w == 0x190) {
         v &= ~((1U << 18) | 1U); /* busy == 0, start self-cleared */
     }
     return (v >> ((off & 3) * 8)) & (size >= 4 ? 0xFFFFFFFFU : ((1U << (size * 8)) - 1));
@@ -4111,7 +4115,7 @@ static void cxd90045_gpdmac1_write(void *opaque, hwaddr off, uint64_t v,
         return;
     }
     s->regs[w >> 2] = (uint32_t)v;
-    if ((w == 0x110 || w == 0x170) && (v & 1U)) {
+    if ((w == 0x110 || w == 0x170 || w == 0x190) && (v & 1U)) {
         s->regs[w >> 2] &= ~1U;
     }
 }
