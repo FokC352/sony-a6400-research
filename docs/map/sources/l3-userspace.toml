@@ -8,7 +8,7 @@ title = "L3 user space: original im.elf under InterpreterProbe"
 scope = """
 Original Sony user-space processes (interpreter, linker, libc/NPTL, UIPC/OSAL, DMM, timers, GRM, GLES/Sugilite) executed under InterpreterProbe with explicit guest contracts."""
 evidence_span = "see record index"
-reviewed = "2026-11-22"
+reviewed = "2026-11-26"
 records = [
   "E0001-E0008",
   "E0015-E0028",
@@ -27,6 +27,9 @@ records = [
   "E0530:gles",
   "E0657",
   "E9001-E9006",
+]
+deep_reviewed = [
+  "E0001-E0008",
 ]
 
 [[entity]]
@@ -56,6 +59,26 @@ kind = "module"
 name = "libObj.so (application object library)"
 inventory = ["firmware.elf:nflasha15_unpacked/lib/libObj.so"]
 summary = "20,860,436-byte application library holding the stella allocator, Appframework, GLES client and most application logic."
+
+[[entity]]
+id = "lib.libimdb"
+kind = "module"
+name = "libIMDB.so (module entry database)"
+inventory = ["firmware.elf:nflasha15_unpacked/lib/libIMDB.so"]
+summary = "Entry database that names modules and initializers; 197 entries before the sentinel, including appFw.so/Application_System_Init at entry 123."
+
+[[entity]]
+id = "src.original-init"
+kind = "source"
+name = "nflasha7 /sbin/init"
+inventory = ["firmware.elf:nflasha7_unpacked/sbin/init"]
+summary = "Original PID-1 init binary: 22 mount records, the /usr filesystem fallbacks and the /etc vfat overlay."
+
+[[entity]]
+id = "fs.original-ext2-images"
+kind = "source"
+name = "Original ext2 images (nflasha7, nflasha15)"
+summary = "1,024-byte-block, 128-byte-inode ext2 images used as the static guest namespace; 614 and 827 indexed nodes."
 
 [[entity]]
 id = "dev.uipc-osal"
@@ -305,6 +328,100 @@ entities = ["problem.l3-display"]
 status = "verified-offline"
 text = "After CreateFramebuffer the labelled single-pool run idles on a timer wait instead of reaching OSD."
 evidence = ["E9003"]
+
+[[claim]]
+id = "C28"
+entities = ["tool.interpreter-probe", "lib.loader-libc"]
+status = "verified-offline"
+text = "The original ld-2.11.2.so entered at 0x40000791 with im.elf mapped at its linked addresses executes 1,183 instructions and stops at Thumb svc #0 (00 df) at 0x40010b14 with r7=45 (brk) and r0=0; two fresh runs produced identical complete reports."
+evidence = ["E0003"]
+
+[[claim]]
+id = "C29"
+entities = ["tool.interpreter-probe", "lib.loader-libc"]
+status = "verified-offline"
+text = "With the brk policy the interpreter executes 2,222 instructions, services brk(0) with the initial break 0x15000 (the page-rounded end of the greatest application PT_LOAD) and stops at syscall 122 (uname) at 0x40010f78. The 64 MiB growth ceiling is an experiment policy, not a recovered camera RLIMIT_DATA."
+evidence = ["E0004"]
+
+[[claim]]
+id = "C30"
+entities = ["tool.interpreter-probe", "lib.loader-libc"]
+status = "verified-offline"
+text = "With brk-uname the interpreter reaches 3,091 instructions and stops at access(/etc/ld.so.preload, mode 4). The UTS record at vmlinux.bin offset 0x3c5a90 supplies sysname Linux, release 3.0.27_nl-rt106+ and version '#1 SMP PREEMPT RT Mon May 27 14:09:40 JST 2019'; nodename, machine and domainname stay guarded, and the observed path read only the release field."
+evidence = ["E0005"]
+note = "The vmlinux build date differs from the live camera's kernel banner (E0073); they are different builds and neither is claimed to replace the other."
+
+[[claim]]
+id = "C31"
+entities = ["lib.loader-libc", "tool.interpreter-probe"]
+status = "verified-offline"
+text = "The files policy executes 5,078 instructions: the linker checks /etc/ld.so.preload, attempts /etc/ld.so.cache and searches ARM/TLS library directories, receives guest ENOENT for absent paths in the complete static namespace, and stops at stat64 of the existing /lib directory with stat64_success_structure_not_implemented (exit 2)."
+evidence = ["E0006"]
+
+[[claim]]
+id = "C32"
+entities = ["lib.loader-libc", "process.im-elf"]
+status = "verified-offline"
+text = "The proposed combined namespace has 1,439 paths and 120 symlinks, including /lib/ld-linux.so.3 -> ld-2.11.2.so and /lib/libc.so.6 -> libc-2.11.2.so; all 14 static candidate objects for im.elf, its interpreter and its DT_NEEDED closure resolve with no missing name under the declared search paths."
+evidence = ["E0002"]
+note = "The /lib and /usr/lib search paths are explicit assumptions, not a recovered loader search order; nflasha7 is provisionally / and nflasha15 /usr."
+
+[[claim]]
+id = "C33"
+entities = ["lib.loader-libc", "fs.original-ext2-images"]
+status = "verified-offline"
+text = "The metadata policy executes 6,493 instructions, opens /usr/lib/libjemalloc_ds.so.1 as fd 3 (2,984 bytes, SHA-256 c22384a7b19929eaa0b2cfc71b950071488eac0af631e815de26c1df47ea3e01), reads its first 512 bytes and stops at the first st_dev read at PC 0x40004b9e (unverified_metadata_read). GuestStat64 is a deliberate 104-byte partial ARM EABI layout (size at offset 48, allocation count at 64, inode at 96); device numbers and timestamps stay guarded."
+evidence = ["E0007"]
+
+[[claim]]
+id = "C34"
+entities = ["fs.original-ext2-images"]
+status = "verified-offline"
+text = "The source images are ext2 with 1,024-byte blocks and 128-byte inodes: nflasha7 (SHA-256 305e289ecc1d768544af71c83d58ce23ec4d232be1e7572d9d4f68f0f12188cc) has 614 indexed nodes and nflasha15 (SHA-256 0e9b19144b021d8b1b1908554a7ac9cdc6f8b9599eeeb1d53118b8832a296e56) has 827."
+evidence = ["E0007"]
+
+[[claim]]
+id = "C35"
+entities = ["src.original-init", "process.im-elf"]
+status = "verified-offline"
+text = "init contains 22 mount records: the mnts table is at 0x13308 (440 bytes, 20-byte records) and the helper at 0x8eac calls mount at 0x8ece. The /usr sequence tries /dev/dnflasha15 ext2, /dev/nflasha15 ext2, then nflasha15 cramfs and vfat; main mounts /dev/nflasha10 at /etc (vfat, flags 0xc0ed0490, data posix_attr)."
+evidence = ["E0008"]
+
+[[claim]]
+id = "C36"
+entities = ["src.original-init", "tool.interpreter-probe"]
+status = "verified-offline"
+text = "With --respect-runtime-mounts the interpreter stops after 3,091 instructions at the first /etc access with unsupported_filesystem / runtime_namespace_not_supplied instead of returning ENOENT; the snapshot metadata experiment still reproduces its 6,493-instruction boundary."
+evidence = ["E0008"]
+
+[[claim]]
+id = "C37"
+entities = ["process.im-elf", "lib.libobj", "src.original-init"]
+status = "verified-offline"
+text = "The static UI-host chain is init -> bootin.elf -> im.elf: init main loads /usr/bin/bootin.elf at 0x9b54 and calls run_bg_process at 0x9b56; bootin builds 'im.elf s &' and 'im.elf g &' commands at 0x9910/0x991a and calls system at 0x991c; im.elf's routine at 0xb200 selects /usr/lib/libObj.so at 0xb20e-0xb216, calls dlopen at 0xb21c, dlsym at 0xb240 and the resolved function at 0xb254."
+evidence = ["E0002"]
+note = "The branches are conditional; which entry and boot mode select this chain is still open, and the record does not prove complete UI startup."
+
+[[claim]]
+id = "C38"
+entities = ["lib.libimdb", "lib.libobj"]
+status = "verified-offline"
+text = "libIMDB's entry database yields 197 entries before the sentinel (base +0x84, stride 0x2c, sentinel 0x28); entry 123 at 0xf0f8 names appFw.so and Application_System_Init with selector 0x07fb, and libObj exports Application_System_Init at 0x84320d (Thumb), which calls osal_create_thread at 0x843256 and osal_set_cpu at 0x84325e."
+evidence = ["E0002"]
+
+[[claim]]
+id = "C39"
+entities = ["process.im-elf", "lib.loader-libc"]
+status = "verified-offline"
+text = "474 ARM ELF files parse without errors: 85 executables, 276 shared objects and 113 relocatable objects. im.elf and WS_SubProcess.elf specify interpreter //lib/ld-linux.so.3, and mount.conf declares nflasha3 at /system, nflasha7 at /rootfs and nflasha15 at /usr; these are static declarations, not runtime mounts."
+evidence = ["E0001"]
+
+[[claim]]
+id = "C40"
+entities = ["tool.interpreter-probe", "lib.libobj"]
+status = "verified-offline"
+text = "A loader defect discarded the implicit REL addend for R_ARM_ABS32 and R_ARM_GLOB_DAT; the inventory counts 22,286 ABS32 entries in libObj.so and 69,983 in viewUnified2.so. The bounded loader now preserves addends and Thumb state, wraps to ARM32, maps the page-aligned PT_LOAD span and rolls back after a failed load."
+evidence = ["E0001"]
 
 [[frontier]]
 id = "F01"

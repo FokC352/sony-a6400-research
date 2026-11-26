@@ -10,15 +10,15 @@
 <rect x="24" y="68" width="186.763" height="26" rx="5" fill="#21262d" stroke="#30363d" stroke-width="1" />
 <rect x="94.92" y="68" width="115.843" height="26" rx="5" fill="#8957e5" />
 <text x="33" y="85" fill="#c9d1d9" font-size="10.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">map areas</text>
-<text x="103.92" y="85" fill="#ffffff" font-size="10.5" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">15 · 96 entities</text>
+<text x="103.92" y="85" fill="#ffffff" font-size="10.5" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">15 · 99 entities</text>
 <rect x="218.763" y="68" width="181.354" height="26" rx="5" fill="#21262d" stroke="#30363d" stroke-width="1" />
 <rect x="272.043" y="68" width="128.074" height="26" rx="5" fill="#2ea043" />
 <text x="227.763" y="85" fill="#c9d1d9" font-size="10.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">claims</text>
-<text x="281.043" y="85" fill="#ffffff" font-size="10.5" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">323 · 47 retracted</text>
+<text x="281.043" y="85" fill="#ffffff" font-size="10.5" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">336 · 47 retracted</text>
 <rect x="408.117" y="68" width="217.574" height="26" rx="5" fill="#21262d" stroke="#30363d" stroke-width="1" />
 <rect x="473.157" y="68" width="152.534" height="26" rx="5" fill="#1f6feb" />
 <text x="417.117" y="85" fill="#c9d1d9" font-size="10.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">evidence</text>
-<text x="482.157" y="85" fill="#ffffff" font-size="10.5" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">738 indexed · 262 deep</text>
+<text x="482.157" y="85" fill="#ffffff" font-size="10.5" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">738 indexed · 270 deep</text>
 <rect x="633.691" y="68" width="89.3904" height="26" rx="5" fill="#21262d" stroke="#30363d" stroke-width="1" />
 <rect x="692.851" y="68" width="30.2304" height="26" rx="5" fill="#d29922" />
 <text x="642.691" y="85" fill="#c9d1d9" font-size="10.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">hazards</text>
@@ -54,11 +54,11 @@
 <text x="40" y="332" fill="#9da7b3" font-size="8" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">source: status:kernel_drivers</text>
 <text x="880" y="332" fill="#9da7b3" font-size="8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">0 verified · 0 decoded · 0 frontier</text>
 <text x="40" y="353" fill="#c9d1d9" font-size="10.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Firmware ELF files (executables and libraries)</text>
-<text x="880" y="353" fill="#f0f6fc" font-size="9.5" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">13 / 474 files · 2.7%</text>
+<text x="880" y="353" fill="#f0f6fc" font-size="9.5" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">15 / 474 files · 3.2%</text>
 <rect x="40" y="359" width="840" height="8" rx="4" fill="#21262d" />
-<rect x="40" y="359" width="23.038" height="8" rx="4" fill="#2ea043" />
+<rect x="40" y="359" width="26.5823" height="8" rx="4" fill="#2ea043" />
 <text x="40" y="378" fill="#9da7b3" font-size="8" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">source: E0001</text>
-<text x="880" y="378" fill="#9da7b3" font-size="8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">13 verified · 0 decoded · 0 frontier</text>
+<text x="880" y="378" fill="#9da7b3" font-size="8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">15 verified · 0 decoded · 0 frontier</text>
 <text x="40" y="399" fill="#c9d1d9" font-size="10.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">im.elf static plugins</text>
 <text x="880" y="399" fill="#8b949e" font-size="9.5" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">0 / 198 plugins · 0%</text>
 <rect x="40" y="405" width="840" height="8" rx="4" fill="#21262d" />
@@ -89,7 +89,7 @@
 <text x="40" y="670" fill="#c9d1d9" font-size="9.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">L2 full-system kernel boot (UnicornMachine)</text>
 <text x="434" y="670" fill="#8b949e" font-size="9" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">88/88 · 47/10</text>
 <text x="40" y="690" fill="#c9d1d9" font-size="9.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">L3 user space: original im.elf under InterpreterProbe</text>
-<text x="434" y="690" fill="#8b949e" font-size="9" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">0/81 · 27/3</text>
+<text x="434" y="690" fill="#8b949e" font-size="9" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">8/81 · 40/3</text>
 <text x="40" y="710" fill="#c9d1d9" font-size="9.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Menu model and touch UI</text>
 <text x="434" y="710" fill="#8b949e" font-size="9" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">0/55 · 14/0</text>
 <text x="40" y="730" fill="#c9d1d9" font-size="9.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Mod Loader and firmware mods</text>
@@ -119,9 +119,9 @@
 <rect x="40" y="950" width="394" height="6" rx="3" fill="#21262d" />
 <rect x="40" y="950" width="380.653" height="6" rx="3" fill="#8957e5" />
 <text x="40" y="976" fill="#c9d1d9" font-size="9.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Evidence records deep-reviewed (read in full)</text>
-<text x="434" y="976" fill="#f0f6fc" font-size="9" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">262 / 738 · 35.5%</text>
+<text x="434" y="976" fill="#f0f6fc" font-size="9" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">270 / 738 · 36.6%</text>
 <rect x="40" y="982" width="394" height="6" rx="3" fill="#21262d" />
-<rect x="40" y="982" width="139.875" height="6" rx="3" fill="#2ea043" />
+<rect x="40" y="982" width="144.146" height="6" rx="3" fill="#2ea043" />
 <text x="486" y="609" fill="#f0f6fc" font-size="9.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">F01  Remaining ILCE-6400A flash boundary</text>
 <text x="486" y="623" fill="#f0883e" font-size="8.5" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="start">open · a6400a-acquisition</text>
 <text x="486" y="645" fill="#f0f6fc" font-size="9.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">F01  Reserved first MiB: what is at 0x000F8000 and what else may be read?</text>
