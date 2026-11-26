@@ -26,6 +26,7 @@ records = [
   "0687-photo-movie-fixes.md",
   "E0688",
   "E0689",
+  "E9105",
 ]
 
 [[entity]]
@@ -190,13 +191,20 @@ status = "inference"
 text = "Combining a GPU ARW 2.3 16-byte block unpack + shared-memory RCD demosaic + fused 3x3 matrix kernel, uniform reciprocity log-exposure offsets (preserving 100% roll cache residency), 256 MB pooled Metal / single-VkCommandBuffer batched Vulkan 0.5 MP fused tiles, and selective Float16 exposure/halation/grain storage (keeping LogExposure, Curves, FilmDensity and FilmTiles SATs in Float32) bounds a 36-exposure 24 MP roll within ~198-342 MB dirty memory (~18-38 s projected flagship wall time), while lut_bridge.fit_cube_to_isp fits a 33^3 stock .cube onto BIONZ X's 5x9x9 RefAdr[0] LUT for EVF framing."
 evidence = ["E0505", "E0689"]
 
+[[claim]]
+id = "C17"
+entities = ["img.rcraw", "img.recording-paths"]
+status = "verified-offline"
+text = "In ILCE-6100 av-cam.bin (58b2118d...), RCRAW_EN (0x643EE0F4) and RDRAW_EN (0x643EE4B0) only drive FOPD (0x63777380) and AIF W0/W1 (0x63DC4D94/0x63DC4DA0); AIF0 W2 (0xF3002480 via 0x63DC4DA6 -> 0x63777064) is separately gated by 0x643EDF60, written via S_SetFOPD (0x63B483C0) <- 0x6393BDA8 <- SyncGetPrcFlow (0x63B2E80C, fc_prc_request_controller.cpp) and DFS clock state (0x6455F1B0 in {2, 3}), plus [0x644B8604] == 0 and ([r4,#8]|[r4,#9]) == 1."
+evidence = ["E9105"]
+
 [[frontier]]
 id = "F01"
 title = "From RCRAW enable to an actual RAW/high-bit-depth recording"
 state = "open"
 entities = ["img.rcraw", "img.recording-paths"]
-evidence = ["E0634", "E0635", "E0621"]
-next = "RCRAW_EN persists, but no RAW or >8-bit recording is produced yet; the external-output gate and AIF write paths remain to be qualified on hardware."
+evidence = ["E0634", "E0635", "E0621", "E9105"]
+next = "RCRAW_EN only feeds FOPD/W0; AIF0 W2 is gated by S_SetFOPD/SyncGetPrcFlow (0x643EDF60) and DFS (0x6455F1B0 in {2,3}). Next: qualify whether SyncGetPrcFlow/Astra (debug_out_phy_addr or W2 ch 0x14) admits full-sensor frames or whether SET_RAW_EXTERNAL_OUTPUT (0x2044/0x2042) is required."
 
 [[frontier]]
 id = "F02"

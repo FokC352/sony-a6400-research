@@ -4,7 +4,7 @@
 
 - **Scope:** av-cam CC 3D LUT and gamma, the Arrivederci/ARRI color work, debayer/PSF/detail stages, RAW develop, IMX284, Open Gate and high-bit-depth paths, AIF DMA, the RCRAW probes, and the candidate mobile GPU 36-exposure ARW roll pipelines (SpektraFilm and fotufilm-engine).
 - **Evidence span:** see record index; last reviewed 2026-11-24.
-- **Deep review:** 0 of 44 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 0 of 45 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -14,8 +14,8 @@ The evidence records are authoritative; follow the links before acting on a clai
 ### <a id="f01"></a>F01 - From RCRAW enable to an actual RAW/high-bit-depth recording
 
 - **State:** `open`
-- **Next:** RCRAW_EN persists, but no RAW or >8-bit recording is produced yet; the external-output gate and AIF write paths remain to be qualified on hardware.
-- **Evidence:** [E0634](../evidence/0634-a6400-hardware-rcraw-post-recording-check.md), [E0635](../evidence/0635-a6400-rcraw-fopd-vs-full-pipeline.md), [E0621](../evidence/0621-a6400-10bit-and-raw-video-paths.md)
+- **Next:** RCRAW_EN only feeds FOPD/W0; AIF0 W2 is gated by S_SetFOPD/SyncGetPrcFlow (0x643EDF60) and DFS (0x6455F1B0 in {2,3}). Next: qualify whether SyncGetPrcFlow/Astra (debug_out_phy_addr or W2 ch 0x14) admits full-sensor frames or whether SET_RAW_EXTERNAL_OUTPUT (0x2044/0x2042) is required.
+- **Evidence:** [E0634](../evidence/0634-a6400-hardware-rcraw-post-recording-check.md), [E0635](../evidence/0635-a6400-rcraw-fopd-vs-full-pipeline.md), [E0621](../evidence/0621-a6400-10bit-and-raw-video-paths.md), [E9105](../evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md)
 
 ### <a id="f02"></a>F02 - Android Vulkan SpektraFilm darkroom prototype in CinemaHUD
 
@@ -90,6 +90,7 @@ Current knowledge:
 
 - **C06** `OFFLINE` Open Gate 3:2 recording, 4K/6K low-fps paths and 10-bit / 11-14-bit RAW/YCC video paths were mapped statically and in Unicorn; sabin ZIMA_AVC encoders cap at 8-bit 4:2:0. ([E0578](../evidence/0578-a6400-open-gate-3-2-recording-feasibility.md), [E0620](../evidence/0620-a6400-open-gate-4k-and-6k-paths.md), [E0621](../evidence/0621-a6400-10bit-and-raw-video-paths.md), [E0627](../evidence/0627-a6400-zima-avc-8bit-ceiling.md))
 - **C07** `OFFLINE` The AIF DMA channel table and the SET_RAW_EXTERNAL_OUTPUT gate were mapped; AIF0/1 W1/W2 semantics and the RCRAW DDR path decoded; RCRAW line/block calculation verified in Unicorn. ([E0622](../evidence/0622-a6400-aif-dma-channel-map-and-raw-external-gate.md), [E0623](../evidence/0623-a6400-aif-w1-w2-rcraw-registers.md), [E0624](../evidence/0624-a6400-rcraw-calc-unicorn.md))
+- **C17** `OFFLINE` In ILCE-6100 av-cam.bin (58b2118d...), RCRAW_EN (0x643EE0F4) and RDRAW_EN (0x643EE4B0) only drive FOPD (0x63777380) and AIF W0/W1 (0x63DC4D94/0x63DC4DA0); AIF0 W2 (0xF3002480 via 0x63DC4DA6 -> 0x63777064) is separately gated by 0x643EDF60, written via S_SetFOPD (0x63B483C0) <- 0x6393BDA8 <- SyncGetPrcFlow (0x63B2E80C, fc_prc_request_controller.cpp) and DFS clock state (0x6455F1B0 in {2, 3}), plus [0x644B8604] == 0 and ([r4,#8]|[r4,#9]) == 1. ([E9105](../evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md))
 
 ### <a id="img-rcraw"></a>RCRAW block (0xF3031xxx) and its probes
 
@@ -105,6 +106,7 @@ Current knowledge:
 - **C08** `OFFLINE` RCRAW_W2_Probe and RCRAW_Enable_Test SMOD v2 builds were verified in Unicorn and QEMU, including ON/OFF/reload cycles and the AIF0 W1/W2 baseline; CALC callers, the quantization selector and the global enable gate are mapped. ([E0625](../evidence/0625-rcraw-w2-probe-smod-v2-unicorn.md), [E0626](../evidence/0626-rcraw-w2-probe-qemu-execution.md), [E0628](../evidence/0628-a6400-rcraw-callers-and-0xf30317c8.md), [E0629](../evidence/0629-a6400-rcraw-quant-selector-and-0xf3031xxx.md), [E0630](../evidence/0630-rcraw-enable-test-smod-v2.md), [E0631](../evidence/0631-rcraw-enable-test-qemu-reload-and-aif-baseline.md))
 - **C09** `PHYSICAL` On a real ILCE-6400, a read-only MSC baseline, a RAM-only Mod Loader v2 + RCRAW_Enable_Test run and a post-recording check show RCRAW_EN = 1 persisting across recording. ([E0632](../evidence/0632-a6400-hardware-rcraw-aif-msc-baseline.md), [E0633](../evidence/0633-a6400-hardware-rcraw-enable-test-live-run.md), [E0634](../evidence/0634-a6400-hardware-rcraw-post-recording-check.md))
 - **C10** `OFFLINE` RCRAW_SET (0x63B2D560) and 0x63767ACC map to the 160..640 FOPD sub-path, with hardware G1/G2 readback. ([E0635](../evidence/0635-a6400-rcraw-fopd-vs-full-pipeline.md))
+- **C17** `OFFLINE` In ILCE-6100 av-cam.bin (58b2118d...), RCRAW_EN (0x643EE0F4) and RDRAW_EN (0x643EE4B0) only drive FOPD (0x63777380) and AIF W0/W1 (0x63DC4D94/0x63DC4DA0); AIF0 W2 (0xF3002480 via 0x63DC4DA6 -> 0x63777064) is separately gated by 0x643EDF60, written via S_SetFOPD (0x63B483C0) <- 0x6393BDA8 <- SyncGetPrcFlow (0x63B2E80C, fc_prc_request_controller.cpp) and DFS clock state (0x6455F1B0 in {2, 3}), plus [0x644B8604] == 0 and ([r4,#8]|[r4,#9]) == 1. ([E9105](../evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md))
 
 ### <a id="app-android-spektrafilm"></a>CinemaHUD Android SpektraFilm engine (candidate)
 
@@ -137,7 +139,7 @@ Current knowledge:
 
 Related: [av-cam CC 3D LUT, color matrix and EC gamma](#img-cc-lut), [Debayer, dcv_psf / spica and detail stages](#img-detail-psf), [CinemaHUD Android SpektraFilm engine (candidate)](#app-android-spektrafilm)
 
-## Record index (44 files)
+## Record index (45 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -187,3 +189,4 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0687](../evidence/0687-photo-movie-fixes.md) | 2026-11-22 | Photo/Movie fixes: bypass precedence, Movie-domain fit, locked Gamma path |  |  |
 | [E0688](../evidence/0688-android-gpu-spektrafilm-film-roll-architecture.md) | 2026-11-24 | Candidate SpektraFilm Mobile GPU & 36-Exposure Film Roll Architecture for CinemaHUD Android |  |  |
 | [E0689](../evidence/0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md) | 2026-11-24 | Candidate `fotufilm-engine` Mobile GPU & 36-Exposure Film Roll Architecture |  | Iterative chemical reaction-diffusion PDEs or Metal compute shaders inside LayeredMetalTransport.swift were hypothesized prior to source inspection and refuted by reading Sources/FotufilmCore/, Sources/FotufilmHalide/, a |
+| [E9105](../evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md) | 2026-11-26 | ILCE-6100 `RCRAW` / `AIF0 W2` (`0xF3002480`) and `S_SetFOPD` Gate Chain |  |  |
