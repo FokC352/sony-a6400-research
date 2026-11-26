@@ -68,6 +68,26 @@
 set -euo pipefail
 E="$(cd "$(dirname "$0")" && pwd)"
 
+file_size() {
+    stat -Lc '%s' -- "$1" 2>/dev/null || stat -Lf '%z' -- "$1"
+}
+
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum -- "$1" | cut -d' ' -f1
+    else
+        shasum -a 256 -- "$1" | cut -d' ' -f1
+    fi
+}
+
+sha256_check() {
+    if sha256sum --version 2>/dev/null | grep -q GNU; then
+        sha256sum --check --status -
+    else
+        shasum -a 256 -c -s -
+    fi
+}
+
 if [ "${ZMA1_JPEG_FILL:-0}" = 1 ] && [ "${ZMA1_STARTUP:-0}" != 1 ]; then
     echo "ZMA1_JPEG_FILL=1 requires ZMA1_STARTUP=1" >&2
     exit 1
@@ -97,7 +117,7 @@ if [ -n "$SUBMICRO_RX" ]; then
         echo 'SUBMICRO_PAGE= skips replay for serial-only diagnostics; it does not boot the powered menu.' >&2
         exit 1
     fi
-    if ! printf '%s  %s\n' "$SUBMICRO_SHA" "$SUBMICRO_RX" | sha256sum -c --status -; then
+    if ! printf '%s  %s\n' "$SUBMICRO_SHA" "$SUBMICRO_RX" | sha256_check; then
         printf 'E0527 sub-micro replay SHA-256 mismatch: %s\n' "$SUBMICRO_RX" >&2
         exit 1
     fi
@@ -151,14 +171,14 @@ if [ -n "${IDT_CAM:-}" ]; then
     if [ "$PREPARED" != 1 ] || ! printf '%s  %s\n' \
         dd8f8d0cc74ad4b70100e5728cf8b159b5155e7fb50eaf1147b99c9054740209 "$AVCAM" \
         d7a9ae09d2195c1b5151e60f3ff1344715b619631cfad608d9a5fcf7a876c618 "$D/nflasha3-Image" \
-        | sha256sum --check --status; then
+        | sha256_check; then
         echo 'IDT_CAM requires the verified captured ILCE-6400 kernel and av-cam.' >&2
         exit 1
     fi
-    if [ ! -f "$IDT_CAM" ] || [ "$(stat -Lc '%s' -- "$IDT_CAM")" != 176528 ] ||
+    if [ ! -f "$IDT_CAM" ] || [ "$(file_size "$IDT_CAM")" != 176528 ] ||
         ! printf '%s  %s\n' \
         d21e2c0b6b87f49f70ccf451781093037db8093b5a378587ec0029a16dcaef92 "$IDT_CAM" \
-        | sha256sum --check --status; then
+        | sha256_check; then
         echo 'IDT_CAM is not the original 176528-byte sabin/idt_cam.bin.' >&2
         exit 1
     fi
@@ -180,7 +200,7 @@ if [ -n "${IDT_CAM:-}" ]; then
     cp -- "$IDT_CAM" "$R/idt_cam.bin"
     if ! printf '%s  %s\n' \
         d21e2c0b6b87f49f70ccf451781093037db8093b5a378587ec0029a16dcaef92 "$R/idt_cam.bin" \
-        | sha256sum --check --status; then
+        | sha256_check; then
         echo 'IDT_CAM changed during staging.' >&2
         exit 1
     fi
@@ -200,14 +220,14 @@ if [ "${LINUX_BOOT:-0}" = 1 ]; then
     INITRD_LOAD_PA=0x10000000
 fi
 if [ -n "$INITRD_OVERRIDE" ]; then
-    ISZ=$(stat -Lc '%s' -- "$INITRD_OVERRIDE")
+    ISZ=$(file_size "$INITRD_OVERRIDE")
     CMD=$(printf '%s\n' "$CMD" | sed -E "s#initrd=0x[0-9a-fA-F]+,[^ ]+#initrd=${INITRD_LOAD_PA},0x$(printf '%08x' "$ISZ")#")
     if ! printf '%s\n' "$CMD" | grep -q "initrd=${INITRD_LOAD_PA},0x$(printf '%08x' "$ISZ")"; then
         echo "Could not size the initrd= token for the INITRD override." >&2
         exit 1
     fi
 elif [ "${LINUX_BOOT:-0}" = 1 ] && [ -f "$D/nflasha3-initrd" ]; then
-    ISZ=$(stat -Lc '%s' -- "$D/nflasha3-initrd")
+    ISZ=$(file_size "$D/nflasha3-initrd")
     CMD=$(printf '%s\n' "$CMD" | sed -E "s#initrd=0x[0-9a-fA-F]+,[^ ]+#initrd=${INITRD_LOAD_PA},0x$(printf '%08x' "$ISZ")#")
 fi
 
@@ -224,7 +244,7 @@ rm -f "$R/emmc-overlay.qcow2"
 ULOGIO="${ULOGIO-$E/../firmware/extracted_zve10_v203_packman/firmware.tar_unpacked/0800_appli/setting/ulogio.bin}"
 if [ -n "$ULOGIO" ] || [ -n "${SETTING_FILES:-}" ]; then
     SET_OFF=$((0x1000000)); SET_LEN=$((0x1400000))
-    dd if="$D/emmc.img" of="$R/setting-part.img" bs=1M skip=$((SET_OFF >> 20)) \
+    dd if="$D/emmc.img" of="$R/setting-part.img" bs=1048576 skip=$((SET_OFF >> 20)) \
        count=$((SET_LEN >> 20)) status=none
     if [ -n "$ULOGIO" ]; then
         python3 "$E/tools/fat_add_file.py" --if-absent "$R/setting-part.img" "$ULOGIO" ulogio.bin >&2
@@ -269,11 +289,11 @@ fi
 MACHINE="${MACHINE_NAME:-sony-a6400}"
 if [ -n "$SUBMICRO_RX" ]; then
     # A retained extract can itself be in RUN_DIR; never overwrite it.
-    SUBMICRO_STAGED=$(mktemp -- "$R/submicro-frames.XXXXXX")
+    SUBMICRO_STAGED=$(mktemp "$R/submicro-frames.XXXXXX")
     dd if="$SUBMICRO_RX" bs=1 skip="$SUBMICRO_SKIP" count=384 status=none \
         > "$SUBMICRO_STAGED"
     # Check what will actually be replayed, even if the source changed after preflight.
-    printf '%s  %s\n' "$SUBMICRO_FRAME_SHA" "$SUBMICRO_STAGED" | sha256sum -c --quiet - >&2
+    printf '%s  %s\n' "$SUBMICRO_FRAME_SHA" "$SUBMICRO_STAGED" | sha256_check >&2
     MACHINE="$MACHINE,submicro-frames=$SUBMICRO_STAGED"
 fi
 if [ -n "${CAMERA_MODEL:-}" ]; then
@@ -410,22 +430,31 @@ KERNEL_PATH="${KERNEL_OVERRIDE:-$D/nflasha3-Image}"
 INITRD_PATH="${INITRD_OVERRIDE:-$D/nflasha3-initrd}"
 if [ -n "$KERNEL_OVERRIDE" ]; then
     printf 'kernel override: %s %s\n' \
-        "$(sha256sum -- "$KERNEL_PATH" | cut -d' ' -f1)" "$KERNEL_PATH" >&2
+        "$(sha256_of "$KERNEL_PATH")" "$KERNEL_PATH" >&2
 fi
 if [ -n "$INITRD_OVERRIDE" ]; then
     printf 'initrd override: %s %s (%s bytes)\n' \
-        "$(sha256sum -- "$INITRD_PATH" | cut -d' ' -f1)" "$INITRD_PATH" \
-        "$(stat -Lc '%s' -- "$INITRD_PATH")" >&2
+        "$(sha256_of "$INITRD_PATH")" "$INITRD_PATH" \
+        "$(file_size "$INITRD_PATH")" >&2
 fi
 DTB_ARGS=()
 if [ -n "$DTB_OVERRIDE" ]; then
     printf 'dtb override: %s %s (%s bytes)\n' \
-        "$(sha256sum -- "$DTB_OVERRIDE" | cut -d' ' -f1)" "$DTB_OVERRIDE" \
-        "$(stat -Lc '%s' -- "$DTB_OVERRIDE")" >&2
+        "$(sha256_of "$DTB_OVERRIDE")" "$DTB_OVERRIDE" \
+        "$(file_size "$DTB_OVERRIDE")" >&2
     DTB_ARGS=(-dtb "$DTB_OVERRIDE")
 fi
 T=()
-if [ "${TIMEOUT:-0}" != 0 ]; then T=(timeout "$TIMEOUT"); fi
+if [ "${TIMEOUT:-0}" != 0 ]; then
+    if command -v timeout >/dev/null 2>&1; then
+        T=(timeout "$TIMEOUT")
+    elif command -v gtimeout >/dev/null 2>&1; then
+        T=(gtimeout "$TIMEOUT")
+    else
+        echo "TIMEOUT=$TIMEOUT requested but neither timeout nor gtimeout is installed." >&2
+        exit 1
+    fi
+fi
 exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial "${SERIAL:-mon:stdio}" \
   -kernel "$KERNEL_PATH" -initrd "$INITRD_PATH" "${DTB_ARGS[@]}" \
   -append "$CMD ${EXTRA:-}" \

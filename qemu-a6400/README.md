@@ -5,7 +5,7 @@ Out-of-tree QEMU v11.1.3 overlay and patch for the Sony ILCE-6400 (`CXD90045` / 
 An explicit [adapted ZV-E10 menu experiment](../docs/ZVE10_ADAPTED_MENU.md)
 uses this board with a separate boot policy and checked private inputs.
 
-## Prerequisites (WSL2 Ubuntu)
+## Prerequisites (WSL2 Ubuntu or macOS)
 
 Install the QEMU build dependencies in WSL2 Ubuntu:
 
@@ -14,6 +14,16 @@ sudo apt update
 sudo apt install -y build-essential git meson ninja-build pkg-config \
   libglib2.0-dev libpixman-1-dev libfdt-dev zlib1g-dev python3-venv \
   python3-tomli libsdl2-dev
+```
+
+Or on macOS (Apple Silicon / Intel via Homebrew):
+
+```bash
+brew install meson ninja pkg-config glib pixman sdl2 dtc
+bash qemu-a6400/setup-qemu.sh
+cd "$HOME/sony-a6400-qemu-11.1.3/build"
+../configure --target-list=arm-softmmu --enable-sdl --disable-werror --disable-docs
+ninja -j"$(sysctl -n hw.ncpu)" qemu-system-arm qemu-img qemu-io
 ```
 
 ## Setup & Build
