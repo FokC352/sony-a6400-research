@@ -110,6 +110,33 @@ class TestSetupUsbDebugger(unittest.TestCase):
             self.assertTrue(unpacked["baseline_compatible"])
             self.assertIn('target_id="ilce_9999"', unpacked["spec_snippet"])
 
+    def test_run_setup_fails_cleanly_when_senser_times_out(self):
+        import io
+        import types
+        from contextlib import redirect_stdout
+        from unittest import mock
+        from tools import setup_usb_debugger
+
+        fake_usb_mod = types.SimpleNamespace(senserShellCommand=lambda **kw: None)
+        fake_pmca = types.SimpleNamespace(commands=types.SimpleNamespace(usb=fake_usb_mod))
+        buf = io.StringIO()
+        with (
+            mock.patch.object(setup_usb_debugger, "ensure_pmca_on_path", return_value=Path(".")),
+            mock.patch.object(
+                setup_usb_debugger,
+                "detect_msc_camera",
+                return_value={"model_name": "ILCE-6400", "model_code": "0032850340", "firmware_version": "2.00"},
+            ),
+            mock.patch.object(setup_usb_debugger, "ensure_payload_binaries", return_value={}),
+            mock.patch.dict("sys.modules", {"pmca": fake_pmca, "pmca.commands": fake_pmca.commands, "pmca.commands.usb": fake_usb_mod}),
+            redirect_stdout(buf),
+        ):
+            rc = setup_usb_debugger.run_setup(skip_post_boot_test=True)
+        out = buf.getvalue()
+        self.assertEqual(rc, 1)
+        self.assertIn("[ERROR] Senser service-mode session did not complete", out)
+        self.assertNotIn("Deployed and verified!", out)
+
 
 if __name__ == "__main__":
     unittest.main()

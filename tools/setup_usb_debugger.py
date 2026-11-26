@@ -346,6 +346,16 @@ def run_setup(
     print('[3/4] Inspecting camera driver/ABI via Senser...')
     senserShellCommand(driverName='libusb', complete=on_senser)
 
+    if outcome['branch'] is None:
+        print('\n[ERROR] Senser service-mode session did not complete (nothing was deployed).')
+        if sys.platform == 'win32':
+            print(
+                '        On Windows, service mode re-enumerates under PID 054C:0336 (separate from MSC 054C:0CA8).\n'
+                '        If 054C:0336 appears in Device Manager / Zadig without WinUSB, bind WinUSB (or libusbK)\n'
+                '        to 054C:0336 as well, then power-cycle the camera back to MSC and re-run.'
+            )
+        return 1
+
     if outcome['branch'] == 'onboarding':
         bundle_path = outcome['bundle_path']
         print('\n[RESULT] Camera is not yet qualified for automatic install.')
