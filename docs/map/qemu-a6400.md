@@ -4,7 +4,7 @@
 
 - **Scope:** The QEMU sony-a6400 board: captured four-core boot, av-cam and CamCore sequencing, SIO/sub-micro, display/rear panel, Ydet/CamPig, live-view frame, contributor scores, Custom OS handover guards and DMA engines.
 - **Evidence span:** see record index; last reviewed 2026-11-25.
-- **Deep review:** 60 of 72 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 60 of 73 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -115,7 +115,7 @@ Do not rely on:
 
 - ~~The LIRO ram section filled through 0xF30A is a separate sub-core firmware image.~~ **R01** `RETRACTED` ([E0642](../evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md)); see C13: The LIRO ram section copied by the work DMA is av-cam's own initialised RW data (1,878 references from av-cam code), not a sub-core image.
 
-## Record index (72 files)
+## Record index (73 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -181,6 +181,7 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0652](../evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md) | 2026-11-19 | QEMU a6400 late black-screen scanout and buffer capture | yes |  |
 | [E0665](../evidence/0665-qemu-boots-from-the-public-updater.md) | 2026-11-21 | QEMU reaches the a6400 shooting screen and the step-32 wait without a camera capture | yes |  |
 | [E0690](../evidence/0690-qemu-camcore-f300-f312-register-models-boot-score.md) | 2026-11-19 | Boot score for the CamCore 0xF3000000 and 0xF3120000 register models |  |  |
+| [E0691](../evidence/0691-qemu-clkrst3-f290-zero-rows-boot-score.md) | 2026-11-24 | Boot score for the clkrst3 0xF2900000 write-only register rows |  |  |
 | [E0692](../evidence/0692-qemu-camcore-f291-write-only-rows-boot-score.md) | 2026-11-24 | Boot score for three write-only rows in the CamCore 0xF2910000 table |  |  |
 | [E0693](../evidence/0693-qemu-gate-force-probe-step-26-stimulus.md) | 2026-11-20 | Opt-in gate-force-probe for the step-26 gate (declared stimulus) |  | one correction: the forced write is value-equivalent to the earlier debugger force (it |
 | [E0695](../evidence/0695-qemu-camcore-f312-write-only-row-boot-score.md) | 2026-11-24 | Boot score for one write-only row in the CamCore 0xF3120000 table |  |  |

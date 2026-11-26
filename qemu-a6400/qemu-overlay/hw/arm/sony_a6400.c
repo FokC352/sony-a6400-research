@@ -2421,7 +2421,10 @@ typedef struct SonyUsbVbus {
 
 static bool sony_a6400_usb_vbus_test;
 static bool sony_a6400_usb_cid_high;
-static bool sony_a6400_dwc3_gadget;
+/* L0154: default on so the E0590 model serves the guest's GCTL/PHY/DCTL
+ * accesses; unknown offsets log as cxd90045-dwc3 unimp and the certified
+ * boot produces none. */
+static bool sony_a6400_dwc3_gadget = true;
 static bool sony_a6400_pl330_dma;
 static SonyUsbVbus *sony_a6400_usb_vbus;
 
@@ -3438,6 +3441,38 @@ static const Cxd90045F292Rule cxd90045_f022_rules[] = {
       "write-only; the value is stored but never read back (L0114)" },
     { 0x11084, CXD90045_F292_ZERO,
       "write-only; the value is stored but never read back (L0114)" },
+};
+
+/*
+ * clkrst3 clock/reset bank at PA 0xF2900000, size 0x1000 (F-0104, L0116).
+ * The kernel clk-init and av-cam clock code write these offsets; the reads
+ * the catch-all used to answer are 0, and the rows below keep that value.
+ * Every row is ZERO (read 0, writes stored and never read back), so the
+ * guest sees no change.  +0x030 gets NO row on purpose: its read is
+ * branched on (F-0104), so a constant would be a guess, and it must still
+ * log as cxd90045.f290.unmodelled.  The 4 KiB page is the only range this
+ * window covers; the LDEC page at 0xF2903000 and the 0xF2800000 regfile are
+ * separate.  Unruled offsets still log, so the window is not a blanket zero.
+ */
+static const Cxd90045F292Rule cxd90045_f290_rules[] = {
+    { 0x004, CXD90045_F292_ZERO,
+      "write/read pair; read returns 0, the catch-all value (F-0104) (L0116)" },
+    { 0x008, CXD90045_F292_ZERO,
+      "write/read pair; read returns 0, the catch-all value (F-0104) (L0116)" },
+    { 0x028, CXD90045_F292_ZERO,
+      "kernel clk-init write 0x60122F60..0x60123044; no read (F-0104) (L0116)" },
+    { 0x034, CXD90045_F292_ZERO,
+      "kernel clk-init write; no read (F-0104) (L0116)" },
+    { 0x038, CXD90045_F292_ZERO,
+      "kernel clk-init write; no read (F-0104) (L0116)" },
+    { 0x044, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0A4, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0A8, CXD90045_F292_ZERO,
+      "write-only; the value is stored but never read back (F-0104) (L0116)" },
+    { 0x0C4, CXD90045_F292_ZERO,
+      "kernel clk-init write/read pair; read returns 0 (F-0104) (L0116)" },
 };
 
 typedef struct Cxd90045F292 {
@@ -4581,6 +4616,14 @@ static void sony_a6400_init(MachineState *machine)
                          ARRAY_SIZE(cxd90045_f022_rules));
 
     /*
+     * L0116: clkrst3 clock/reset bank at 0xF2900000 (F-0104), priority -600
+     * as in L0108.  Rules above; +0x030 has no rule and still logs.
+     */
+    cxd90045_f292_create(sysmem, 0xF2900000ULL, 0x1000ULL,
+                         "cxd90045.f290", cxd90045_f290_rules,
+                         ARRAY_SIZE(cxd90045_f290_rules));
+
+    /*
      * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
      * /kmod/i2c.ko, channel 0/1 at 0xF2401000/0xF2402000, IRQ 199/200).
      * Only the driver-defined start/config handshake and the message-setup
@@ -5073,7 +5116,7 @@ static void sony_cxd90045_common_machine_init(MachineClass *mc,
                                    sony_get_dwc3_gadget,
                                    sony_set_dwc3_gadget);
     object_class_property_set_description(OBJECT_CLASS(mc), "dwc3-gadget",
-        "Enable the experimental CXD90045 DWC3 gadget controller at 0xF020C000 and IRQ 229 (E0590)");
+        "Enable the CXD90045 DWC3 gadget controller at 0xF020C000 and IRQ 229 (E0590, default on)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "pl330-dma",
                                    sony_get_pl330_dma,
                                    sony_set_pl330_dma);

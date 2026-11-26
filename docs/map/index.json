@@ -12230,6 +12230,9 @@
     "0690-qemu-camcore-f300-f312-register-models-boot-score.md": [
       "qemu-a6400"
     ],
+    "0691-qemu-clkrst3-f290-zero-rows-boot-score.md": [
+      "qemu-a6400"
+    ],
     "0692-qemu-camcore-f291-write-only-rows-boot-score.md": [
       "qemu-a6400"
     ],
