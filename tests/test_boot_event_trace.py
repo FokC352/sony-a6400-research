@@ -2,7 +2,10 @@
 import unittest
 from pathlib import Path
 
-from test_interpreter_probe import make_elf
+try:
+    from tests.test_interpreter_probe import make_elf
+except ModuleNotFoundError:
+    from test_interpreter_probe import make_elf
 from project_paths import PROJECT_ROOT
 from tools.research.boot_event_trace import run_window, RETURN
 

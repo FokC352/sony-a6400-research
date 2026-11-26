@@ -8,7 +8,10 @@ from project_paths import PROJECT_ROOT
 from src.a6400.execution.guest_threads import GuestThreads
 from src.a6400.execution.guest_uipc import GuestUipc, UIPC_CMD_SND_SYNC_DIRECT
 from src.a6400.execution.interpreter_probe import InterpreterProbe
-from test_interpreter_probe import make_elf
+try:
+    from tests.test_interpreter_probe import make_elf
+except ModuleNotFoundError:
+    from test_interpreter_probe import make_elf
 
 BASE = 0x50000000
 
