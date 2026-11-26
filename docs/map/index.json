@@ -7,6 +7,12 @@
       "reviewed": "2026-11-22",
       "evidence_span": "see record index"
     },
+    "firmware-dumps": {
+      "title": "Firmware dump sets and partition identity",
+      "doc": "docs/map/firmware-dumps.md",
+      "reviewed": "2026-11-26",
+      "evidence_span": "see record index"
+    },
     "hardware-live": {
       "title": "Live hardware observations and peripheral contracts",
       "doc": "docs/map/hardware-live.md",
@@ -157,6 +163,62 @@
       "anchor": "a6400a-acquisition.md#soc-miscreg-efuse",
       "active_claims": [
         "C04"
+      ],
+      "inactive_claims": []
+    },
+    "source.a6100-dump": {
+      "area": "firmware-dumps",
+      "name": "ILCE-6100 Ver.1.00 partition set",
+      "kind": "source",
+      "address": null,
+      "aliases": [
+        "a6100-dump-20261120",
+        "dumps/a6100-dump-20261120",
+        "38115_03.2021040601"
+      ],
+      "anchor": "firmware-dumps.md#source-a6100-dump",
+      "active_claims": [
+        "C01",
+        "C03",
+        "C05",
+        "C06",
+        "C07"
+      ],
+      "inactive_claims": []
+    },
+    "source.a6400-dump": {
+      "area": "firmware-dumps",
+      "name": "ILCE-6400 read-only partition set",
+      "kind": "source",
+      "address": null,
+      "aliases": [
+        "a6400-nflasha-readonly",
+        "dumps/a6400-nflasha-readonly",
+        "38111_06.2021081003"
+      ],
+      "anchor": "firmware-dumps.md#source-a6400-dump",
+      "active_claims": [
+        "C02",
+        "C04",
+        "C05",
+        "C07"
+      ],
+      "inactive_claims": []
+    },
+    "proc.dump-integrity": {
+      "area": "firmware-dumps",
+      "name": "Dump integrity and cross-body comparison",
+      "kind": "process",
+      "address": null,
+      "aliases": [
+        "dump-inventory",
+        "sha256sum -c"
+      ],
+      "anchor": "firmware-dumps.md#proc-dump-integrity",
+      "active_claims": [
+        "C01",
+        "C02",
+        "C05"
       ],
       "inactive_claims": []
     },
@@ -1024,9 +1086,11 @@
       "aliases": [],
       "anchor": "mods.md#mod-a6100-picture-profile",
       "active_claims": [
-        "C04"
+        "C16"
       ],
-      "inactive_claims": []
+      "inactive_claims": [
+        "C04"
+      ]
     },
     "mod.zve10-adapted-menu": {
       "area": "mods",
@@ -1157,7 +1221,8 @@
         "C05",
         "C08",
         "C11",
-        "C13"
+        "C13",
+        "C14"
       ],
       "inactive_claims": []
     },
@@ -6917,6 +6982,13 @@
     ],
     "E0414": [
       {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C02",
+        "file": "0414-nflasha-readonly-device-check-and-boot-area-dumps.md",
+        "status": "verified-physical"
+      },
+      {
         "area": "l2-kernel-boot",
         "kind": "claim",
         "id": "C26",
@@ -6933,6 +7005,13 @@
     ],
     "E0415": [
       {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C04",
+        "file": "0415-nflasha-boot-decode-and-full-emulation-roadmap.md",
+        "status": "verified-offline"
+      },
+      {
         "area": "l2-kernel-boot",
         "kind": "claim",
         "id": "C27",
@@ -6943,6 +7022,13 @@
         "area": "l2-kernel-boot",
         "kind": "claim",
         "id": "C28",
+        "file": "0415-nflasha-boot-decode-and-full-emulation-roadmap.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "platform-multidevice",
+        "kind": "claim",
+        "id": "C14",
         "file": "0415-nflasha-boot-decode-and-full-emulation-roadmap.md",
         "status": "verified-offline"
       }
@@ -8646,6 +8732,19 @@
       }
     ],
     "E0524": [
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C02",
+        "file": "0524-reproducible-captured-qemu-boot-and-liro-waits.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "hazard",
+        "id": "H02",
+        "file": "0524-reproducible-captured-qemu-boot-and-liro-waits.md"
+      },
       {
         "area": "qemu-a6400",
         "kind": "claim",
@@ -10663,6 +10762,82 @@
         "status": "verified-offline"
       }
     ],
+    "E0707": [
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C01",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C02",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C03",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "inference"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C04",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C05",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C06",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C07",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "inference"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "hazard",
+        "id": "H01",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "hazard",
+        "id": "H02",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md"
+      },
+      {
+        "area": "platform-multidevice",
+        "kind": "claim",
+        "id": "C14",
+        "file": "0707-firmware-dump-sets-a6100-a6400.md",
+        "status": "verified-offline"
+      }
+    ],
     "E9001": [
       {
         "area": "l3-userspace",
@@ -10719,11 +10894,32 @@
     ],
     "E9101": [
       {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C03",
+        "file": "9101-a6100-picture-profile-gate.md",
+        "status": "inference"
+      },
+      {
         "area": "mods",
         "kind": "claim",
         "id": "C04",
         "file": "9101-a6100-picture-profile-gate.md",
-        "status": "verified-physical"
+        "status": "retracted"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C16",
+        "file": "9101-a6100-picture-profile-gate.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "platform-multidevice",
+        "kind": "claim",
+        "id": "C14",
+        "file": "9101-a6100-picture-profile-gate.md",
+        "status": "verified-offline"
       }
     ],
     "E9102": [
@@ -10732,10 +10928,24 @@
         "kind": "claim",
         "id": "C04",
         "file": "9102-a6100-picture-profile-camera-apply.md",
-        "status": "verified-physical"
+        "status": "retracted"
+      },
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C16",
+        "file": "9102-a6100-picture-profile-camera-apply.md",
+        "status": "verified-offline"
       }
     ],
     "E9103": [
+      {
+        "area": "mods",
+        "kind": "claim",
+        "id": "C16",
+        "file": "9103-a6100-mod-loader-port.md",
+        "status": "verified-offline"
+      },
       {
         "area": "mods",
         "kind": "claim",
@@ -12087,9 +12297,11 @@
       "l2-kernel-boot"
     ],
     "0414-nflasha-readonly-device-check-and-boot-area-dumps.md": [
+      "firmware-dumps",
       "l2-kernel-boot"
     ],
     "0415-nflasha-boot-decode-and-full-emulation-roadmap.md": [
+      "firmware-dumps",
       "l2-kernel-boot"
     ],
     "0416-cxd90045-qemu-updater-bringup.md": [
@@ -12288,6 +12500,7 @@
       "usb-ep0"
     ],
     "0477-bionz-x-platform-map-13-updaters.md": [
+      "firmware-dumps",
       "platform-multidevice"
     ],
     "0478-movie-eye-af-stored-never-read-platform-wide.md": [
@@ -12432,6 +12645,7 @@
       "usb-emulated"
     ],
     "0524-reproducible-captured-qemu-boot-and-liro-waits.md": [
+      "firmware-dumps",
       "qemu-a6400"
     ],
     "0525-a6400a-jiritsu-senser-offline-packets.md": [
@@ -13018,6 +13232,9 @@
     "0706-qemu-watchdog-default-on-boot-score.md": [
       "qemu-a6400"
     ],
+    "0707-firmware-dump-sets-a6100-a6400.md": [
+      "firmware-dumps"
+    ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"
     ],
@@ -13037,6 +13254,7 @@
       "l3-userspace"
     ],
     "9101-a6100-picture-profile-gate.md": [
+      "firmware-dumps",
       "mods"
     ],
     "9102-a6100-picture-profile-camera-apply.md": [

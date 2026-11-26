@@ -105,6 +105,7 @@ safety-critical physical areas, then completed or stable areas. Sizes come from
 | 2 Physical safety | hardware-live (done, M3 slice) | 0 left | - | - |
 | 2 | native-debugger | 32 | 160 KiB | 2 |
 | 2 | a6400a-acquisition | 18 | 251 KiB | 3 |
+| 2 | firmware-dumps | 6 | 72 KiB | 1 |
 | 2 | usb-composite | 164 | 708 KiB | 8 |
 | 3 Stable areas | imaging-pipeline | 35 | 221 KiB | 2 |
 | 3 | menu-touch-ui | 55 | 272 KiB | 3 |

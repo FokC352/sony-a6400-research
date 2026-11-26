@@ -80,9 +80,18 @@ evidence = ["E0633"]
 [[claim]]
 id = "C04"
 entities = ["mod.a6100-picture-profile"]
-status = "verified-physical"
+status = "retracted"
 text = "The ILCE-6100 Picture Profile gate was located, an opt-in unlock designed and the redirect applied to a physical ILCE-6100."
 evidence = ["E9101", "E9102"]
+superseded_by = "C16"
+note = "E9102 is a procedure only and states it was not executed on a camera; E9101's unlock receipt is a QEMU boot."
+
+[[claim]]
+id = "C16"
+entities = ["mod.a6100-picture-profile"]
+status = "verified-offline"
+text = "The ILCE-6100 Ver.1.00 Picture Profile gate was located in a captured dump and the two-byte `.dynsym` redirect was validated offline and in a `PP_UNLOCK=1` QEMU boot with an A/B drawn-menu pair. E9102 records the physical-camera procedure only; no application to a physical ILCE-6100 is recorded. E9103 (2026-11-21) states the camera still had no injection path, and E9104 (2026-11-24) later runs PhotonBin on hardware through an SD boot path but does not apply the PP redirect."
+evidence = ["E9101", "E9102", "E9103"]
 
 [[claim]]
 id = "C05"
@@ -168,3 +177,15 @@ state = "not-started"
 entities = ["mod.film-roll-36", "mod.loader-v2"]
 evidence = ["E0680:photonbin", "E0681", "E0688", "E0689"]
 next = "Prototype an SMNU stock-selector (with fitted 5x9x9 RefAdr[0] EVF preview restoring 0x6444a044 on exit) and MakeRawInfoArea 36-shot roll manifest in QEMU, and extend card_read.c for 2-level DCIM/100MSDCF traversal + 16 KiB-aligned zero-scratch USTAR/ZIP-STORE streaming over a backpressured socket within the 8 MiB MemFree floor."
+
+[[drift]]
+doc = "README.md"
+section = "Mods table, Film Simulations & Studio and ILCE-6100 rows"
+observed = "Calls Film Simulations & Studio hardware-verified on ILCE-6100 and ILCE-6400 and cites E9103, and the ILCE-6100 row lists Film Simulations and Picture Profile unlock under Verified (Hardware Mods). E9103 is an offline port record that states no mod was executed and the camera had no injection path; E9102 is a procedure only."
+current = "The physical ILCE-6100 evidence is E9104 (PhotonBin 6MP and SMNU v4), not film simulations or the Picture Profile redirect; film-simulation work is offline (E0682, E0683, E0687) and the Picture Profile unlock is QEMU-only (C16)."
+
+[[drift]]
+doc = "docs/CURRENT_STATE.md"
+section = "Active Track Summary, Multi-Device Platform row"
+observed = "Says ILCE-6100 1.00 Mod Loader v2 + PhotonBin 6MP are hardware-verified citing E9103 and E9104 together."
+current = "Only E9104 is physical; E9103 is the offline Mod Loader v2 port milestone."
