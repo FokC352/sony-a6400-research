@@ -168,9 +168,9 @@ def prepare(config_path: Path, output: Path, *, allow_unacquired_zero_fill: bool
     if config.get('schema_version') != 1:
         raise ValueError('Unsupported workstation input configuration')
     target_id = config.get('target_id', 'ilce_6400')
-    if target_id != 'ilce_6400':
+    if target_id not in ('ilce_6400', 'ilce_6400a'):
         raise ValueError(
-            f'Captured QEMU inputs are pinned to ilce_6400 and are not reused for {target_id}'
+            f'Captured QEMU inputs are pinned to ilce_6400/ilce_6400a and are not reused for {target_id}'
         )
     root = Path(config['dump_dir']).resolve()
     if output.is_relative_to(root) or root.is_relative_to(output):
