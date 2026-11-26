@@ -242,9 +242,19 @@ class QemuHandoverGuardTests(unittest.TestCase):
         text_ok = self.check('PL310_ENABLE+PL310_TEARDOWN', set(), l2=True)
         self.assertIn('G13 PASS PL310 outer cache cleaned, synced and disabled', text_ok)
 
+        text_idx = self.check(
+            'PL310_ENABLE+PL310_TEARDOWN+PL310_LINE_IDX_FLUSH', set(), l2=True
+        )
+        self.assertIn('G13 PASS PL310 outer cache cleaned, synced and disabled', text_idx)
+
         for variant in (
             'PL310_ENABLE',
             'PL310_ENABLE+PL310_TEARDOWN+PL310_NO_CLEAN',
+            'PL310_ENABLE+PL310_TEARDOWN+PL310_NO_POLL',
+            'PL310_ENABLE+PL310_TEARDOWN+PL310_PARTIAL_WAY',
+            'PL310_ENABLE+PL310_TEARDOWN+PL310_OFF_BEFORE_CLEAN',
+            'PL310_ENABLE+PL310_TEARDOWN+PL310_LOCKDOWN',
+            'PL310_ENABLE+PL310_CLEAN_BEFORE_C_OFF+PL310_TEARDOWN+PL310_NO_CLEAN',
             'PL310_ENABLE+PL310_TEARDOWN+PL310_NO_SYNC',
             'PL310_ENABLE+PL310_TEARDOWN+PL310_KEEP_ON',
         ):

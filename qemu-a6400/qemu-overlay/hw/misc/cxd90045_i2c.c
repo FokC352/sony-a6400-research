@@ -245,6 +245,12 @@ static uint64_t i2c_read(void *opaque, hwaddr off, unsigned size)
         if (s->irq_pending) {
             v |= 1ULL;
         }
+    } else if (off == I2C_T10 || off == I2C_T14) {
+        /* Driver polls bit 15 (busy == 0) before first timing write (0x5f0922d0). */
+        v = i2c_store_read(s, off, size) & ~0x8000ULL;
+    } else if (off == I2C_STATUS || off == I2C_ABORT) {
+        /* Status / abort-source registers read 0 (no error/abort) when idle. */
+        v = i2c_store_read(s, off, size);
     } else {
         if (!i2c_any_written(s, off, size) &&
             !i2c_message_offset(off)) {

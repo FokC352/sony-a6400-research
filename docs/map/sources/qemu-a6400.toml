@@ -8,12 +8,12 @@ title = "QEMU sony-a6400 machine"
 scope = """
 The QEMU sony-a6400 board: captured four-core boot, av-cam and CamCore sequencing, SIO/sub-micro, display/rear panel, Ydet/CamPig, live-view frame, contributor scores, Custom OS handover guards and DMA engines."""
 evidence_span = "see record index"
-reviewed = "2026-11-25"
+reviewed = "2026-11-26"
 # Reviewed from each record's short-answer / result sections.
 deep_reviewed = ["E0521", "E0522:qemu", "E0524:reproducible", "E0525:qemu", "E0526:qemu", "E0527:real", "E0527:task43",
   "E0528", "E0529", "E0530:qemu", "E0531", "E0532:qemu", "E0533:qemu", "E0534:qemu", "E0535-E0544",
   "E0549-E0551", "E0553", "E0557", "E0561", "E0563-E0569", "E0571-E0574", "E0591",
-  "E0614-E0618", "E0636", "E0637", "E0638-E0642", "E0644", "E0650", "E0651", "E0652", "E0665", "E0700"]
+  "E0614-E0618", "E0636", "E0637", "E0638-E0642", "E0644", "E0650", "E0651", "E0652", "E0665", "E0700", "E0705", "E0706", "E0707"]
 records = [
   "E0521",
   "E0522:qemu",
@@ -60,6 +60,7 @@ records = [
   "E0705",
   "E0694",
   "E0706",
+  "E0707",
 ]
 
 [[entity]]
@@ -294,13 +295,27 @@ effect = "A host-side read of /tmp_bt/... failed because Git Bash converted the 
 rule = "Run camera-path commands from PowerShell or with path conversion disabled, and never chain cleanup after an unverified read."
 evidence = ["E0527:real"]
 
+[[claim]]
+id = "C23"
+entities = ["qemu.board", "qemu.display", "qemu.avcam-sequencer", "qemu.submicro"]
+status = "verified-offline"
+text = "Opt-in QEMU codec, storage, sensor, and MMIO models retire all remaining E0705 unmodelled MMIO pairs (0 distinct unmodelled lines in live full-peripheral boot), replace plain ZERO/read-back clock/reset/PBL windows with stateful 0x10-stride STAT/SET/CLR banks (clkrst-model=on: 0xF280/0xF290/0xF2A0..0xF2A32, ZMA0/RC0/SA4), advance av-cam naturally past step 26 to step 42 (0x0102) without GATE_FORCE_PROBE or ENTRY_FORCE_PROBE via stateful sub-micro lens-rail latching, fix 256-byte SPI Slot-C selection to retire ILCE-6400A 0x63909ba8 ('S-Ele Refresh ng') and reach sustained bars live-view with IDT_CAM, mount 4 GiB UHS-I U3 SDR104 SDHC cards via CMD11 + SCR[33] CMD23 + CMD19 tuning + mmc0-vendor (mmca10: p1), wire sub-micro Slot A[29] BIT(6) HDMI HPD, correlate P2S Ch 0/1 bursts with 13-column IMX284 mode tables (Column 3, 1996x570), and implement baseline 4:2:2/4:2:0 JPEG decode (op=0x11), ECS encode (op=0x1B), RC0 UYVY resize, VPH UYVY RGB888 scanout, ARW 2.3 cRAW2 (0xF3030000), and SFRS/DVENC movie HLE."
+evidence = ["E0705", "E0706", "E0707"]
+
+[[claim]]
+id = "C24"
+entities = ["qemu.handover"]
+status = "verified-offline"
+text = "Custom OS (kexec) prerequisites complete in emulation: CXD4115 watchdog is default-on at 0xF2402000, MISCREG 0xF2915040 SWRESET/XRSTREQ + DDR-A/DDR-B self-refresh + SRAM GPIO P10.5 (cfg.poff=10,5) model warm reset and power-off (pmic-reset=on), and handover_guard G13 verifies outer-L2 (PL310 at 0xF8002000) teardown (SCTLR.C==0 before L2 clean+inv via full way-mask 0x7FC or index-by-way 0x7F8 + poll==0, zero lockdown/debug hazards, CACHE_SYNC 0x730, CTRL=0 after sync, and post-disable DSB)."
+evidence = ["E0706", "E0707"]
+
 [[frontier]]
 id = "F01"
 title = "Stock playback, still capture and remaining controls in QEMU"
 state = "open"
 entities = ["qemu.board", "qemu.display"]
-evidence = ["E0591", "E0650", "E0651", "E0652"]
-next = "Verify remaining application controls, automatic shutdown save, stock JPEG playback and still capture. A synthetic chart does not qualify the sensor or recording."
+evidence = ["E0591", "E0650", "E0651", "E0652", "E0707"]
+next = "Codec/DMA/UHS-I U3/HDMI/ILCE-6400A IDT_CAM contracts are verified (E0707); finish full WBI UI timing automation across ModelRepair/Power-Save windows for interactive end-to-end shutter-to-reopen and XAVC S/AVCHD UI recording sessions."
 
 [[hazard]]
 id = "H01"

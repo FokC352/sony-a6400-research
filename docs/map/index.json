@@ -58,7 +58,7 @@
     "qemu-a6400": {
       "title": "QEMU sony-a6400 machine",
       "doc": "docs/map/qemu-a6400.md",
-      "reviewed": "2026-11-25",
+      "reviewed": "2026-11-26",
       "evidence_span": "see record index"
     },
     "storage-sd-backup": {
@@ -1018,7 +1018,8 @@
         "C14",
         "C16",
         "C21",
-        "C22"
+        "C22",
+        "C23"
       ],
       "inactive_claims": []
     },
@@ -1040,7 +1041,8 @@
         "C07",
         "C08",
         "C10",
-        "C18"
+        "C18",
+        "C23"
       ],
       "inactive_claims": [
         "R02",
@@ -1060,7 +1062,8 @@
       "anchor": "qemu-a6400.md#qemu-submicro",
       "active_claims": [
         "C03",
-        "C17"
+        "C17",
+        "C23"
       ],
       "inactive_claims": []
     },
@@ -1084,7 +1087,8 @@
         "C15",
         "C19",
         "C20",
-        "C22"
+        "C22",
+        "C23"
       ],
       "inactive_claims": []
     },
@@ -1101,7 +1105,8 @@
       "anchor": "qemu-a6400.md#qemu-handover",
       "active_claims": [
         "C12",
-        "C13"
+        "C13",
+        "C24"
       ],
       "inactive_claims": [
         "R01"
@@ -9923,6 +9928,53 @@
         "status": "verified-offline"
       }
     ],
+    "E0705": [
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0705-qemu-dwc3-gadget-default-on-boot-score.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0706": [
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0706-qemu-watchdog-default-on-boot-score.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C24",
+        "file": "0706-qemu-watchdog-default-on-boot-score.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0707": [
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C23",
+        "file": "0707-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C24",
+        "file": "0707-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "qemu-a6400",
+        "kind": "frontier",
+        "id": "F01",
+        "file": "0707-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md"
+      }
+    ],
     "E9001": [
       {
         "area": "l3-userspace",
@@ -12276,6 +12328,9 @@
       "qemu-a6400"
     ],
     "0706-qemu-watchdog-default-on-boot-score.md": [
+      "qemu-a6400"
+    ],
+    "0707-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md": [
       "qemu-a6400"
     ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
