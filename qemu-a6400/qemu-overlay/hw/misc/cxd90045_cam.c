@@ -610,7 +610,7 @@ static const TypeInfo campig_info = {
 OBJECT_DECLARE_SIMPLE_TYPE(Cxd90045AifState, CXD90045_AIF)
 
 #define AIF_MAX_CH       6
-#define AIF_MMIO_SIZE    0x800
+#define AIF_MAX_MMIO_SZ  0x2000
 #define AIF_DONE_NS      2000000ULL /* Experimental virtual transfer time. */
 #define AIF_CH_BIT(ch)   (1u << (4 * (ch)))
 
@@ -618,9 +618,9 @@ struct Cxd90045AifState {
     SysBusDevice parent_obj;
     MemoryRegion mr;
     QEMUTimer *done_timer;
-    qemu_irq irq[2];
+    qemu_irq irq[5]; /* 0..1 standard AIF, 2..4 RCRAW slice ch0..2 (70..72) */
 
-    uint32_t regs[AIF_MMIO_SIZE / 4];
+    uint32_t regs[AIF_MAX_MMIO_SZ / 4];
     uint32_t st;
     uint32_t armed;
     uint32_t pending;
@@ -628,6 +628,7 @@ struct Cxd90045AifState {
 
     /* properties */
     uint32_t nch;
+    uint32_t mmio_size;
     bool frame_sync;
     int32_t liveview_ch;
     uint32_t irq0_mask;
@@ -692,6 +693,165 @@ static bool aif_write_liveview_plane(Cxd90045AifState *s, unsigned ch)
     return true;
 }
 
+/*
+ * Distinguish RcDriver DRAM-to-DRAM resizer/copy (ExecCmd_SDF_CopyImage_Res2Buf
+ * / Stage_Develop) from synthetic sensor live-view: when ch0 or ch1 is armed
+ * as a DRAM-READ channel ((ctrl & 0x800) != 0) with a valid DRAM source PA,
+ * resample/copy UYVY macropixels into every armed DRAM-WRITE channel instead
+ * of stripping ch0 or overwriting with the live-view grayscale ramp.
+ */
+static int aif_find_dram_read_ch(const Cxd90045AifState *s, uint32_t mask)
+{
+    for (unsigned ch = 0; ch < MIN(2u, s->nch); ch++) {
+        if (!(mask & AIF_CH_BIT(ch))) {
+            continue;
+        }
+        hwaddr cb = 0x200 + 0x80 * ch;
+        uint32_t ctrl = s->regs[(cb + 0x00) >> 2];
+        uint32_t base = s->regs[(cb + 0x20) >> 2];
+        uint32_t lb = s->regs[(cb + 0x24) >> 2];
+        if ((ctrl & 0x800u) && base >= 0x04000000u && base < 0x40000000u &&
+            lb >= 4 && lb <= 32768) {
+            return (int)ch;
+        }
+    }
+    return -1;
+}
+
+static void aif_copy_dram_to_dram(Cxd90045AifState *s, unsigned src_ch,
+                                  uint32_t mask)
+{
+    hwaddr src_cb = 0x200 + 0x80 * src_ch;
+    uint32_t src_base = s->regs[(src_cb + 0x20) >> 2];
+    uint32_t src_lb = s->regs[(src_cb + 0x24) >> 2];
+    uint32_t src_skip = s->regs[(src_cb + 0x28) >> 2];
+    uint32_t src_lines = (s->regs[(src_cb + 0x2C) >> 2] & 0x3fffu) + 1u;
+    uint64_t src_pitch = (uint64_t)src_lb + src_skip;
+
+    if (!src_lines || src_lines > 8192 || src_pitch > 65536 ||
+        (uint64_t)src_base + src_pitch * (src_lines - 1) + src_lb > 0x40000000ULL) {
+        return;
+    }
+
+    g_autofree uint8_t *srow = g_malloc(src_lb);
+    for (unsigned dst_ch = 2; dst_ch < s->nch; dst_ch++) {
+        if (!(mask & AIF_CH_BIT(dst_ch))) {
+            continue;
+        }
+        hwaddr dst_cb = 0x200 + 0x80 * dst_ch;
+        uint32_t dst_ctrl = s->regs[(dst_cb + 0x00) >> 2];
+        uint32_t dst_base = s->regs[(dst_cb + 0x20) >> 2];
+        uint32_t dst_lb = s->regs[(dst_cb + 0x24) >> 2];
+        uint32_t dst_skip = s->regs[(dst_cb + 0x28) >> 2];
+        uint32_t dst_lines = (s->regs[(dst_cb + 0x2C) >> 2] & 0x3fffu) + 1u;
+        uint64_t dst_pitch = (uint64_t)dst_lb + dst_skip;
+
+        if ((dst_ctrl & 0x800u) || dst_base < 0x04000000u || !dst_lb ||
+            dst_lb > 32768 || !dst_lines || dst_lines > 8192 ||
+            dst_pitch > 65536 ||
+            (uint64_t)dst_base + dst_pitch * (dst_lines - 1) + dst_lb > 0x40000000ULL) {
+            continue;
+        }
+        g_autofree uint8_t *drow = g_malloc(dst_lb);
+        bool bayer_src = (src_lines >= 3000 && (src_lb & 3u) == 0 &&
+                          (dst_lb & 3u) == 0 && src_lb >= 8 && dst_lb >= 4);
+        bool uyvy_pair = (!bayer_src && (src_lb & 3u) == 0 &&
+                          (dst_lb & 3u) == 0 && src_lb >= 4 && dst_lb >= 4);
+        g_autofree uint8_t *srow_odd = bayer_src ? g_malloc(src_lb) : NULL;
+        uint32_t src_mp = src_lb / 4;
+        uint32_t dst_mp = dst_lb / 4;
+        for (uint32_t dy = 0; dy < dst_lines; dy++) {
+            uint32_t sy = (uint32_t)(((uint64_t)dy * src_lines) / dst_lines);
+            if (bayer_src) {
+                uint32_t sy_e = MIN(sy & ~1u, src_lines - 2);
+                address_space_read(&address_space_memory,
+                                   (hwaddr)src_base + (uint64_t)sy_e * src_pitch,
+                                   MEMTXATTRS_UNSPECIFIED, srow, src_lb);
+                address_space_read(&address_space_memory,
+                                   (hwaddr)src_base + (uint64_t)(sy_e + 1) * src_pitch,
+                                   MEMTXATTRS_UNSPECIFIED, srow_odd, src_lb);
+                for (uint32_t dm = 0; dm < dst_mp; dm++) {
+                    uint32_t sm = (uint32_t)(((uint64_t)dm * src_mp) / dst_mp);
+                    int r8 = MIN(255, lduw_le_p(srow + sm * 4 + 0) >> 6);
+                    int g8 = MIN(255, (lduw_le_p(srow + sm * 4 + 2) +
+                                       lduw_le_p(srow_odd + sm * 4 + 0)) >> 7);
+                    int b8 = MIN(255, lduw_le_p(srow_odd + sm * 4 + 2) >> 6);
+                    uint8_t yv = MIN(255, MAX(0, (77 * r8 + 150 * g8 + 29 * b8 + 128) >> 8));
+                    uint8_t cb = MIN(255, MAX(0, 128 + ((-43 * r8 - 85 * g8 + 128 * b8 + 128) >> 8)));
+                    uint8_t cr = MIN(255, MAX(0, 128 + ((128 * r8 - 107 * g8 - 21 * b8 + 128) >> 8)));
+                    drow[dm * 4 + 0] = cb;
+                    drow[dm * 4 + 1] = yv;
+                    drow[dm * 4 + 2] = cr;
+                    drow[dm * 4 + 3] = yv;
+                }
+            } else {
+                address_space_read(&address_space_memory,
+                                   (hwaddr)src_base + (uint64_t)sy * src_pitch,
+                                   MEMTXATTRS_UNSPECIFIED, srow, src_lb);
+                if (uyvy_pair) {
+                    for (uint32_t dm = 0; dm < dst_mp; dm++) {
+                        uint32_t sm = (uint32_t)(((uint64_t)dm * src_mp) / dst_mp);
+                        memcpy(drow + dm * 4, srow + sm * 4, 4);
+                    }
+                } else {
+                    for (uint32_t dx = 0; dx < dst_lb; dx++) {
+                        uint32_t sx = (uint32_t)(((uint64_t)dx * src_lb) / dst_lb);
+                        drow[dx] = srow[sx];
+                    }
+                }
+            }
+            address_space_write(&address_space_memory,
+                                (hwaddr)dst_base + (uint64_t)dy * dst_pitch,
+                                MEMTXATTRS_UNSPECIFIED, drow, dst_lb);
+        }
+    }
+}
+
+static void aif_fill_bayer_if_still(Cxd90045AifState *s, uint32_t mask)
+{
+    for (unsigned ch = 0; ch < s->nch; ch++) {
+        if (!(mask & AIF_CH_BIT(ch))) {
+            continue;
+        }
+        hwaddr cb = 0x200 + 0x80 * ch;
+        uint32_t ctrl = s->regs[(cb + 0x00) >> 2];
+        uint32_t base = s->regs[(cb + 0x20) >> 2];
+        uint32_t lb = s->regs[(cb + 0x24) >> 2];
+        uint32_t skip = s->regs[(cb + 0x28) >> 2];
+        uint32_t lines = (s->regs[(cb + 0x2C) >> 2] & 0x3fffu) + 1u;
+        uint64_t pitch = (uint64_t)lb + skip;
+        if ((ctrl & 0x800u) || base < 0x04800000u || lb < 2048 || lb > 16384 ||
+            lines < 512 || lines > 6000 ||
+            (uint64_t)base + pitch * (lines - 1) + lb > 0x40000000ULL) {
+            continue;
+        }
+        /* Populate 14-bit RGGB color-bar Bayer rows for still sensor readout */
+        uint32_t npx = lb / 2;
+        g_autofree uint16_t *brow = g_malloc(npx * sizeof(uint16_t));
+        static const uint16_t bar_rgb[8][3] = {
+            { 14800, 14800, 14800 }, { 14800, 14800,  1024 },
+            {  1024, 14800, 14800 }, {  1024, 14800,  1024 },
+            { 14800,  1024, 14800 }, { 14800,  1024,  1024 },
+            {  1024,  1024, 14800 }, {  1024,  1024,  1024 },
+        };
+        for (uint32_t y = 0; y < lines; y++) {
+            for (uint32_t x = 0; x < npx; x++) {
+                unsigned bar = (x * 8) / npx;
+                uint16_t v;
+                if ((y & 1) == 0) {
+                    v = (x & 1) ? bar_rgb[bar][1] : bar_rgb[bar][0]; /* R G */
+                } else {
+                    v = (x & 1) ? bar_rgb[bar][2] : bar_rgb[bar][1]; /* G B */
+                }
+                brow[x] = cpu_to_le16(v);
+            }
+            address_space_write(&address_space_memory,
+                                (hwaddr)base + (uint64_t)y * pitch,
+                                MEMTXATTRS_UNSPECIFIED, brow, npx * 2);
+        }
+    }
+}
+
 static uint32_t aif_liveview_pair(Cxd90045AifState *s)
 {
     return s->liveview_ch < 0 ? 0 : AIF_CH_BIT(0) | AIF_CH_BIT(s->liveview_ch);
@@ -699,6 +859,15 @@ static uint32_t aif_liveview_pair(Cxd90045AifState *s)
 
 static uint32_t aif_ready_mask(Cxd90045AifState *s)
 {
+    if (aif_find_dram_read_ch(s, s->pending) >= 0) {
+        /* DRAM-to-DRAM RcDriver copy/resize: wait until at least one write ch is armed */
+        for (unsigned ch = 2; ch < s->nch; ch++) {
+            if (s->pending & AIF_CH_BIT(ch)) {
+                return s->pending;
+            }
+        }
+        return 0;
+    }
     uint32_t pair = aif_liveview_pair(s);
 
     return (s->pending & pair) == pair ? s->pending : s->pending & ~pair;
@@ -716,10 +885,15 @@ static void aif_schedule(Cxd90045AifState *s)
 
 static void aif_complete_mask(Cxd90045AifState *s, uint32_t mask)
 {
+    int src_ch = aif_find_dram_read_ch(s, mask);
     uint32_t pair = aif_liveview_pair(s);
 
-    if ((mask & pair) && !aif_write_liveview_plane(s, s->liveview_ch)) {
+    if (src_ch >= 0) {
+        aif_copy_dram_to_dram(s, (unsigned)src_ch, mask);
+    } else if ((mask & pair) && !aif_write_liveview_plane(s, s->liveview_ch)) {
         mask &= ~pair;
+    } else if (s->frame_sync) {
+        aif_fill_bayer_if_still(s, mask);
     }
     for (unsigned ch = 0; ch < s->nch; ch++) {
         uint32_t bit = AIF_CH_BIT(ch);
@@ -762,7 +936,7 @@ static uint64_t aif_read(void *opaque, hwaddr off, unsigned size)
     unsigned sh = (off & 3) * 8;
     uint32_t v = 0;
 
-    if (w < AIF_MMIO_SIZE) {
+    if (w < s->mmio_size) {
         if (w == 0x00) {
             v = s->st;
         } else if (w == 0x04) {
@@ -782,7 +956,7 @@ static void aif_write(void *opaque, hwaddr off, uint64_t val, unsigned size)
     uint32_t m = size == 4 ? 0xFFFFFFFFu : ((1u << (size * 8)) - 1) << sh;
     uint32_t v;
 
-    if (w >= AIF_MMIO_SIZE) {
+    if (w >= s->mmio_size) {
         return;
     }
     v = (s->regs[w >> 2] & ~m) | (((uint32_t)val << sh) & m);
@@ -795,6 +969,31 @@ static void aif_write(void *opaque, hwaddr off, uint64_t val, unsigned size)
     if (w == 0x08 || w == 0x0C) {
         s->regs[w >> 2] = v;
         aif_update_irq(s);
+        return;
+    }
+    /* FE-AIF RCRAW slice channels ch0..2 (0x750..0x774, IRQs 70..72) */
+    if (w == 0x754 || w == 0x764 || w == 0x774) {
+        unsigned rch = (w - 0x754) >> 4;
+        hwaddr st_off = 0x750 + 0x10 * rch;
+        s->regs[st_off >> 2] &= ~v;
+        qemu_set_irq(s->irq[2 + rch], (s->regs[st_off >> 2] & 0x20000000u) != 0);
+        return;
+    }
+    if ((w == 0x700 || w == 0x718 || w == 0x750 || w == 0x760 || w == 0x770) &&
+        s->mmio_size > 0x800) {
+        s->regs[w >> 2] = v;
+        if (v != 0) {
+            for (unsigned rch = 0; rch < 3; rch++) {
+                hwaddr st_off = 0x750 + 0x10 * rch;
+                hwaddr sub_off = 0x724 + 8 * rch;
+                if ((w == st_off && (v & 0x10000000u)) || w == 0x700 || w == 0x718) {
+                    s->regs[sub_off >> 2] |= 0x200u;
+                    s->regs[st_off >> 2] = (s->regs[st_off >> 2] & ~0x10000000u) |
+                                           0x20000000u;
+                    qemu_set_irq(s->irq[2 + rch], 1);
+                }
+            }
+        }
         return;
     }
     if (w >= 0x200 && w < 0x200 + 0x80 * s->nch) {
@@ -868,11 +1067,17 @@ static void aif_realize(DeviceState *dev, Error **errp)
                    s->liveview_ch);
         return;
     }
+    if (s->mmio_size == 0 || s->mmio_size > AIF_MAX_MMIO_SZ ||
+        (s->mmio_size & 3u)) {
+        error_setg(errp, "cxd90045-aif: invalid mmio-size 0x%x", s->mmio_size);
+        return;
+    }
     memory_region_init_io(&s->mr, OBJECT(dev), &aif_ops, s,
-                          "cxd90045.aif", AIF_MMIO_SIZE);
+                          "cxd90045.aif", s->mmio_size);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr);
-    sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq[0]);
-    sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq[1]);
+    for (int k = 0; k < 5; k++) {
+        sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq[k]);
+    }
     qdev_init_gpio_in_named(dev, aif_frame_in, "frame", 1);
     s->done_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, aif_done_tick, s);
 }
@@ -886,6 +1091,7 @@ void cxd90045_aif_set_source(DeviceState *dev,
 
 static const Property aif_props[] = {
     DEFINE_PROP_UINT32("nch", Cxd90045AifState, nch, 4),
+    DEFINE_PROP_UINT32("mmio-size", Cxd90045AifState, mmio_size, 0x800),
     DEFINE_PROP_BOOL("frame-sync", Cxd90045AifState, frame_sync, false),
     DEFINE_PROP_INT32("liveview-ch", Cxd90045AifState, liveview_ch, -1),
     DEFINE_PROP_UINT32("irq0-mask", Cxd90045AifState, irq0_mask, 0x000000F0u),

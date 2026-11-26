@@ -16,7 +16,7 @@ An open-source toolkit for Sony **BIONZ X** cameras (such as the **a6400**, **a6
 If you just want to add mods to your Sony **`ILCE-6400`** (or **`ILCE-6400A` / `ILCE-6100`**), use the graphical **BIONZ X Mod Manager** on Windows:
 
 1. **Install Python (one time):** Download [Python 3.11+](https://www.python.org/downloads/) and check **"Add python.exe to PATH"** during setup (or open a prebuilt `BionzX-Mod-Manager.exe` release if you have one).
-2. **Launch the app:** Double-click [`scripts/launch_mod_manager.bat`](scripts/launch_mod_manager.bat). Wait a few seconds for the **BIONZ X Mod Manager** window to open.
+2. **Launch the app:** Double-click [`scripts/launch_mod_manager.bat`](scripts/launch_mod_manager.bat) (macOS/Linux: run [`scripts/launch_mod_manager.sh`](scripts/launch_mod_manager.sh)). Wait a few seconds for the **BIONZ X Mod Manager** window to open.
 3. **Download the mod pack:** If prompted at the top, click **Download Official Release** (or **Tools & Setup → Download / Prepare Tools**).
 4. **Plug in your camera:** On the camera, set `MENU → Setup → USB Connection` to **Mass Storage**, connect via USB, and click **Scan Camera**.
 5. **Choose mods & click Install:** Switch the mods you want **ON**, click **1-Click Install to Camera**, and follow the prompt. Unplug the cable and open `MENU → Mods` on your camera!
@@ -88,7 +88,7 @@ python -m unittest discover -s tests -q
 
 This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9105](docs/evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md)**.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=6d159b56b022)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=ae8bb41ed0b5)
 
 [Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 

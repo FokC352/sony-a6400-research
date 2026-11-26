@@ -28,6 +28,7 @@ Chardev *cxd90045_bcm4339_bt_chardev_new(const char *id);
 DeviceState *cxd90045_hdmi_cec_create(MachineState *machine,
                                       MemoryRegion *sysmem,
                                       DeviceState *vph);
+bool cxd90045_hdmi_is_plugged(DeviceState *dev);
 
 /* CXD90045 AudioIp (0xF3420000..0xF3428FFF) with DMA ring + synthetic PCM mic */
 DeviceState *cxd90045_audio_create(MachineState *machine, MemoryRegion *sysmem,

@@ -28,6 +28,10 @@ The accepted diff does the following in the board file:
 - **Edges:** `+0x00` and `+0x0C` have no row, so the helper still logs them as unmodelled if touched.
 - **Test:** a new static check (no QEMU boot) asserts the two rows, the single create call, the
   helper's fixed priority, that no row exists for `+0x010..+0x01C`, that the `F30A` defines are
+
+> **Integration note (`E0715`):** On `main`, `cxd90045.pbl-aic0` (`0xF30A0000`, `0x1000`, `E0715`)
+> independently provides `CXD90045_F292_RF` for `+0x004` and `+0x008` (alongside `+0x010..+0x01C`),
+> so `sony_a6400.c` keeps `cxd90045.pbl-aic0` without a duplicate overlapping `cxd90045.f30a0` window.
   unchanged, and that the fill window is not overlapped.
 
 ## Result

@@ -73,6 +73,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
+#include "hw/misc/cxd90045_jpeg.h"
 #include "qapi/error.h"
 #include "qemu/rcu.h"
 #include "qemu/timer.h"
@@ -95,10 +96,14 @@ OBJECT_DECLARE_SIMPLE_TYPE(CxdSaState, CXD_SA)
 #define SA_ENTRY    0x030
 #define SA_ID       0x0F0
 #define SA_MBOX_A   0x110
-#define SA_ZMA1_BOOT_FACTOR 0x80
-#define SA_ZMA1_FILL_CMD    0x00001300
-#define SA_ZMA1_FILL_BYTES  0x180
+#define SA_ZMA1_BOOT_FACTOR  0x80
+#define SA_ZMA_DECODE_CMD    0x00001100
+#define SA_ZMA1_FILL_CMD     0x00001300
+#define SA_ZMA_ENCODE_CMD    0x00001B00
+#define SA_ZMA1_FILL_BYTES   0x180
 #define SA_ZMA1_STARTUP_CODE_BYTES 2692
+#define SA_ZMA0_STARTUP_CODE_SHA256 \
+    "83a3e61b07c48dc5ea132352da8763a742fded71a60eceedc735f02b3c0986c9"
 #define SA_ZMA1_STARTUP_CODE_SHA256 \
     "46a92d9fc1c715a13477f9792c623ca633598b6595978ad761551570e31eaff4"
 
@@ -112,13 +117,19 @@ struct CxdSaState {
     qemu_irq irq[SA_NSRC];
 
     uint32_t r[SA_SIZE / 4];        /* latches */
+    uint32_t mbox_out_a[4];         /* SA->host mailbox A (+0x120..+0x12C) */
     uint8_t factor[SA_NSRC];
     uint8_t mask[SA_NSRC];
     uint8_t completion_factor;
     bool running;
     bool zma1_ready;
+    uint32_t pending_op;            /* 0x1100, 0x1300, 0x1B00, or movie op */
     uint32_t fill_desc;
     uint32_t starts;
+    uint32_t venc_es_pa;
+    uint32_t venc_es_size;
+    uint32_t venc_es_wp;
+    uint32_t venc_frames;
 
     /* properties */
     uint32_t index;
@@ -127,6 +138,8 @@ struct CxdSaState {
     uint32_t delay_us;
     bool zma1_startup;
     bool zma1_jpeg_fill;
+    bool zma1_jpeg_decode;
+    bool movie_codec_hle;
     uint8_t id[SA_IDLEN];
 };
 
@@ -175,7 +188,7 @@ static bool sa_jpeg_fill(uint32_t pa)
     size_t pixel_bytes;
     uint8_t *pixels, *result;
 
-    if ((pa & 0x7f) || pa < 0x14000000 || pa > 0x24000000 - sizeof(d) ||
+    if ((pa & 0x7f) || pa < 0x04000000 || pa > 0x40000000 - sizeof(d) ||
         !sa_ram_range(pa, sizeof(d), false) ||
         address_space_read(&address_space_memory, pa, MEMTXATTRS_UNSPECIFIED,
                            d, sizeof(d)) != MEMTX_OK) {
@@ -231,9 +244,9 @@ static bool sa_jpeg_fill(uint32_t pa)
             return false;
         }
     }
-    if ((dst & 0x7f) || dst < 0x30000000 || dst > 0x40000000 - extent ||
+    if ((dst & 0x7f) || dst < 0x04000000 || dst > 0x40000000 - extent ||
         (report & 0x7f) || report < pa + sizeof(d) ||
-        report > 0x24000000 - 8 ||
+        report > 0x40000000 - 8 ||
         !sa_ram_range(dst, extent, true) ||
         !sa_ram_range(report + 4, sizeof(uint32_t), true)) {
         return false;
@@ -274,26 +287,327 @@ static bool sa_jpeg_fill(uint32_t pa)
     return true;
 }
 
+/*
+ * DGI op 0x11 (0x00001100): authentic JPEG decode from guest DRAM src_jpeg_pa
+ * (d+0x34, len d+0x38) into packed UYVY at dst_yc_pa (d+0x44), reporting
+ * completion at report_pa + 4 = 1 (dgis_jpeg_decode_check_zima_rpt @ 0x63a097f2).
+ */
+static bool sa_jpeg_decode(uint32_t pa)
+{
+    uint8_t d[SA_ZMA1_FILL_BYTES];
+
+    if ((pa & 0x7f) || pa < 0x04000000 || pa > 0x40000000 - sizeof(d) ||
+        !sa_ram_range(pa, sizeof(d), false) ||
+        address_space_read(&address_space_memory, pa, MEMTXATTRS_UNSPECIFIED,
+                           d, sizeof(d)) != MEMTX_OK) {
+        return false;
+    }
+
+    uint32_t dst_w = ldl_le_p(d + 0x18);
+    uint32_t dst_h = ldl_le_p(d + 0x1c);
+    uint32_t dst_pitch_px = ldl_le_p(d + 0x20) & 0xFFFFu;
+    uint32_t crop_en = ldl_le_p(d + 0x24) & 1u;
+    uint32_t crop_xy = ldl_le_p(d + 0x28);
+    uint32_t crop_wh = ldl_le_p(d + 0x2c);
+    uint32_t src_jpeg_pa = ldl_le_p(d + 0x34);
+    uint32_t src_jpeg_len = ldl_le_p(d + 0x38) & 0x3FFFFFFFu;
+    uint32_t dst_yc_pa = ldl_le_p(d + 0x44);
+    uint32_t report_pa = ldl_le_p(d + 0x5c);
+
+    if (!dst_w || (dst_w & 1u) || dst_w > 8192 || !dst_h || dst_h > 8192 ||
+        dst_pitch_px < dst_w || !src_jpeg_len || src_jpeg_len > (32u << 20)) {
+        return false;
+    }
+    uint32_t dst_stride = 2u * dst_pitch_px;
+    size_t dst_bytes = (size_t)dst_stride * dst_h;
+    if (src_jpeg_pa < 0x04000000u ||
+        (uint64_t)src_jpeg_pa + src_jpeg_len > 0x40000000ULL ||
+        dst_yc_pa < 0x04000000u ||
+        (uint64_t)dst_yc_pa + dst_bytes > 0x40000000ULL ||
+        report_pa < 0x04000000u || report_pa > 0x40000000u - 16u ||
+        !sa_ram_range(src_jpeg_pa, src_jpeg_len, false) ||
+        !sa_ram_range(dst_yc_pa, dst_bytes, true) ||
+        !sa_ram_range(report_pa, 12, true)) {
+        return false;
+    }
+
+    g_autofree uint8_t *jpeg_buf = g_malloc(src_jpeg_len);
+    g_autofree uint8_t *uyvy_buf = g_malloc0(dst_bytes);
+    if (address_space_read(&address_space_memory, src_jpeg_pa,
+                           MEMTXATTRS_UNSPECIFIED, jpeg_buf,
+                           src_jpeg_len) != MEMTX_OK) {
+        return false;
+    }
+
+    Cxd90045JpegCrop crop = {
+        .enabled = crop_en != 0,
+        .x = (uint16_t)(crop_xy & 0xFFFFu),
+        .y = (uint16_t)(crop_xy >> 16),
+        .w = (uint16_t)(crop_wh & 0xFFFFu),
+        .h = (uint16_t)(crop_wh >> 16),
+    };
+    if (!cxd90045_jpeg_decode_to_uyvy(jpeg_buf, src_jpeg_len, uyvy_buf, dst_w,
+                                      dst_h, dst_stride, &crop)) {
+        return false;
+    }
+
+    if (address_space_write(&address_space_memory, dst_yc_pa,
+                            MEMTXATTRS_UNSPECIFIED, uyvy_buf,
+                            dst_bytes) != MEMTX_OK) {
+        return false;
+    }
+
+    uint8_t rpt[12];
+    stl_le_p(rpt + 0, 0);
+    stl_le_p(rpt + 4, 1);
+    stl_le_p(rpt + 8, src_jpeg_len);
+    address_space_write(&address_space_memory, report_pa,
+                        MEMTXATTRS_UNSPECIFIED, rpt, sizeof(rpt));
+    return true;
+}
+
+/*
+ * DGI op 0x1B (0x00001B00): authentic JPEG ECS + FF D9 encode from guest DRAM
+ * packed UYVY at src_yc_pa (d+0x34) into scatter-gather write extents starting
+ * at d+0x118 + (d+0x04 & 0x7F), reporting ecs_bytes at report_pa + 8.
+ */
+static bool sa_jpeg_encode(uint32_t pa)
+{
+    uint8_t d[SA_ZMA1_FILL_BYTES];
+
+    if ((pa & 0x7f) || pa < 0x04000000 || pa > 0x40000000 - sizeof(d) ||
+        !sa_ram_range(pa, sizeof(d), false) ||
+        address_space_read(&address_space_memory, pa, MEMTXATTRS_UNSPECIFIED,
+                           d, sizeof(d)) != MEMTX_OK) {
+        return false;
+    }
+
+    bool is_420 = (ldl_le_p(d + 0x00) & 0x100u) != 0;
+    uint32_t ecs_off = ldl_le_p(d + 0x04) & 0x7Fu;
+    uint16_t dri = (uint16_t)(ldl_le_p(d + 0x08) & 0xFFFFu);
+    uint32_t width = ldl_le_p(d + 0x18);
+    uint32_t height = ldl_le_p(d + 0x1c);
+    uint32_t src_pitch_px = ldl_le_p(d + 0x20) & 0xFFFFu;
+    uint32_t src_yc_pa = ldl_le_p(d + 0x34);
+    uint32_t report_pa = ldl_le_p(d + 0x5c);
+    uint32_t num_ext = ldl_le_p(d + 0x110);
+
+    if (!width || (width & 1u) || width > 8192 || !height || height > 8192 ||
+        src_pitch_px < width || num_ext == 0 || num_ext > 12) {
+        return false;
+    }
+    uint32_t src_stride = 2u * src_pitch_px;
+    size_t src_bytes = (size_t)src_stride * height;
+    if (src_yc_pa < 0x04000000u ||
+        (uint64_t)src_yc_pa + src_bytes > 0x40000000ULL ||
+        report_pa < 0x04000000u || report_pa > 0x40000000u - 16u ||
+        !sa_ram_range(src_yc_pa, src_bytes, false) ||
+        !sa_ram_range(report_pa, 12, true)) {
+        return false;
+    }
+
+    /* Extract zig-zag QTables (big-endian bytes inside each 32-bit word, 0x63a03350) */
+    uint8_t q_luma[64], q_chroma[64];
+    for (unsigned w = 0; w < 16; w++) {
+        uint32_t wl = ldl_le_p(d + 0x80 + 4 * w);
+        uint32_t wc = ldl_le_p(d + 0xC0 + 4 * w);
+        q_luma[4 * w + 0] = (wl >> 24) & 0xFFu;
+        q_luma[4 * w + 1] = (wl >> 16) & 0xFFu;
+        q_luma[4 * w + 2] = (wl >> 8) & 0xFFu;
+        q_luma[4 * w + 3] = wl & 0xFFu;
+        q_chroma[4 * w + 0] = (wc >> 24) & 0xFFu;
+        q_chroma[4 * w + 1] = (wc >> 16) & 0xFFu;
+        q_chroma[4 * w + 2] = (wc >> 8) & 0xFFu;
+        q_chroma[4 * w + 3] = wc & 0xFFu;
+    }
+
+    g_autofree uint8_t *src_uyvy = g_malloc(src_bytes);
+    if (address_space_read(&address_space_memory, src_yc_pa,
+                           MEMTXATTRS_UNSPECIFIED, src_uyvy,
+                           src_bytes) != MEMTX_OK) {
+        return false;
+    }
+
+    size_t ecs_len = 0;
+    g_autofree uint8_t *ecs = cxd90045_jpeg_encode_uyvy_ecs(
+        src_uyvy, width, height, src_stride, is_420, dri, q_luma, q_chroma,
+        &ecs_len);
+    if (!ecs || ecs_len == 0) {
+        return false;
+    }
+
+    /* Scatter-write ECS across write extents (d + 0x120 + 8*i, bit 0 == 1) */
+    size_t written = 0;
+    bool first_write_ext = true;
+    for (unsigned i = 0; i < num_ext && written < ecs_len; i++) {
+        uint32_t ew0 = ldl_le_p(d + 0x120 + 8 * i);
+        uint32_t epa = ldl_le_p(d + 0x124 + 8 * i);
+        if (!(ew0 & 1u)) {
+            continue;
+        }
+        uint32_t elen = ew0 & 0x0FFFFF80u;
+        uint32_t skip = first_write_ext ? ecs_off : 0;
+        first_write_ext = false;
+        if (elen <= skip || epa < 0x04000000u ||
+            (uint64_t)epa + elen > 0x40000000ULL) {
+            return false;
+        }
+        size_t chunk = MIN(ecs_len - written, (size_t)(elen - skip));
+        if (!sa_ram_range(epa + skip, chunk, true) ||
+            address_space_write(&address_space_memory, epa + skip,
+                                MEMTXATTRS_UNSPECIFIED, ecs + written,
+                                chunk) != MEMTX_OK) {
+            return false;
+        }
+        written += chunk;
+    }
+    if (written < ecs_len) {
+        return false;
+    }
+
+    uint8_t rpt[12];
+    stl_le_p(rpt + 0, 0);
+    stl_le_p(rpt + 4, 1);
+    stl_le_p(rpt + 8, (uint32_t)ecs_len);
+    address_space_write(&address_space_memory, report_pa,
+                        MEMTXATTRS_UNSPECIFIED, rpt, sizeof(rpt));
+    return true;
+}
+
+/*
+ * Opt-in movie-codec-hle: SFRS Audio SA (SA0/SA1, 0x63a95ad4..f24) and
+ * ZIMA DVENC H.264 video SA (ZMA0/ZMA1, 0x639ed904..0x63f688e2).
+ */
+static void sa_movie_audio_hle(CxdSaState *s)
+{
+    if (!s->movie_codec_hle || (s->index != 2 && s->index != 3)) {
+        return;
+    }
+    /* SetSaCodecOpenParam (0x63a95ad4): mbox[0] low16 == 0x1194, mbox[3] = BootParamPA */
+    uint32_t m0 = R(SA_MBOX_A);
+    uint32_t m2 = R(SA_MBOX_A + 8);
+    uint32_t boot_pa = R(SA_MBOX_A + 12);
+    if ((m0 & 0xFFFFu) == 0x1194u && boot_pa >= 0x04000000u &&
+        boot_pa <= 0x40000000u - 64u && sa_ram_range(boot_pa, 64, false)) {
+        uint8_t bp[64];
+        if (address_space_read(&address_space_memory, boot_pa,
+                               MEMTXATTRS_UNSPECIFIED, bp, sizeof(bp)) == MEMTX_OK) {
+            /* Scan BootParam pointers for controlInfoAddr and set +8 = 1 (and +11 = 1 for ZoomNR) */
+            for (unsigned off = 0; off + 4 <= sizeof(bp); off += 4) {
+                uint32_t ptr = ldl_le_p(bp + off);
+                if (ptr >= 0x04000000u && ptr <= 0x40000000u - 32u &&
+                    sa_ram_range(ptr, 16, true)) {
+                    uint8_t hdr[16];
+                    address_space_read(&address_space_memory, ptr,
+                                       MEMTXATTRS_UNSPECIFIED, hdr, sizeof(hdr));
+                    /* Only arm zeroed control status bytes (+8 / +11) */
+                    if (hdr[8] == 0) {
+                        uint8_t one = 1;
+                        address_space_write(&address_space_memory, ptr + 8,
+                                            MEMTXATTRS_UNSPECIFIED, &one, 1);
+                    }
+                    if (((m2 >> 24) & 0xFFu) == 0xB0u && hdr[11] == 0) {
+                        uint8_t one = 1;
+                        address_space_write(&address_space_memory, ptr + 11,
+                                            MEMTXATTRS_UNSPECIFIED, &one, 1);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void sa_movie_video_hle(CxdSaState *s, uint32_t cmd, uint32_t arg_pa)
+{
+    static const uint8_t minimal_h264_au[] = {
+        /* Annex-B AUD + Baseline/High SPS + PPS + minimal IDR slice */
+        0x00, 0x00, 0x00, 0x01, 0x09, 0x10,
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x28, 0xAC, 0xD9, 0x40, 0x78,
+        0x02, 0x27, 0xE5, 0xC0, 0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00,
+        0x03, 0x00, 0xF0, 0x3C, 0x60, 0xC6, 0x58,
+        0x00, 0x00, 0x00, 0x01, 0x68, 0xEB, 0xE3, 0xCB, 0x22, 0xC0,
+        0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x84, 0x00, 0x33, 0xFF,
+    };
+
+    s->mbox_out_a[0] = 1; /* VENC_RESULT_DONE / ACK */
+    s->mbox_out_a[1] = arg_pa;
+    if (arg_pa >= 0x04000000u && arg_pa <= 0x40000000u - 128u &&
+        sa_ram_range(arg_pa, 128, true)) {
+        uint8_t arg[128];
+        address_space_read(&address_space_memory, arg_pa,
+                           MEMTXATTRS_UNSPECIFIED, arg, sizeof(arg));
+        uint32_t maybe_es = ldl_le_p(arg + 0x10);
+        uint32_t maybe_sz = ldl_le_p(arg + 0x14);
+        if (maybe_es >= 0x04000000u && maybe_es < 0x40000000u &&
+            maybe_sz >= 0x10000u && maybe_sz <= (64u << 20)) {
+            s->venc_es_pa = maybe_es;
+            s->venc_es_size = maybe_sz;
+            s->venc_es_wp = maybe_es;
+        }
+        if (s->venc_es_pa &&
+            sa_ram_range(s->venc_es_wp, sizeof(minimal_h264_au), true)) {
+            address_space_write(&address_space_memory, s->venc_es_wp,
+                                MEMTXATTRS_UNSPECIFIED, minimal_h264_au,
+                                sizeof(minimal_h264_au));
+            s->mbox_out_a[2] = s->venc_es_wp;
+            s->mbox_out_a[3] = sizeof(minimal_h264_au);
+            s->venc_es_wp += ROUND_UP(sizeof(minimal_h264_au), 128u);
+            if (s->venc_es_wp + 256u >= s->venc_es_pa + s->venc_es_size) {
+                s->venc_es_wp = s->venc_es_pa;
+            }
+            s->venc_frames++;
+        }
+        /* Mark completion word in 128B-aligned DVENC arg block */
+        uint32_t one = 1;
+        address_space_write(&address_space_memory, arg_pa + 4,
+                            MEMTXATTRS_UNSPECIFIED, &one, 4);
+    }
+    (void)cmd;
+}
+
 static void sa_done(void *opaque)
 {
     CxdSaState *s = opaque;
 
     s->running = false;
-    if (s->fill_desc) {
+    if (s->fill_desc || s->pending_op) {
         uint32_t desc = s->fill_desc;
+        uint32_t op = s->pending_op;
+        bool ok = false;
 
         s->fill_desc = 0;
+        s->pending_op = 0;
         R(SA_SEND_A) &= ~1u;
-        if (sa_jpeg_fill(desc)) {
+        if (op == SA_ZMA1_FILL_CMD) {
+            ok = sa_jpeg_fill(desc);
+        } else if (op == SA_ZMA_DECODE_CMD) {
+            ok = sa_jpeg_decode(desc);
+        } else if (op == SA_ZMA_ENCODE_CMD) {
+            ok = sa_jpeg_encode(desc);
+        } else if (s->movie_codec_hle) {
+            if (s->index == 0 || s->index == 1) {
+                sa_movie_video_hle(s, op, desc);
+            } else {
+                sa_movie_audio_hle(s);
+            }
+            ok = true;
+        }
+        if (ok) {
             s->factor[0] |= 0x01;
             sa_update(s);
         } else {
-            qemu_log_mask(LOG_UNIMP, "cxd90014-sa%u: unsupported JPEG fill "
-                          "descriptor at 0x%08x\n", s->index, desc);
+            qemu_log_mask(LOG_UNIMP, "cxd90014-sa%u: unsupported DGI op 0x%x "
+                          "descriptor at 0x%08x\n", s->index, op, desc);
         }
         return;
     }
     R(SA_GO) &= ~1u;
+    if (s->movie_codec_hle) {
+        sa_movie_audio_hle(s);
+        if (s->index == 0 || s->index == 1) {
+            s->mbox_out_a[0] = 1;
+        }
+    }
     s->zma1_ready = s->completion_factor == SA_ZMA1_BOOT_FACTOR &&
                     (R(SA_RUN) & 1);
     s->factor[0] |= s->completion_factor;
@@ -309,25 +623,28 @@ static uint8_t sa_start_factor(CxdSaState *s)
     uint32_t entry = R(SA_ENTRY);
     uint8_t program[SA_ZMA1_STARTUP_CODE_BYTES];
 
-    if (!s->zma1_startup || s->index != 1 ||
+    if ((!s->zma1_startup && !s->zma1_jpeg_decode) ||
+        (s->index != 0 && s->index != 1) ||
         s->mask[0] != SA_ZMA1_BOOT_FACTOR) {
         return 0x01;
     }
 
-    /* Only the captured ZMA1 startup program, not any job with mask 0x80. */
+    /* Verified ZMA0 (SA_Z_ST00x00) and ZMA1 (SA_Z_ST10x00) startup programs. */
     if (R(SA_PROG) == 0x80000000 && !(entry & 3) &&
-        entry >= 0x20000000 && entry <= 0x24000000 - sizeof(program) &&
+        entry >= 0x04000000 && entry <= 0x40000000 - sizeof(program) &&
         address_space_read(&address_space_memory, entry, MEMTXATTRS_UNSPECIFIED,
                            program, sizeof(program)) == MEMTX_OK) {
         g_autofree char *hash = g_compute_checksum_for_data(
             G_CHECKSUM_SHA256, program, sizeof(program));
+        const char *expected = (s->index == 0) ? SA_ZMA0_STARTUP_CODE_SHA256
+                                               : SA_ZMA1_STARTUP_CODE_SHA256;
 
-        if (g_str_equal(hash, SA_ZMA1_STARTUP_CODE_SHA256)) {
+        if (g_str_equal(hash, expected)) {
             return SA_ZMA1_BOOT_FACTOR;
         }
     }
-    qemu_log_mask(LOG_UNIMP, "cxd90014-sa1: unsupported ZMA1 startup program at 0x%08x\n",
-                  entry);
+    qemu_log_mask(LOG_UNIMP, "cxd90014-sa%u: unsupported ZMA startup program at 0x%08x\n",
+                  s->index, entry);
     return 0;
 }
 
@@ -385,6 +702,9 @@ static uint32_t sa_read_word(CxdSaState *s, hwaddr w)
         case 0x10 ... 0x1C:         /* host->SA mailbox */
             return R(w);
         case 0x20 ... 0x2C:         /* SA->host mailbox */
+            if (src == 0 && s->movie_codec_hle) {
+                return s->mbox_out_a[(reg - 0x20) >> 2];
+            }
             return 0;
         }
     }
@@ -414,9 +734,10 @@ static void sa_write_word(CxdSaState *s, hwaddr w, uint32_t v, uint32_t m)
         R(w) = (R(w) & ~m) | (v & m);
         if (!(R(w) & 1)) {
             s->zma1_ready = false;
-            if (s->fill_desc) {
+            if (s->fill_desc || s->pending_op) {
                 timer_del(s->done);
                 s->fill_desc = 0;
+                s->pending_op = 0;
                 s->running = false;
                 R(SA_SEND_A) &= ~1u;
             }
@@ -424,17 +745,36 @@ static void sa_write_word(CxdSaState *s, hwaddr w, uint32_t v, uint32_t m)
         return;
     case SA_SEND_A:
         R(w) = (R(w) & ~m) | (v & m);
-        if (s->zma1_jpeg_fill && s->zma1_ready &&
-            (m & 0xff) == 0xff && (v & 0xff) == 1) {
+        if ((m & 0xff) == 0xff && (v & 0xff) == 1) {
             uint32_t command = R(SA_MBOX_A);
+            uint32_t op = command & 0x00ffffffu;
+            bool dgi_en = (s->zma1_jpeg_fill || s->zma1_jpeg_decode) &&
+                          s->zma1_ready;
+            bool decode_en = (s->zma1_jpeg_decode || s->zma1_jpeg_fill) &&
+                             s->zma1_ready;
 
-            if (!s->running && (command >> 24) && R(SA_MBOX_A + 4) &&
-                (command & 0x00ffffff) == SA_ZMA1_FILL_CMD) {
+            if (!s->running && dgi_en && (command >> 24) && R(SA_MBOX_A + 4) &&
+                op == SA_ZMA1_FILL_CMD) {
                 s->fill_desc = R(SA_MBOX_A + 4);
+                s->pending_op = op;
                 s->running = true;
                 timer_mod(s->done, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                           (int64_t)s->delay_us * SCALE_US);
-            } else {
+            } else if (!s->running && decode_en && (command >> 24) &&
+                       R(SA_MBOX_A + 4) &&
+                       (op == SA_ZMA_DECODE_CMD || op == SA_ZMA_ENCODE_CMD)) {
+                s->fill_desc = R(SA_MBOX_A + 4);
+                s->pending_op = op;
+                s->running = true;
+                timer_mod(s->done, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                          (int64_t)s->delay_us * SCALE_US);
+            } else if (!s->running && s->movie_codec_hle && (R(SA_RUN) & 1)) {
+                s->fill_desc = R(SA_MBOX_A + 4);
+                s->pending_op = command ? command : 1u;
+                s->running = true;
+                timer_mod(s->done, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                          (int64_t)s->delay_us * SCALE_US);
+            } else if (dgi_en) {
                 qemu_log_mask(LOG_UNIMP, "cxd90014-sa%u: unsupported or busy "
                               "source-A command 0x%08x\n", s->index, command);
             }
@@ -512,11 +852,17 @@ static void sa_reset(DeviceState *dev)
 
     timer_del(s->done);
     memset(s->r, 0, sizeof(s->r));
+    memset(s->mbox_out_a, 0, sizeof(s->mbox_out_a));
     memset(s->factor, 0, sizeof(s->factor));
     memset(s->mask, 0, sizeof(s->mask));
     s->running = false;
     s->zma1_ready = false;
+    s->pending_op = 0;
     s->fill_desc = 0;
+    s->venc_es_pa = 0;
+    s->venc_es_size = 0;
+    s->venc_es_wp = 0;
+    s->venc_frames = 0;
     sa_update(s);
 }
 
@@ -552,6 +898,8 @@ static const Property sa_props[] = {
     DEFINE_PROP_UINT32("delay-us", CxdSaState, delay_us, 100),
     DEFINE_PROP_BOOL("zma1-startup", CxdSaState, zma1_startup, false),
     DEFINE_PROP_BOOL("zma1-jpeg-fill", CxdSaState, zma1_jpeg_fill, false),
+    DEFINE_PROP_BOOL("zma1-jpeg-decode", CxdSaState, zma1_jpeg_decode, false),
+    DEFINE_PROP_BOOL("movie-codec-hle", CxdSaState, movie_codec_hle, false),
 };
 
 static void sa_class_init(ObjectClass *klass, const void *data)

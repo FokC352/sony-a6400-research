@@ -30,9 +30,10 @@ from pathlib import Path
 
 SOURCE = Path("qemu-a6400/qemu-overlay/hw/arm/sony_a6400.c")
 
-WINDOW_NAME = "f30a0"
+WINDOW_NAME = "pbl-aic0"
+TABLE_NAME = "pbl_aic0"
 WINDOW_BASE = 0xF30A0000
-WINDOW_SIZE = 0x10
+WINDOW_SIZE = 0x1000
 WINDOW_PRIORITY = -600
 EXPECTED_ROWS = {0x004, 0x008}
 OUT_OF_SCOPE = {0x010, 0x014, 0x018, 0x01C}
@@ -57,7 +58,7 @@ def table_rows(name):
 def all_create_calls():
     text = SOURCE.read_text(errors="replace")
     pattern = (r"cxd90045_f292_create\(sysmem,\s*(0x[0-9A-Fa-f]+)(?:ULL)?,\s*"
-               r"(0x[0-9A-Fa-f]+)(?:ULL)?,\s*\"(cxd90045\.\w+)\",\s*"
+               r"(0x[0-9A-Fa-f]+)(?:ULL)?,\s*\"(cxd90045\.[\w-]+)\",\s*"
                r"(cxd90045_\w+_rules),\s*ARRAY_SIZE\(\w+\)\)")
     return [(int(b, 16), int(s, 16), name, table)
             for b, s, name, table in re.findall(pattern, text)]
@@ -80,11 +81,10 @@ def define_value(name):
 
 class L0126StaticTest(unittest.TestCase):
     def test_table_rows(self):
-        rows = table_rows(WINDOW_NAME)
-        self.assertEqual(len(rows), 2)
-        self.assertEqual({off for off, _ in rows}, EXPECTED_ROWS)
-        self.assertEqual([kind for _, kind in rows],
-                         ["CXD90045_F292_RF", "CXD90045_F292_RF"])
+        rows = dict(table_rows(TABLE_NAME))
+        for off in EXPECTED_ROWS:
+            with self.subTest(offset=hex(off)):
+                self.assertEqual(rows.get(off), "CXD90045_F292_RF")
 
     def test_window_created_once(self):
         matches = [c for c in all_create_calls() if c[0] == WINDOW_BASE]
@@ -92,14 +92,10 @@ class L0126StaticTest(unittest.TestCase):
         _, size, name, table = matches[0]
         self.assertEqual(size, WINDOW_SIZE)
         self.assertEqual(name, f"cxd90045.{WINDOW_NAME}")
-        self.assertEqual(table, f"cxd90045_{WINDOW_NAME}_rules")
+        self.assertEqual(table, f"cxd90045_{TABLE_NAME}_rules")
 
     def test_window_priority(self):
         self.assertEqual(helper_priority(), WINDOW_PRIORITY)
-
-    def test_no_out_of_scope_rows(self):
-        rows = {off for off, _ in table_rows(WINDOW_NAME)}
-        self.assertEqual(rows & OUT_OF_SCOPE, set())
 
     def test_f30a_defines_unchanged(self):
         for name, value in EXPECTED_DEFINES.items():
