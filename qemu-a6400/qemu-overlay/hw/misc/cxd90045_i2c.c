@@ -228,9 +228,13 @@ static uint64_t i2c_read(void *opaque, hwaddr off, unsigned size)
                     !s->msg_phase;
         v = i2c_store_read(s, off, size);
         v = (v & ~0xffffULL) | (done ? 3ULL : 0ULL);
-    } else if (s->complete_transfers && off == I2C_STATUS) {
+    } else if (off == I2C_T10 || off == I2C_T14 || off == I2C_ABORT) {
+        /* i2c.ko +0x12b8 polls bit 15 (busy == 0) before writing +0x10/+0x14/+0x20. */
+        v = i2c_store_read(s, off, size) & ~0x8000ULL;
+    } else if (off == I2C_STATUS) {
+        /* i2c.ko +0x15c4 reads +0x00 and checks bit 5 (bus/NACK error). */
         v = i2c_store_read(s, off, size) & ~0x20ULL;
-        if (s->nack_err) {
+        if (s->complete_transfers && s->nack_err) {
             v |= 0x20ULL;
         }
     } else if (s->complete_transfers && off == I2C_LEN) {
