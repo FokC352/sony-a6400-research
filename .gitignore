@@ -13,6 +13,7 @@ node_modules/
 
 # Firmware, device state, dumps and generated outputs
 /firmware
+/dumps/
 a6400-nflasha-readonly*/
 backups/
 /artifacts
