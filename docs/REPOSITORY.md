@@ -37,6 +37,7 @@ The root now holds only standard project files and core directories:
 | `launch_cinemahud_android.ps1` | `scripts/launch_cinemahud_android.ps1` | run the script; it resolves the repo root from its own path |
 | `launch_cinemahud_ptp.bat` | `scripts/launch_cinemahud_ptp.bat` | run the script; it changes to `%~dp0..` |
 | `start_camera_shell.bat` | `scripts/start_camera_shell.bat` | run the script; it targets `%~dp0..\tools\cam_live_terminal.py` |
+| (macOS/Linux) | `scripts/<same name>.sh` | each `.bat`/`.ps1` in `scripts/` has a bash counterpart that resolves the repo root through `scripts/_common.sh` |
 | `status.png`, `status_a6400.png` | `docs/images/` | written by `tools/research/generate_status_image.py` |
 | `UVC_HANDOVER_PLAN.md` | `docs/UVC_HANDOVER_PLAN.md` | documentation |
 | `ARCHITECTURE_UVC_MONITOR.md` | `docs/ARCHITECTURE_UVC_MONITOR.md` | documentation (hash-pinned by E0348) |

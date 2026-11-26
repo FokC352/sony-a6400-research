@@ -86,6 +86,24 @@ class TestLaunchers(unittest.TestCase):
             self.assertNotIn('"%~dp0artifacts', text, name)
 
 
+class TestPosixLaunchers(unittest.TestCase):
+    """Every Windows script in scripts/ has a macOS/Linux .sh counterpart beside it."""
+
+    def test_each_windows_script_has_a_posix_counterpart(self):
+        scripts = ROOT / "scripts"
+        for windows in sorted([*scripts.glob("*.bat"), *scripts.glob("*.ps1")]):
+            posix = windows.with_suffix(".sh")
+            self.assertTrue(posix.is_file(), f"missing scripts/{posix.name} for {windows.name}")
+
+    def test_posix_launchers_resolve_the_repository_root(self):
+        for path in sorted((ROOT / "scripts").glob("*.sh")):
+            if path.name in ("_common.sh", "setup_arm_toolchain.sh"):
+                continue
+            text = _read(path)
+            self.assertTrue(text.startswith("#!/usr/bin/env bash\n"), path.name)
+            self.assertIn('source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/_common.sh"', text, path.name)
+            self.assertNotIn("\r\n", text, f"{path.name} must use LF line endings")
+
 class TestMovedAssets(unittest.TestCase):
     def test_assets_live_under_docs(self):
         for relative in MOVED_ASSETS:

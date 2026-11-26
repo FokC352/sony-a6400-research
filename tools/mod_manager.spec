@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for building standalone Windows Sony BIONZ X Mod Manager."""
+"""PyInstaller spec for building the standalone Sony BIONZ X Mod Manager (Windows, macOS, Linux)."""
 import os
+import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
@@ -52,10 +53,13 @@ for pkg in ("webview", "libusb_package", "certifi"):
     binaries += b
     hiddenimports += h
 
-for pkg in ("usb", "Cryptodome", "elftools", "comtypes", "yaml", "asn1crypto", "axmlparserpy", "tlslite"):
+for pkg in ("usb", "Cryptodome", "elftools", "yaml", "asn1crypto", "axmlparserpy", "tlslite"):
     hiddenimports += collect_submodules(pkg)
 
-hiddenimports += ["config", "win32file", "win32api", "win32con", "pywintypes"]
+hiddenimports.append("config")
+if sys.platform == "win32":
+    hiddenimports += collect_submodules("comtypes")
+    hiddenimports += ["win32file", "win32api", "win32con", "pywintypes"]
 
 pathex = [str(ROOT)]
 if PMCA_DIR and (PMCA_DIR / "pmca").is_dir() and (PMCA_DIR / "config.py").is_file():
