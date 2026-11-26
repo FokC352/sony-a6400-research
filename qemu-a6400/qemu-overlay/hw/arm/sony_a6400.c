@@ -2421,7 +2421,10 @@ typedef struct SonyUsbVbus {
 
 static bool sony_a6400_usb_vbus_test;
 static bool sony_a6400_usb_cid_high;
-static bool sony_a6400_dwc3_gadget;
+/* L0154: default on so the E0590 model serves the guest's GCTL/PHY/DCTL
+ * accesses; unknown offsets log as cxd90045-dwc3 unimp and the certified
+ * boot produces none. */
+static bool sony_a6400_dwc3_gadget = true;
 static bool sony_a6400_pl330_dma;
 static SonyUsbVbus *sony_a6400_usb_vbus;
 
@@ -5073,7 +5076,7 @@ static void sony_cxd90045_common_machine_init(MachineClass *mc,
                                    sony_get_dwc3_gadget,
                                    sony_set_dwc3_gadget);
     object_class_property_set_description(OBJECT_CLASS(mc), "dwc3-gadget",
-        "Enable the experimental CXD90045 DWC3 gadget controller at 0xF020C000 and IRQ 229 (E0590)");
+        "Enable the CXD90045 DWC3 gadget controller at 0xF020C000 and IRQ 229 (E0590, default on)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "pl330-dma",
                                    sony_get_pl330_dma,
                                    sony_set_pl330_dma);
