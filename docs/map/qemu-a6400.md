@@ -4,7 +4,7 @@
 
 - **Scope:** The QEMU sony-a6400 board: captured four-core boot, av-cam and CamCore sequencing, SIO/sub-micro, display/rear panel, Ydet/CamPig, live-view frame, contributor scores, Custom OS handover guards and DMA engines.
 - **Evidence span:** see record index; last reviewed 2026-11-26.
-- **Deep review:** 63 of 84 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 64 of 85 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -120,7 +120,7 @@ Do not rely on:
 
 - ~~The LIRO ram section filled through 0xF30A is a separate sub-core firmware image.~~ **R01** `RETRACTED` ([E0642](../evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md)); see C13: The LIRO ram section copied by the work DMA is av-cam's own initialised RW data (1,878 references from av-cam code), not a sub-core image.
 
-## Record index (84 files)
+## Record index (85 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -210,3 +210,4 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0714](../evidence/0714-qemu-pal-step32-chain.md) | 2026-11-26 | The PAL step-32 chain: from the TV-system setting to the module-2 report |  | request at `0x032E` and the report at `0x0326`. Each link is marked PROVEN or INFERRED, and the refuted and / A red-team re-check upheld the regression with correction: the image was the reference bars chart under |
 | [E0715](../evidence/0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md) | 2026-11-26 | QEMU `sony-a6400` Playback/Capture Codecs, UHS-I `U3` SDHC, Zero-Unmodelled MMIO / Clock-Reset / PMIC Models, `ILCE-6400A` `IDT_CAM`, `IMX284` P2S, and Outer-L2 (`PL310`) Handover Guard | yes |  |
 | [E0716](../evidence/0716-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md) | 2026-11-23 | Custom OS USB (DWC3) phase 1: root-cause boundary, endpoint budget, and the composite QEMU model |  |  |
+| [E0730](../evidence/0730-grm-service-tuple-import-fix.md) | 2026-11-26 | `grm_service.py`: Import Missing `Tuple` Annotation Used by `_wbi_pools` | yes |  |
