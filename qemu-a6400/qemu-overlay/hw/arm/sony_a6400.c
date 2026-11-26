@@ -3526,6 +3526,48 @@ static const Cxd90045F292Rule cxd90045_f2a3_rules[] = {
       "write-only; the value is stored but never read back (F-0107) (L0118)" },
 };
 
+/*
+ * L0122: six unmapped pages, ZERO-only windows (F-0115: no static owner,
+ * contract NEEDS-CAPTURE).  Each row is a baseline pair the catch-all
+ * answered with 0, so ZERO keeps the final state.  Reads return 0, the
+ * catch-all value; the registers' real contract is uncaptured, and unruled
+ * offsets in these pages still log as unmodelled.
+ *
+ * L0122 keeps only the write-only pages of L0120 (F-0120): the read pages
+ * 0xF2932000 and 0xF35D0000 are left unmodelled.
+ */
+static const Cxd90045F292Rule cxd90045_f2931_rules[] = {
+    { 0x100, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x104, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x12C, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x130, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f3203_rules[] = {
+    { 0x384, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x904, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f3212_rules[] = {
+    { 0x05C, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x068, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+    { 0x06C, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+};
+
+static const Cxd90045F292Rule cxd90045_f3215_rules[] = {
+    { 0xB00, CXD90045_F292_ZERO,
+      "write-only in the baseline; read returns 0, the catch-all value (F-0115) (L0122)" },
+};
+
 typedef struct Cxd90045F292 {
     MemoryRegion mmio;
     const Cxd90045F292Rule *rules;
@@ -4690,6 +4732,23 @@ static void sony_a6400_init(MachineState *machine)
     cxd90045_f292_create(sysmem, 0xF2A32000ULL, 0x1000ULL,
                          "cxd90045.f2a3", cxd90045_f2a3_rules,
                          ARRAY_SIZE(cxd90045_f2a3_rules));
+
+    /*
+     * L0122: ZERO-only windows for four write-only pages the catch-all served (F-0115).
+     * Priority -600 as in L0118; no page here overlaps an existing mapping.
+     */
+    cxd90045_f292_create(sysmem, 0xF2931000ULL, 0x1000ULL,
+                         "cxd90045.f2931", cxd90045_f2931_rules,
+                         ARRAY_SIZE(cxd90045_f2931_rules));
+    cxd90045_f292_create(sysmem, 0xF3203000ULL, 0x1000ULL,
+                         "cxd90045.f3203", cxd90045_f3203_rules,
+                         ARRAY_SIZE(cxd90045_f3203_rules));
+    cxd90045_f292_create(sysmem, 0xF3212000ULL, 0x1000ULL,
+                         "cxd90045.f3212", cxd90045_f3212_rules,
+                         ARRAY_SIZE(cxd90045_f3212_rules));
+    cxd90045_f292_create(sysmem, 0xF3215000ULL, 0x1000ULL,
+                         "cxd90045.f3215", cxd90045_f3215_rules,
+                         ARRAY_SIZE(cxd90045_f3215_rules));
 
     /*
      * I2C controller channel 0 at 0xF2401000 (4 KiB, E0525: i2c-sony driver
