@@ -481,11 +481,11 @@ if [ "${TIMEOUT:-0}" != 0 ]; then
         exit 1
     fi
 fi
-exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial "${SERIAL:-mon:stdio}" \
-  -kernel "$KERNEL_PATH" -initrd "$INITRD_PATH" "${DTB_ARGS[@]}" \
+exec ${T[@]+"${T[@]}"} "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial "${SERIAL:-mon:stdio}" \
+  -kernel "$KERNEL_PATH" -initrd "$INITRD_PATH" ${DTB_ARGS[@]+"${DTB_ARGS[@]}"} \
   -append "$CMD ${EXTRA:-}" \
   -drive if=sd,format=qcow2,file="$R/emmc-overlay.qcow2" \
   -device loader,file="$R/Backup.bin",addr="$BACKUP_PA",force-raw=on \
   -device loader,file="$R/av-cam.bin",addr="$AVCAM_PA",force-raw=on \
-  "${IDT_BOOT[@]}" "${EVSEL[@]}" "${P2S[@]}" "${SA[@]}" "${LIVEVIEW_ARGS[@]}" "${SD[@]}" \
+  ${IDT_BOOT[@]+"${IDT_BOOT[@]}"} ${EVSEL[@]+"${EVSEL[@]}"} ${P2S[@]+"${P2S[@]}"} ${SA[@]+"${SA[@]}"} ${LIVEVIEW_ARGS[@]+"${LIVEVIEW_ARGS[@]}"} ${SD[@]+"${SD[@]}"} \
   ${QEMU_EXTRA--icount shift=0,sleep=on}

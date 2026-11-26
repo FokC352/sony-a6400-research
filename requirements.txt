@@ -15,6 +15,6 @@
 # Those helpers fail closed when the optional package is absent.
 
 capstone==5.0.9
-pillow==13.0.0
-pyelftools==0.33
+pillow==11.3.0
+pyelftools==0.32
 unicorn==2.1.4
