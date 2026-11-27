@@ -25,6 +25,7 @@ For subject lookups (an address, symbol, device, or "is E0xxx still valid?") use
 | [RELATED_REPOSITORIES.md](RELATED_REPOSITORIES.md) | Agent-facing catalog of related Sony research repositories, starting points, provenance rules and cross-model transfer limits |
 | [Adapted ZV-E10 menu integration](ZVE10_ADAPTED_MENU.md) | Explicit upstream QEMU boot profile, checked inputs, native UART replay and VPH scanout checks |
 | [External ZV-E10 menu receipt](evidence/external-zve10-menu/README.md) | Contributor-local adapted menu, English screenshots and boundaries; not an upstream stock-boot milestone |
+| [External ILCE-6000 emulator receipt](evidence/external-a6000-emulator/README.md) | `sony-a6000` (CXD90014) machine, observations against the source build and boundaries; not an a6400 milestone |
 | [LIVE_CAMERA_EMULATOR_WORKFLOW.md](LIVE_CAMERA_EMULATOR_WORKFLOW.md) | Safe read-only live camera observation and emulator handoff workflow |
 | [NATIVE_USB_DEBUGGER.md](NATIVE_USB_DEBUGGER.md) | Native USB debugger protocol, per-body qualification and safety rules |
 | [Local ILCE-6400A firmware-dump research](CURRENT_STATE.md#local-ilce-6400a-firmware-dump-research) | Verified local captures, artifact paths, and the remaining full-dump boundary |
