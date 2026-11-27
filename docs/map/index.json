@@ -13590,7 +13590,31 @@
     "0728-a6400-open-gate-f3851-mmio-live.md": [
       "imaging-pipeline"
     ],
+    "0729-qemu-i2c-driver-busypoll-and-status-reads.md": [
+      "qemu-a6400"
+    ],
+    "0730-grm-service-tuple-import-fix.md": [
+      "qemu-a6400"
+    ],
+    "0731-qemu-ddrb-vmstate-instance-id.md": [
+      "qemu-a6400"
+    ],
+    "0732-qemu-remove-stale-overlay-sd-c.md": [
+      "qemu-a6400"
+    ],
+    "0733-tests-gate-zma1-sidecar-test.md": [
+      "qemu-a6400"
+    ],
+    "0734-qemu-a6400a-gpdmac1-ch4-and-pbl-aic0.md": [
+      "qemu-a6400"
+    ],
+    "0735-tests-direct-unittest-imports.md": [
+      "qemu-a6400"
+    ],
     "0736-qemu-camcore-unlisted-access-logging.md": [
+      "qemu-a6400"
+    ],
+    "0738-qemu-camcore-f3c04-f2912-register-models-boot-score.md": [
       "qemu-a6400"
     ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
