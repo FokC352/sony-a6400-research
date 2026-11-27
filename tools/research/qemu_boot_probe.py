@@ -116,18 +116,22 @@ class Qmp:
                 break
             except (ConnectionRefusedError, FileNotFoundError):
                 self.socket.close()
-                if time.monotonic() >= self.deadline:
+                if family == socket.AF_INET or time.monotonic() >= self.deadline:
                     raise
                 time.sleep(0.02)
             except OSError:
                 self.socket.close()
                 raise
         self.stream = self.socket.makefile('rwb', buffering=0)
-        self.events = []
-        self.greeting = self.read()
-        if 'QMP' not in self.greeting:
-            raise RuntimeError('QMP greeting is missing')
-        self.request('qmp_capabilities')
+        try:
+            self.events = []
+            self.greeting = self.read()
+            if 'QMP' not in self.greeting:
+                raise RuntimeError('QMP greeting is missing')
+            self.request('qmp_capabilities')
+        except Exception:
+            self.close()
+            raise
 
     def read(self):
         remaining = self.deadline - time.monotonic()
