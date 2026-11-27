@@ -1366,7 +1366,8 @@
         "C16",
         "C21",
         "C22",
-        "C23"
+        "C23",
+        "C25"
       ],
       "inactive_claims": []
     },
@@ -11256,6 +11257,13 @@
         "id": "C07",
         "file": "external-zve10-menu/README.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C25",
+        "file": "external-a6000-emulator/README.md",
+        "status": "verified-offline"
       }
     ],
     "a6400-scalarwebapi-session": [
@@ -13692,6 +13700,9 @@
     ],
     "cross_model/uvc-modules.tsv": [
       "platform-multidevice"
+    ],
+    "external-a6000-emulator/README.md": [
+      "qemu-a6400"
     ],
     "external-zve10-menu/README.md": [
       "mods"

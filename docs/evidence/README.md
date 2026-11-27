@@ -17,6 +17,10 @@ snapshot or its recorded test count.
   original English menu pixels under an explicit AP-only adapter; selected-frame
   publication, init diagnostic ASID failure, local test receipts and unresolved
   stock `upm.ko` boundary. No upstream runtime integration or stock-menu boot claim.
+- [ILCE-6000 emulator receipt, 2026-11-27](external-a6000-emulator/README.md):
+  `sony-a6000` QEMU machine for the CXD90014 body, ported from voxivoid/a6000-qemu;
+  boot, UI, USB, NFC, Wi-Fi, HDMI and SD compared against the source build. Needs the
+  contributor's own NAND dump; no CXD90045 claim.
 
 ## Latest records
 
