@@ -356,6 +356,16 @@ class QemuTouchscreenTests(_QTestQmpHarness):
         self.assertEqual(self._unpack_avcam_point(fast1[1:7]), (0, 0, 64, 128))
         self.assertEqual(self._unpack_avcam_point(fast2[1:7]), (1, 0, 64, 128))
 
+    def test_i2c_prewrite_busypoll_and_status_reads_without_complete_transfers(self):
+        proc, pending, _, _ = self.start_harness("sony-a6400")
+        # i2c.ko wait_reg_not_busy polls bit 15 == 0 before writing +0x10/+0x14/+0x20.
+        for off, val in ((0x10, 0x8020), (0x14, 0x8020), (0x20, 0x8001)):
+            self.wr16(proc, pending, self.I2C0 + off, val)
+            self.assertEqual(self.rd16(proc, pending, self.I2C0 + off), val & ~0x8000)
+        # i2c.ko reads I2C_STATUS (+0x00) and tests bit 5 even when complete_transfers=off.
+        self.wr16(proc, pending, self.I2C0 + 0x00, 0x0023)
+        self.assertEqual(self.rd16(proc, pending, self.I2C0 + 0x00), 0x0003)
+
 
 @unittest.skipUnless(NATIVE_AVAILABLE, "Optional WSL/Linux sony-a6400 QEMU build absent")
 class QemuBcm4339WifiBluetoothTests(_QTestQmpHarness):

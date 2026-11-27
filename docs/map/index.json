@@ -13590,6 +13590,9 @@
     "0728-a6400-open-gate-f3851-mmio-live.md": [
       "imaging-pipeline"
     ],
+    "0729-qemu-i2c-driver-busypoll-and-status-reads.md": [
+      "qemu-a6400"
+    ],
     "0731-qemu-ddrb-vmstate-instance-id.md": [
       "qemu-a6400"
     ],
