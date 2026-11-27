@@ -93,77 +93,79 @@ def _mock_dwc3_server(mode: str, ready: threading.Event, stop: threading.Event):
                 in_queue.append(struct.pack('<IHHI', 12, PTP_CONTAINER_RESPONSE, PTP_RC_OK, ptp_tx_id))
 
         bulk_buf = bytearray()
-        while not stop.is_set():
-            while b'\n' not in buf:
-                try:
-                    chunk = srv.recv(65536)
-                except socket.timeout:
-                    if stop.is_set():
+        try:
+            while not stop.is_set():
+                while b'\n' not in buf:
+                    try:
+                        chunk = srv.recv(65536)
+                    except socket.timeout:
+                        if stop.is_set():
+                            return
+                        continue
+                    if not chunk:
                         return
+                    buf += chunk
+                line_b, buf = buf.split(b'\n', 1)
+                line = line_b.decode('ascii')
+                if line in ('CONN', 'RESET', 'DISC'):
                     continue
-                if not chunk:
-                    return
-                buf += chunk
-            line_b, buf = buf.split(b'\n', 1)
-            line = line_b.decode('ascii')
-            if line in ('CONN', 'RESET', 'DISC'):
-                continue
-            if line.startswith('SETUP '):
-                last_setup = bytes.fromhex(line.split()[1])
-                ep0_stage = 'data_in' if (last_setup[0] & 0x80) else 'status_in'
-                send_line('ACK 0 8')
-            elif line == 'IN 1':
-                if ep0_stage == 'data_in':
-                    b_req = last_setup[1]
-                    w_val = int.from_bytes(last_setup[2:4], 'little')
-                    w_len = int.from_bytes(last_setup[6:8], 'little')
-                    if b_req == 6 and (w_val >> 8) == 1:
-                        send_line('IN 1 ' + dev_desc[:w_len].hex())
-                    elif b_req == 6 and (w_val >> 8) == 2:
-                        send_line('IN 1 ' + cfg_desc[:w_len].hex())
-                    elif b_req == 8:
-                        send_line('IN 1 01')
-                else:
-                    send_line('IN 1 ')
-            elif line == 'OUT 0 -':
-                send_line('ACK 0 0')
-            elif line.startswith('OUT 4 '):
-                data = bytes.fromhex(line.split()[2])
-                send_line(f'ACK 4 {len(data)}')
-                if mode == 'msc':
-                    if bulk_out_expect > 0:
-                        bulk_buf.extend(data)
-                        if len(bulk_buf) >= bulk_out_expect:
-                            last_frame = bytes(bulk_buf[:FRAME_SIZE])
-                            bulk_buf.clear()
-                            bulk_out_expect = 0
-                            in_queue.append(CSW_STRUCT.pack(CSW_SIGNATURE, pending_cbw[1], 0, 0))
+                if line.startswith('SETUP '):
+                    last_setup = bytes.fromhex(line.split()[1])
+                    ep0_stage = 'data_in' if (last_setup[0] & 0x80) else 'status_in'
+                    send_line('ACK 0 8')
+                elif line == 'IN 1':
+                    if ep0_stage == 'data_in':
+                        b_req = last_setup[1]
+                        w_val = int.from_bytes(last_setup[2:4], 'little')
+                        w_len = int.from_bytes(last_setup[6:8], 'little')
+                        if b_req == 6 and (w_val >> 8) == 1:
+                            send_line('IN 1 ' + dev_desc[:w_len].hex())
+                        elif b_req == 6 and (w_val >> 8) == 2:
+                            send_line('IN 1 ' + cfg_desc[:w_len].hex())
+                        elif b_req == 8:
+                            send_line('IN 1 01')
                     else:
-                        sig, tag, xfer_len, flags, lun, cb_len, cdb = CBW_STRUCT.unpack(data)
-                        if cdb[0] == 0x7A and not (flags & 0x80):
-                            pending_cbw = (sig, tag, xfer_len)
-                            bulk_out_expect = xfer_len
-                            bulk_buf.clear()
-                        elif cdb[0] == 0x7A and (flags & 0x80):
-                            reply = build_reply(last_frame)
-                            for off in range(0, len(reply), 512):
-                                in_queue.append(reply[off:off + 512])
-                            in_queue.append(CSW_STRUCT.pack(CSW_SIGNATURE, tag, 0, 0))
-                else:
-                    bulk_buf.extend(data)
-                    if len(bulk_buf) >= 12:
-                        clen = struct.unpack_from('<I', bulk_buf, 0)[0]
-                        if len(bulk_buf) >= clen:
-                            pkt = bytes(bulk_buf[:clen])
-                            del bulk_buf[:clen]
-                            handle_ptp_container(pkt)
-            elif line == 'IN 3':
-                if in_queue:
-                    pkt = in_queue.pop(0)
-                    send_line('IN 3 ' + pkt.hex())
-                else:
-                    send_line('NAK 3')
-        srv.close()
+                        send_line('IN 1 ')
+                elif line == 'OUT 0 -':
+                    send_line('ACK 0 0')
+                elif line.startswith('OUT 4 '):
+                    data = bytes.fromhex(line.split()[2])
+                    send_line(f'ACK 4 {len(data)}')
+                    if mode == 'msc':
+                        if bulk_out_expect > 0:
+                            bulk_buf.extend(data)
+                            if len(bulk_buf) >= bulk_out_expect:
+                                last_frame = bytes(bulk_buf[:FRAME_SIZE])
+                                bulk_buf.clear()
+                                bulk_out_expect = 0
+                                in_queue.append(CSW_STRUCT.pack(CSW_SIGNATURE, pending_cbw[1], 0, 0))
+                        else:
+                            sig, tag, xfer_len, flags, lun, cb_len, cdb = CBW_STRUCT.unpack(data)
+                            if cdb[0] == 0x7A and not (flags & 0x80):
+                                pending_cbw = (sig, tag, xfer_len)
+                                bulk_out_expect = xfer_len
+                                bulk_buf.clear()
+                            elif cdb[0] == 0x7A and (flags & 0x80):
+                                reply = build_reply(last_frame)
+                                for off in range(0, len(reply), 512):
+                                    in_queue.append(reply[off:off + 512])
+                                in_queue.append(CSW_STRUCT.pack(CSW_SIGNATURE, tag, 0, 0))
+                    else:
+                        bulk_buf.extend(data)
+                        if len(bulk_buf) >= 12:
+                            clen = struct.unpack_from('<I', bulk_buf, 0)[0]
+                            if len(bulk_buf) >= clen:
+                                pkt = bytes(bulk_buf[:clen])
+                                del bulk_buf[:clen]
+                                handle_ptp_container(pkt)
+                elif line == 'IN 3':
+                    if in_queue:
+                        pkt = in_queue.pop(0)
+                        send_line('IN 3 ' + pkt.hex())
+                    else:
+                        send_line('NAK 3')
+        finally:
+            srv.close()
 
     t = threading.Thread(target=serve, daemon=True)
     t.start()
@@ -208,6 +210,7 @@ class QemuDebuggerAdapterTests(unittest.TestCase):
         finally:
             socket.socket = orig_socket
             stop.set()
+            cli.close()
             thread.join(timeout=2.0)
 
     def test_msc_debugger_exchange(self):

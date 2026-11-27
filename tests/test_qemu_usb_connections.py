@@ -1081,8 +1081,8 @@ class QemuDwc3StrictBulkQTests(unittest.TestCase):
                     '-global', 'cxd90045-dwc3.strict-ep0=on',
                     '-global', 'cxd90045-dwc3.strict-bulk=on',
                 ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
             try:
                 qt, _ = srv.accept()

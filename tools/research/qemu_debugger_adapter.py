@@ -37,47 +37,40 @@ class QemuDwc3MscExchange:
         self.timeout = timeout
         self._cdb = b'\x7a' + struct.pack('<I', self.feature) + b'\x00' * 7
 
-    def __call__(self, payload: bytes) -> bytes:
-        if len(payload) != FRAME_SIZE:
-            raise ValueError(f'Expected {FRAME_SIZE}-byte debugger frame, got {len(payload)}')
-        deadline = time.monotonic() + self.timeout
+    def _exec_with_retry(self, op_label: str, *, deadline: float,
+                         data_out: bytes = b'',
+                         data_in_len: int = 0) -> dict:
         while True:
             try:
                 res = self.msc.scsi_command(
-                    self._cdb, data_out=payload, lun=self.lun
+                    self._cdb, data_out=data_out, data_in_len=data_in_len,
+                    lun=self.lun,
                 )
             except MscCommandFailedError:
                 res = {'status': 1}
             if res['status'] == 0:
-                break
+                return res
             sense = self.msc.request_sense(lun=self.lun)
             if sense['sense_key'] == SCSI_SENSE_NOT_READY and time.monotonic() < deadline:
                 time.sleep(0.02)
                 continue
             raise RuntimeError(
-                f'MSC debugger write failed (sense=0x{sense["sense_key"]:02x}/'
+                f'MSC debugger {op_label} failed (sense=0x{sense["sense_key"]:02x}/'
                 f'0x{sense["asc"]:02x}/0x{sense["ascq"]:02x})'
             )
 
-        while True:
-            res = self.msc.scsi_command(
-                self._cdb, data_in_len=FRAME_SIZE, lun=self.lun
-            )
-            if res['status'] == 0:
-                data = res['data']
-                if len(data) != FRAME_SIZE:
-                    raise RuntimeError(
-                        f'Expected {FRAME_SIZE}-byte debugger reply, got {len(data)}'
-                    )
-                return data
-            sense = self.msc.request_sense(lun=self.lun)
-            if sense['sense_key'] == SCSI_SENSE_NOT_READY and time.monotonic() < deadline:
-                time.sleep(0.02)
-                continue
+    def __call__(self, payload: bytes) -> bytes:
+        if len(payload) != FRAME_SIZE:
+            raise ValueError(f'Expected {FRAME_SIZE}-byte debugger frame, got {len(payload)}')
+        deadline = time.monotonic() + self.timeout
+        self._exec_with_retry('write', deadline=deadline, data_out=payload)
+        res = self._exec_with_retry('read', deadline=deadline, data_in_len=FRAME_SIZE)
+        data = res['data']
+        if len(data) != FRAME_SIZE:
             raise RuntimeError(
-                f'MSC debugger read failed (sense=0x{sense["sense_key"]:02x}/'
-                f'0x{sense["asc"]:02x}/0x{sense["ascq"]:02x})'
+                f'Expected {FRAME_SIZE}-byte debugger reply, got {len(data)}'
             )
+        return data
 
     def close(self) -> None:
         pass
@@ -96,59 +89,49 @@ class QemuDwc3PtpExchange:
         if not self.ptp.session_open:
             self.ptp.open_session(1)
 
+    @staticmethod
+    def _is_busy_error(exc: Exception) -> bool:
+        return (
+            isinstance(exc, PtpResponseError)
+            and exc.response_code == PTP_RC_DEVICE_BUSY
+        ) or (
+            isinstance(exc, ValueError)
+            and 'kind=3' in str(exc)
+            and f'0x{PTP_RC_DEVICE_BUSY:04x}' in str(exc).lower()
+        )
+
+    def _transact_with_retry(self, opcode: int, *, deadline: float,
+                             data_out: bytes | None = None,
+                             expect_data: bool = False) -> dict:
+        while True:
+            try:
+                return self.ptp.transact(
+                    opcode, (self.feature,),
+                    data_out=data_out, expect_data=expect_data,
+                )
+            except (PtpResponseError, ValueError) as exc:
+                if self._is_busy_error(exc) and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                    continue
+                raise
+
     def __call__(self, payload: bytes) -> bytes:
         if len(payload) != FRAME_SIZE:
             raise ValueError(f'Expected {FRAME_SIZE}-byte debugger frame, got {len(payload)}')
         self._ensure_session()
         deadline = time.monotonic() + self.timeout
-        while True:
-            try:
-                self.ptp.transact(
-                    PTP_OC_SONY_DI_EXTCMD_WRITE,
-                    (self.feature,),
-                    data_out=payload,
-                )
-                break
-            except (PtpResponseError, ValueError) as exc:
-                is_busy = (
-                    isinstance(exc, PtpResponseError)
-                    and exc.response_code == PTP_RC_DEVICE_BUSY
-                ) or (
-                    isinstance(exc, ValueError)
-                    and 'kind=3' in str(exc)
-                    and f'0x{PTP_RC_DEVICE_BUSY:04x}' in str(exc).lower()
-                )
-                if is_busy and time.monotonic() < deadline:
-                    time.sleep(0.02)
-                    continue
-                raise
-
-        while True:
-            try:
-                res = self.ptp.transact(
-                    PTP_OC_SONY_DI_EXTCMD_READ,
-                    (self.feature,),
-                    expect_data=True,
-                )
-                data = res['data']
-                if len(data) != FRAME_SIZE:
-                    raise RuntimeError(
-                        f'Expected {FRAME_SIZE}-byte debugger reply, got {len(data)}'
-                    )
-                return data
-            except (PtpResponseError, ValueError) as exc:
-                is_busy = (
-                    isinstance(exc, PtpResponseError)
-                    and exc.response_code == PTP_RC_DEVICE_BUSY
-                ) or (
-                    isinstance(exc, ValueError)
-                    and 'kind=3' in str(exc)
-                    and f'0x{PTP_RC_DEVICE_BUSY:04x}' in str(exc).lower()
-                )
-                if is_busy and time.monotonic() < deadline:
-                    time.sleep(0.02)
-                    continue
-                raise
+        self._transact_with_retry(
+            PTP_OC_SONY_DI_EXTCMD_WRITE, deadline=deadline, data_out=payload,
+        )
+        res = self._transact_with_retry(
+            PTP_OC_SONY_DI_EXTCMD_READ, deadline=deadline, expect_data=True,
+        )
+        data = res['data']
+        if len(data) != FRAME_SIZE:
+            raise RuntimeError(
+                f'Expected {FRAME_SIZE}-byte debugger reply, got {len(data)}'
+            )
+        return data
 
     def switch_to_msc(self) -> dict:
         """Send Sony PTP 0x9282 (SonyReqReconnect arg 0) to request MSC mode."""
