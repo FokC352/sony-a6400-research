@@ -332,5 +332,30 @@ class TestCxd90014Registry(unittest.TestCase):
         self.assertTrue(ILCE_6000.boundaries)
 
 
+class TestIlce7cUsbIdentity(unittest.TestCase):
+    def setUp(self):
+        self.profile = get_profile("ilce_7c")
+
+    def test_usb_and_product_code_cite_external_receipt(self):
+        receipt = "docs/evidence/external-ilce7c-usb-ids/README.md"
+        self.assertEqual(self.profile.product_code, "0032852231")
+        self.assertIsNotNone(self.profile.usb)
+        self.assertEqual(self.profile.usb.vid, 0x054C)
+        self.assertEqual(self.profile.usb.bcd_device, 0x0200)
+        self.assertEqual(
+            {name: (pid.value, pid.tier) for name, pid in self.profile.usb.pids.items()},
+            {
+                "mass_storage": (0x0D29, PID_TIER_OBSERVED),
+                "mtp": (0x0D2A, PID_TIER_OBSERVED),
+                "pc_remote": (0x0D2B, PID_TIER_OBSERVED),
+                "usb_streaming": (0x0DE6, PID_TIER_OBSERVED),
+            },
+        )
+        self.assertEqual([ref.path for ref in self.profile.sources["product_code"]], [receipt])
+        self.assertTrue(self.profile.sources["usb"])
+        self.assertTrue(all(ref.path == receipt for ref in self.profile.sources["usb"]))
+        self.assertTrue((ROOT / receipt).is_file())
+
+
 if __name__ == "__main__":
     unittest.main()

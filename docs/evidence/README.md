@@ -21,6 +21,10 @@ snapshot or its recorded test count.
   `sony-a6000` QEMU machine for the CXD90014 body, ported from voxivoid/a6000-qemu;
   boot, UI, USB, NFC, Wi-Fi, HDMI and SD compared against the source build. Needs the
   contributor's own NAND dump; no CXD90045 claim.
+- [ILCE-7C USB IDs receipt, 2026-11-21](external-ilce7c-usb-ids/README.md):
+  external contributor (`mavanha`, Issue #60) `pmca` MSC `model_code` (`0032852231`)
+  and Windows PnP USB PIDs (`054C:0D29`, `0D2A`, `0D2B`, `0DE6`, `bcdDevice 0x0200`)
+  observed on a stock FW 2.00 body.
 
 ## Latest records
 
