@@ -47,10 +47,9 @@ All listed cameras share Sony's **BIONZ X (`CXD90045`)** processor ([platform ov
 | **`ILCE-6400`** | **Verified (Hardware + Emulator)** | Full QEMU & Unicorn emulation, Mod Loader v2, MenuTouchFull, Arrivederci, Film Sims |
 | **`ILCE-6400A`** | **Verified (QEMU + SD Auto-Boot)** | 4-core QEMU stock UI boot, Mod Loader v2 + 10 `.mod` packages, FAT32/exFAT SD auto-boot ([`mods/ilce_6400a/`](mods/ilce_6400a/README.md)) |
 | **`ILCE-6100`** | **Verified (Hardware Mods)** | PhotonBin 6MP and MLV2 SD-boot/SMNU ([E9104](docs/evidence/9104-a6100-photonbin-6mp-port.md)); Picture Profile unlock is QEMU-only ([E9101](docs/evidence/9101-a6100-picture-profile-gate.md)); the emulator Mod Loader port is offline ([E9103](docs/evidence/9103-a6100-mod-loader-port.md)) |
-| **`ILCE-6700`** | **Research only (partition capture)** | BIONZ XR (`CXD90057`): ten partitions absent from the 2.00 update were read from the running camera ([E9201](docs/evidence/9201-a6700-camera-partition-capture-via-jiritsu.md)); no emulator runs them yet |
+| **`ILCE-6700`** | **Research only (partition capture)** | BIONZ XR (`CXD90057`): ten partitions absent from the 2.00 update were read from the running camera ([E9201](docs/evidence/9201-a6700-camera-partition-capture-via-jiritsu.md)); its kernel boots on a new QEMU machine up to the first unmodelled driver ([E9202](docs/evidence/9202-a6700-qemu-first-boot.md)); no UI or debugger yet |
 | **`ZV-E10`** | **Verified (RAM Touch Mod)** | Full Main Menu + 12-tile Fn touch on physical hardware via direct RAM injection ([ZV-E10 guide](tools/native_camera/zve10/README.md)) |
 | **`ILCE-6600` · `ILCE-7C` · `ILCE-7M3` · `ILCE-7RM4A`** | **Reference Profiles** | Firmware symbols & USB IDs mapped offline; ready for contributors to verify mods |
-| **`ILCE-6000`** (`CXD90014`, not BIONZ X) | **Emulator (Experimental)** | `sony-a6000` QEMU machine boots firmware 3.21 to the camera UI from your own NAND dump; USB, NFC, Wi-Fi, HDMI, SD ([`emulators/a6000/`](emulators/a6000/README.md), [receipt](docs/evidence/external-a6000-emulator/README.md)) |
 
 ---
 
@@ -90,7 +89,7 @@ python -m unittest discover -s tests -q
 
 This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9105](docs/evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md)**.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=3eebcc0f2f5f)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=ff0b36bb8eed)
 
 [Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 

@@ -4,7 +4,7 @@
 
 - **Scope:** The local ILCE-6100 and ILCE-6400 partition sets, their integrity against stored manifests, the build identity each set carries, and which partitions are byte-identical across the two bodies.
 - **Evidence span:** see record index; last reviewed 2026-11-26.
-- **Deep review:** 1 of 7 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 1 of 8 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -76,6 +76,7 @@ Current knowledge:
 - **C08** `PHYSICAL` Ten ILCE-6700 partitions that the 2.00 update does not carry (nflasha1, 2, 4, 6, 10, 11, 12, 13, 18, 22; 547,291,136 bytes) were read from the running camera with per-chunk SHA-1 agreement; nine are FAT and nflasha4 has no filesystem signature. The first 2 MiB of live nflasha7 equal the update image byte for byte. nflasha23 was deliberately not read, there is a single pass, and mounted partitions are live snapshots. ([E9201](../evidence/9201-a6700-camera-partition-capture-via-jiritsu.md))
 - **C09** `OFFLINE` On the ILCE-6700 the Senser level tables (A/B/C) contain no FileControl 0xff01 or MemoryDump 0xff03, and libJiritsu carries the same 0x1001/0x4001..0x4012 command table as the a6400A; GET_FILE with a /.. path reads any non-empty regular file and an uploaded /tmp/jiritsu/libJit.so is dlopened once per boot. /tmp is /dev/nflasha10 but /tmp/jiritsu is the nflasha6 mount (vfat, rw, sync), so the uploaded run.sh and libJit.so are written to nflasha6 and removed afterwards. ([E9201](../evidence/9201-a6700-camera-partition-capture-via-jiritsu.md))
 - **C10** `INFERENCE` Every GET_FILE read that failed with status 0x10000006 concerned a file whose size is a multiple of 4096, and every read that succeeded did not; padding each chunk by three bytes made 1,000+ chunk reads succeed. The cause inside the Jiritsu read path is not identified. ([E9201](../evidence/9201-a6700-camera-partition-capture-via-jiritsu.md))
+- **C11** `OFFLINE` The ILCE-6700 2.00 Linux 4.9.337 kernel boots on a new sony-a6700 QEMU machine built from the camera's device tree (EL3 hand-off, GIC-400, 2 MHz timer, five PL011, initrd ext2 root, real /sbin/init) and stops when dma330 needs the unmodelled PL330; the image's EL3 code passes the device tree at RAM_BASE+0x2000. No UI, USB or TCP debugger exists for this body. ([E9202](../evidence/9202-a6700-qemu-first-boot.md))
 
 ### <a id="proc-dump-integrity"></a>Dump integrity and cross-body comparison
 
@@ -92,7 +93,7 @@ Current knowledge:
 - **C05** `OFFLINE` The two sets share one 18-partition size map (1,360,986,112 bytes each; the a6100 adds a 65,536-byte nflasha_head), and exactly three partitions are byte-identical: nflasha16 (146,800,640 bytes, all zero), nflasha23 (2,097,152 bytes) and nflashaB1 (4,194,304 bytes, all zero). The other 15 differ, including nflasha1, nflasha5, nflasha7 and nflasha15. ([E0707](../evidence/0707-firmware-dump-sets-a6100-a6400.md))
 - **C08** `PHYSICAL` Ten ILCE-6700 partitions that the 2.00 update does not carry (nflasha1, 2, 4, 6, 10, 11, 12, 13, 18, 22; 547,291,136 bytes) were read from the running camera with per-chunk SHA-1 agreement; nine are FAT and nflasha4 has no filesystem signature. The first 2 MiB of live nflasha7 equal the update image byte for byte. nflasha23 was deliberately not read, there is a single pass, and mounted partitions are live snapshots. ([E9201](../evidence/9201-a6700-camera-partition-capture-via-jiritsu.md))
 
-## Record index (7 files)
+## Record index (8 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -105,3 +106,4 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0707](../evidence/0707-firmware-dump-sets-a6100-a6400.md) | 2026-11-26 | ILCE-6100 and ILCE-6400 firmware dump sets: integrity, identity and cross-body partitions | yes |  |
 | [E9101](../evidence/9101-a6100-picture-profile-gate.md) | 2026-11-21 | Where Picture Profile is gated on an ILCE-6100 (a6100), and the opt-in unlock |  | Date:** 2026-11-21 (supersedes the same-day first pass, see §8) / confirmation in this record, and it also corrects the first pass's assumption that the |
 | [E9201](../evidence/9201-a6700-camera-partition-capture-via-jiritsu.md) | 2026-11-27 | ILCE-6700 live partition capture through Jiritsu (10 partitions absent from the update) |  | Correction to E9200.** `partinf.conf` names 16 partitions with a non-zero size, not 13. |
+| [E9202](../evidence/9202-a6700-qemu-first-boot.md) | 2026-11-27 | ILCE-6700 kernel first boot on a new `sony-a6700` QEMU machine |  |  |
