@@ -727,6 +727,7 @@ class QemuEmountLensMotorTests(_QTestQmpHarness):
         self.assertEqual(self.rd32(proc, pending, 0x00621000), 0xA6400DEA)
 
 
+@unittest.skipUnless(os.name == "posix", "POSIX shell required for run.sh preflight tests")
 class SubmicroSyntheticPreflightTests(unittest.TestCase):
     """Verify run.sh preflight rules for SUBMICRO_SYNTHETIC=1."""
 

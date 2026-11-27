@@ -153,7 +153,7 @@ def open_qemu_exchange(socket_path: str | Path, *, mode: str = 'auto',
     """Connect to a QEMU cxd90045-dwc3 unix socket and yield (exchange, details)."""
     if mode not in ('auto', 'msc', 'ptp'):
         raise ValueError(f'Unsupported QEMU debugger mode: {mode!r}')
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock = socket.socket(getattr(socket, 'AF_UNIX', 1), socket.SOCK_STREAM)
     sock.settimeout(2.0)
     sock.connect(str(socket_path))
     try:

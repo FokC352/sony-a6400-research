@@ -503,3 +503,4 @@ entities = ["dev.lens"]
 evidence = ["E0648", "E0649"]
 next = "Find the receiver or store of the 0xA2AFEC notifications (candidates: libIMDB and the large anonymous im.elf objects), or read MakerNote LensE-mountVersion and lens firmware fields from host-side JPEGs; compare a Sigma body with the TTArtisan first-generation-only set."
 read_in_result = "The bitmap at BL_LENS_DATA+1 names the second-generation IDs, or the MakerNote values predict which command set the body uses."
+
