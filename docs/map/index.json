@@ -220,7 +220,8 @@
       "active_claims": [
         "C08",
         "C09",
-        "C10"
+        "C10",
+        "C11"
       ],
       "inactive_claims": []
     },
@@ -11298,6 +11299,15 @@
         "file": "9201-a6700-camera-partition-capture-via-jiritsu.md"
       }
     ],
+    "E9202": [
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C11",
+        "file": "9202-a6700-qemu-first-boot.md",
+        "status": "verified-offline"
+      }
+    ],
     "README": [
       {
         "area": "mods",
@@ -13701,6 +13711,9 @@
       "imaging-pipeline"
     ],
     "9201-a6700-camera-partition-capture-via-jiritsu.md": [
+      "firmware-dumps"
+    ],
+    "9202-a6700-qemu-first-boot.md": [
       "firmware-dumps"
     ],
     "cross_model/a6400-scalarwebapi-2026-11-20-transcript.jsonl": [
