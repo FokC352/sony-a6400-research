@@ -74,11 +74,14 @@ Seen on the way and not yet explained:
 4. A USB or TCP debugger only after the guest reaches the camera application: the repository's
    native debugger (`tools/native_camera/a6400_usb_debugd.c`) is ARM32 and written for the a6400.
 
-## Clean Setting image
+## Scrubbed copies of the captured partitions
 
-`make_clean_setting.sh` builds a NEW FAT image from a captured `nflasha2.bin` (mounted
-read-only) that keeps the device tree, `kemco.txt` and the generic model/config files and
-omits the settings backup (owner name and serial number), the face-registration data and the
-service token. The old image's free-space remnants (DHCP leases, MAC addresses) are not
-copied. A scan of the result finds no name, serial, MAC, lease, private IP or e-mail pattern.
-This is a data-hygiene step for emulator inputs; it is not a factory reset of the camera.
+`scrub_dump.sh <captures-dir> <output-dir>` makes privacy-scrubbed COPIES for the owner's local
+emulator use (the captured images are only mounted read-only). Each FAT partition is rebuilt
+as a new image that keeps the generic files and none of the free-space remnants (old DHCP
+leases, MAC addresses); the settings backup (owner name, serial number), the face-registration
+data, the service token, the client certificate and private key, the network and access logs
+and the updater history are left out or zero-filled, and the unreadable MPR backup is
+zero-filled. A scan of the results finds no owner name, serial number, MAC address, lease,
+private IP, private key or personal e-mail pattern. This is data hygiene, not a factory reset
+of the camera and not a licence to redistribute Sony's firmware.
