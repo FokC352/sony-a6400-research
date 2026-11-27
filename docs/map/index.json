@@ -205,6 +205,25 @@
       ],
       "inactive_claims": []
     },
+    "source.a6700-camera-dump": {
+      "area": "firmware-dumps",
+      "name": "ILCE-6700 camera-read partitions",
+      "kind": "source",
+      "address": null,
+      "aliases": [
+        "a6700-live",
+        "dumps/a6700-live",
+        "a6700_jiritsu_dump",
+        "E9201"
+      ],
+      "anchor": "firmware-dumps.md#source-a6700-camera-dump",
+      "active_claims": [
+        "C08",
+        "C09",
+        "C10"
+      ],
+      "inactive_claims": []
+    },
     "proc.dump-integrity": {
       "area": "firmware-dumps",
       "name": "Dump integrity and cross-body comparison",
@@ -218,7 +237,8 @@
       "active_claims": [
         "C01",
         "C02",
-        "C05"
+        "C05",
+        "C08"
       ],
       "inactive_claims": []
     },
@@ -11249,6 +11269,35 @@
         "file": "9105-a6100-rcraw-aif-w2-and-fopd-gates.md"
       }
     ],
+    "E9201": [
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C08",
+        "file": "9201-a6700-camera-partition-capture-via-jiritsu.md",
+        "status": "verified-physical"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C09",
+        "file": "9201-a6700-camera-partition-capture-via-jiritsu.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "claim",
+        "id": "C10",
+        "file": "9201-a6700-camera-partition-capture-via-jiritsu.md",
+        "status": "inference"
+      },
+      {
+        "area": "firmware-dumps",
+        "kind": "frontier",
+        "id": "F02",
+        "file": "9201-a6700-camera-partition-capture-via-jiritsu.md"
+      }
+    ],
     "README": [
       {
         "area": "mods",
@@ -13650,6 +13699,9 @@
     ],
     "9105-a6100-rcraw-aif-w2-and-fopd-gates.md": [
       "imaging-pipeline"
+    ],
+    "9201-a6700-camera-partition-capture-via-jiritsu.md": [
+      "firmware-dumps"
     ],
     "cross_model/a6400-scalarwebapi-2026-11-20-transcript.jsonl": [
       "wifi-and-remote"
