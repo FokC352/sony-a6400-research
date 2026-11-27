@@ -3982,7 +3982,6 @@ static const MemoryRegionOps cxd90045_gpdmac1_ops = {
  */
 static bool sony_a6400_clkrst_model;
 static bool sony_a6400_pmic_reset;
-static bool sony_a6400_sd_uhs_u3;
 static bool sony_a6400_remote_suspend_bypass;
 static bool sony_a6400_still_capture;
 

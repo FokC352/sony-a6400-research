@@ -1196,6 +1196,17 @@ static void bcm4339_sdio_realize(DeviceState *dev, Error **errp)
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 }
 
+static void bcm4339_sdio_unrealize(DeviceState *dev)
+{
+    Bcm4339SdioState *s = CXD90045_BCM4339_SDIO(dev);
+
+    if (s->nic) {
+        qemu_del_nic(s->nic);
+        s->nic = NULL;
+    }
+    g_clear_pointer(&s->tcm, g_free);
+}
+
 static void bcm4339_get_u64(Object *obj, Visitor *v, const char *name,
                             void *opaque, Error **errp)
 {
@@ -1229,6 +1240,7 @@ static void bcm4339_sdio_class_init(ObjectClass *klass, const void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = bcm4339_sdio_realize;
+    dc->unrealize = bcm4339_sdio_unrealize;
     device_class_set_legacy_reset(dc, bcm4339_sdio_reset);
     device_class_set_props(dc, bcm4339_sdio_properties);
     object_class_property_add(klass, "cmd5-count", "uint64",
