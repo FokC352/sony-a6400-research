@@ -1545,7 +1545,7 @@ static void cxd90045_create_ddrb_at(MemoryRegion *sysmem, hwaddr base,
     memory_region_init_io(&s->mmio, NULL, &cxd90045_ddrb_ops, s, name, 0x21c);
     memory_region_add_subregion_overlap(sysmem, base, &s->mmio, 0);
     qemu_register_reset(cxd90045_ddrb_reset, s);
-    vmstate_register(NULL, 0, &vmstate_cxd_ddrb, s);
+    vmstate_register(NULL, VMSTATE_INSTANCE_ID_ANY, &vmstate_cxd_ddrb, s);
 }
 
 static bool sony_get_ddrb_control(Object *obj, Error **errp)
