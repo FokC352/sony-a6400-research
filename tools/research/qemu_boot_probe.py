@@ -102,17 +102,26 @@ class Qmp:
             host, port = path
             if host != '127.0.0.1' or type(port) is not int or not 1 <= port <= 65535:
                 raise ValueError('TCP QMP must use a numeric loopback endpoint')
-            self.socket = socket.socket(socket.AF_INET)
-            endpoint = path
+            family, endpoint = socket.AF_INET, path
         else:
-            self.socket = socket.socket(socket.AF_UNIX)
-            endpoint = str(path)
-        self.socket.settimeout(5)
-        try:
-            self.socket.connect(endpoint)
-        except OSError:
-            self.socket.close()
-            raise
+            family, endpoint = socket.AF_UNIX, str(path)
+        # QEMU creates a UNIX socket file at bind(), before listen(): a client
+        # that only waited for the file can be refused for a moment, so retry
+        # a refused connect until the deadline.
+        while True:
+            self.socket = socket.socket(family)
+            self.socket.settimeout(5)
+            try:
+                self.socket.connect(endpoint)
+                break
+            except (ConnectionRefusedError, FileNotFoundError):
+                self.socket.close()
+                if time.monotonic() >= self.deadline:
+                    raise
+                time.sleep(0.02)
+            except OSError:
+                self.socket.close()
+                raise
         self.stream = self.socket.makefile('rwb', buffering=0)
         self.events = []
         self.greeting = self.read()
