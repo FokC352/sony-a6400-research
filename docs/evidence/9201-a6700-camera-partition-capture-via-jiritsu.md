@@ -11,7 +11,9 @@
   route this builds on).
 - **Authorization:** the owner explicitly approved the service-mode entry, the upload of an
   AArch64 helper and its use to read partitions. The helper's two files are written to
-  `/tmp`, which is `nflasha10` on this body (section 3); `nflasha6` is never written.
+  `/tmp/jiritsu`, which is the `nflasha6` (Jiritsu) mount, so `nflasha6` was written: two
+  files were created and later removed (section 3). It held no other files, so nothing
+  needed a backup.
 
 ## 1. Result
 
@@ -83,12 +85,13 @@ Observations from disassembling the two libraries above with capstone:
   `/tmp/jiritsu/libJit.so` it calls `dlopen` and immediately `dlclose`. A constructor in the
   uploaded object therefore runs once at upload. SET_FILE_PATH (code 15) sets the target.
 - **Where the files go.** `/sbin/initrc/fstab` of the update's `nflasha7` mounts
-  `/dev/nflasha10` as `/tmp`, `/etc` and `/var` (vfat, `rw,sync`). `/tmp/jiritsu/run.sh`
-  and `libJit.so` therefore touch the **Work** partition for the session, not RAM and not
-  `nflasha6`. `/tmp_wbshd` is a `tmpfs`; all chunk and control files live there.
-
-Inference: libJiritsu mounts `nflasha6` over `/tmp/jiritsu` (`sys_mount`, vfat, synchronous)
-only for the area-based paths; the capture path never selects them.
+  `/dev/nflasha10` as `/tmp`, `/etc` and `/var` (vfat, `rw,sync`), but libJiritsu mounts
+  `/dev/nflasha6` at `/tmp/jiritsu` (`sys_mount`, vfat, synchronous). The capture of
+  `nflasha6` taken while the helper ran contained exactly `run.sh` (731 bytes) and
+  `libJit.so` (2,760 bytes, SHA-256 `0891d189...4976b`, equal to the uploaded loader).
+  The upload therefore writes the Jiritsu partition; the files are removed again at the end.
+  `/tmp_wbshd` is a `tmpfs`; all chunk and control files live there. `nflasha10` only gains
+  an empty `/jiritsu` mount-point directory.
 
 ## 4. Operations performed on the camera
 
@@ -136,8 +139,9 @@ Commands never sent: `MODE`, `MOUNT`, `FORMAT`, `START`, `DEBUG`, `FIRMUP`, `FAC
 ## 7. Assumptions and caveats
 
 - Mounted partitions (`nflasha2, 10, 11, 12, 18, 22` and others) are non-atomic live
-  snapshots, not factory images. `nflasha10` contains the helper's two files for the
-  duration of its capture. `nflasha1, 4, 6, 13` were not mounted during the run.
+  snapshots, not factory images. The captured `nflasha6` contains the helper's two files
+  (it holds nothing else), so it is not a pristine Jiritsu partition and was modified,
+  then restored to empty, by the capture itself.
 - Partition sizes are from `partinf.conf` and agree with live `/proc/partitions`.
 - A single pass per partition exists, apart from the 2 MiB `nflasha7` agreement. A second
   pass was not made, so there is no two-pass agreement as for the a6100 set (E0707).

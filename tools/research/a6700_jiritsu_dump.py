@@ -9,8 +9,8 @@ file on the camera's ``/tmp_wbshd`` tmpfs, fetching each chunk with GET_FILE.
 Boundaries enforced here (see docs/evidence for the supporting record):
   * Only the two files ``/tmp/jiritsu/run.sh`` and ``/tmp/jiritsu/libJit.so`` and
     the control files in the nonce RAM directory are ever written. On this
-    body ``/tmp`` is ``/dev/nflasha10`` (vfat), so those two files touch the
-    ``Work`` partition for the duration of the session; both are removed.
+    body ``/tmp/jiritsu`` is the ``/dev/nflasha6`` (Jiritsu, vfat) mount, so those two
+    files are written to ``nflasha6`` for the duration of the session; both are removed.
   * Partition reads are read-only ``dd`` calls bounded to 4096-byte multiples.
     ``nflasha23`` is excluded; no raw write, format, firmware or factory
     command is ever sent.

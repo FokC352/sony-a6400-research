@@ -112,7 +112,7 @@ evidence = ["E9201"]
 id = "C09"
 entities = ["source.a6700-camera-dump"]
 status = "verified-offline"
-text = "On the ILCE-6700 the Senser level tables (A/B/C) contain no FileControl 0xff01 or MemoryDump 0xff03, and libJiritsu carries the same 0x1001/0x4001..0x4012 command table as the a6400A; GET_FILE with a /.. path reads any non-empty regular file and an uploaded /tmp/jiritsu/libJit.so is dlopened once per boot. On this body /tmp is /dev/nflasha10 (vfat, rw, sync), not RAM."
+text = "On the ILCE-6700 the Senser level tables (A/B/C) contain no FileControl 0xff01 or MemoryDump 0xff03, and libJiritsu carries the same 0x1001/0x4001..0x4012 command table as the a6400A; GET_FILE with a /.. path reads any non-empty regular file and an uploaded /tmp/jiritsu/libJit.so is dlopened once per boot. /tmp is /dev/nflasha10 but /tmp/jiritsu is the nflasha6 mount (vfat, rw, sync), so the uploaded run.sh and libJit.so are written to nflasha6 and removed afterwards."
 evidence = ["E9201"]
 
 [[claim]]
