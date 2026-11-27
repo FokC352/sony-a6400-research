@@ -1,8 +1,8 @@
 # ILCE-6700 (BIONZ XR, CXD90057) QEMU machine - first boot
 
-Status: **the stock 2.00 Linux 4.9.337 kernel boots on a new `sony-a6700` QEMU machine, mounts
-its initrd as root and runs the real `/sbin/init`, which loads the first kernel modules; the
-boot then stops at the first driver that needs hardware that is not modelled (`dma330`).**
+Status: **the stock 2.00 Linux 4.9.337 kernel boots on a new `sony-a6700` QEMU machine with the
+camera's own boot parameters, mounts its initrd as root, runs the real `/sbin/init` and loads
+`devno`, `dma330` and `crypt-emmc`; the boot stops at the eMMC crypto engine, which is not modelled.**
 No UI, USB or TCP debugger exists yet. Inputs are camera-derived and stay under the
 git-ignored `artifacts/`; this page lists identities and facts only. Evidence: E9202.
 
@@ -43,36 +43,49 @@ Licensing: `sony-a6700.c` is written against the QEMU 10.0.0 API and is released
 GPL-2.0-or-later like QEMU itself (SPDX header in the file); it is not part of the MIT-licensed
 Python tooling. No QEMU source is copied into this repository.
 
+## Sony GPL kernel source (hardware map)
+
+Sony publishes the GPL source for this body: `linux-kernel.tar.gz` for ILCE-6700 Ver.2.00 at
+<https://oss.sony.net/Products/Linux/DI/ILCE-6700_Ver200.html> (109,976,756 bytes, SHA-256
+`fb39a21e67d6728e716adce36505f2b38ef8b37a76e3560025059371f373ec90`, downloaded under Sony's
+notice, kept under `artifacts/sony-gpl/`, not in this repository). Its UDIF platform layer
+(`drivers/udif/mach-cxd900xx`) gives the SoC map used by the machine: DDRC at `0xF105A000 +
+0x1000*n` (INTSTAT is `+0x44C`), SCU at `0xF1388000` (16-byte DATA/SET/CLR groups), eSRAM at
+`0xFE000000` (16 MiB), DMA330 interrupt bases, and the `memrsv=...:uc` non-cached windows.
+
+## Boot contract (from the updater partition and `kemco.txt`)
+
+`/boot/loadaddr.txt` on `nflasha1` reads `0x400080000,0x408000000,0x400001000,0x400002000`: kernel,
+initrd, command-line blob (`kemco.txt`), device tree. `kemco.txt` carries the camera's real
+parameters (`mem=4G`, `initrd=0x408000000,0x1000000`, `memrsv=...` incl. `:uc` windows,
+`adrs_conv.*`, `console=ttynull0`). Without them the DMA module fails with `arch_phys_to_noncache`
+errors; with them it loads.
+
 ## Build and run
 
 ```sh
 sh qemu-a6700/build_qemu.sh /path/to/qemu-10.0.0        # tarball SHA-256 22c07560...3896
-sh qemu-a6700/run_first_boot.sh /path/to/qemu-10.0.0/build /path/to/kernel-dir 60
+sh qemu-a6700/run_first_boot.sh /path/to/qemu-10.0.0/build /path/to/kernel-dir 90
 ```
 
-## Result of the first boot (60 s, one CPU)
+## Result (90 s, one CPU)
 
-Reached, in order: AArch64 EL3 to EL1 hand-off, device-tree parse, GIC probe, the CXD clock
-driver, the architected timer at 2 MHz, five PL011 UARTs, initrd unpack and the ext2 root
-mount (`VFS: Mounted root (ext2 filesystem) on device 1:0`), then the real `/sbin/init`
-loading `devno.ko` and `dma330.ko`. `dma330_probe` dereferences NULL (the PL330 DMA
-controller is not modelled), and Sony's exception monitor takes over (`Exception>`).
+Reached, in order: EL3 to EL1 hand-off, device-tree parse, GIC probe, the CXD clock driver, the
+2 MHz timer, five PL011 UARTs, USB PHY `SRAM_INIT_DONE`/`SRAM_EXT_LD_DONE`, initrd ext2 root, the
+real `/sbin/init`, then `devno.ko`, **`dma330.ko` (both controllers prepared)** and `crypt-emmc.ko`.
+`cryptEmmc_reset` calls `cryptEmmc_setKeyCovertly`, which jumps to a bad address inside the module
+(the eMMC crypto engine is not modelled), and Sony's exception monitor takes over.
 
-Seen on the way and not yet explained:
-
-- `GIC CPU mask not found - kernel will fail to boot.`
-- CPU 1-3 fail to come online (spin-table with no secondary entry model); use `maxcpus=1`.
-- `check_cr_sram_init_done timed out to wait for SRAM_INIT_DONE`.
-- The most frequent unimplemented accesses are in `0xF1388xxx`, `0xF102Exxx` and `0xF108xxx`.
+Not yet explained: `GIC CPU mask not found`; CPU 1-3 fail to come online (use `maxcpus=1`).
 
 ## Next steps
 
-1. Model PL330 (`dma330`) at its device-tree address, the SRAM-init status register, and the
-   SCU/clock/reset syscon registers the logs show, one contract at a time.
-2. Spin-table secondary start and the GIC CPU-mask property.
-3. Drivers after `dma330`: USB (`snps,dwc3`), PCIe end points, Arasan SDHCI.
-4. A USB or TCP debugger only after the guest reaches the camera application: the repository's
-   native debugger (`tools/native_camera/a6400_usb_debugd.c`) is ARM32 and written for the a6400.
+1. The eMMC crypto engine (`crypt-emmc`) and the Arasan SDHCI/eMMC controller so that the `nflasha*`
+   block devices appear (`emmc.ko` is the next module in `insmod_drv1`).
+2. Secondary CPUs (spin-table) and the GIC CPU mask.
+3. The remaining modules of `insmod_drv2` (USB, PCIe, display, sensor, ...), then the camera
+   application. A USB or TCP debugger only after that: the repository's native debugger
+   (`tools/native_camera/a6400_usb_debugd.c`) is ARM32 and written for the a6400.
 
 ## Scrubbed copies of the captured partitions
 

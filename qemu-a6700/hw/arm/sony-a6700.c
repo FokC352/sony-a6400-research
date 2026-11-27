@@ -119,6 +119,120 @@ static void a6700_load_boot(MachineState *machine)
     rom_add_blob_fixed_as("a6700.reset", code, sizeof(code), 0, &address_space_memory);
 }
 
+
+/* arm,pl330 DMA controllers from the device tree: mdma@F1056000 (disabled in the DT, SPI 0x50..)
+ * and mdma@F1057000 (enabled, SPI 0x71..0x78). The first interrupt is wired to the abort line and
+ * every event line; the real event-to-SPI split of the SoC is not known yet. */
+static void a6700_create_pl330(MemoryRegion *sysmem, DeviceState *gic, hwaddr base, unsigned spi0)
+{
+    DeviceState *dev = qdev_new("pl330");
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+    unsigned i;
+
+    qdev_prop_set_uint32(dev, "num_chnls", 8);
+    qdev_prop_set_uint8(dev, "num_periph_req", 32);
+    qdev_prop_set_uint8(dev, "num_events", 8);
+    qdev_prop_set_uint8(dev, "data_width", 64);
+    object_property_set_link(OBJECT(dev), "memory", OBJECT(sysmem), &error_abort);
+    sysbus_realize_and_unref(sbd, &error_fatal);
+    sysbus_mmio_map(sbd, 0, base);
+    sysbus_connect_irq(sbd, 0, qdev_get_gpio_in(gic, spi0));
+    for (i = 0; i < 8; i++) {
+        sysbus_connect_irq(sbd, i + 1, qdev_get_gpio_in(gic, spi0 + i));
+    }
+}
+
+
+/*
+ * Small stateful register blocks, from Sony's GPL kernel source for this body
+ * (drivers/udif/mach-cxd900xx/include/mach/platform.h, regs-scu.h, regs-ddrc.h and the
+ * dwc3/pcie PHY drivers):
+ *  - SCU at 0xF1388000: 16-byte groups of {DATA +0x0, SET +0x4, CLR +0x8}; CLKEN(ch)=+ch*16,
+ *    PLL(ch)=+0x100+ch*4, CLKSEL(ch)=+0x200+ch*16, RESET(ch)=+0x300+ch*16.
+ *  - DDRC(0..3) at 0xF105A000 + 0x1000*n: INTSTAT is DDR_CTL(275) = +0x44C; the mode-register
+ *    write (bit 26) and low-power-command (bit 5) completions are reported as done.
+ *  - USB PHY CFGR0 at 0xF1080020 (assumed base, see dwc3 cxd-phy.c): bit 18 SRAM_INIT_DONE.
+ * Everything else in the SoC windows stays an unimplemented device.
+ */
+typedef struct A6700Regs {
+    MemoryRegion mr;
+    hwaddr base;
+    bool setclr;
+    uint32_t *r;
+} A6700Regs;
+
+static uint32_t a6700_regs_word(A6700Regs *s, hwaddr off)
+{
+    uint32_t v = s->r[off >> 2];
+    hwaddr abs = s->base + off;
+
+    if (abs >= 0xF105A000 && abs < 0xF105E000 && (abs & 0xFFF) == 0x44C) {
+        v |= BIT(26) | BIT(5);
+    }
+    if (abs == 0xF1080020) {
+        v |= BIT(18);
+    }
+    return v;
+}
+
+static uint64_t a6700_regs_read(void *opaque, hwaddr off, unsigned size)
+{
+    A6700Regs *s = opaque;
+    uint32_t v = a6700_regs_word(s, off & ~3ULL);
+
+    return (v >> ((off & 3) * 8)) & MAKE_64BIT_MASK(0, size * 8);
+}
+
+static void a6700_regs_write(void *opaque, hwaddr off, uint64_t val, unsigned size)
+{
+    A6700Regs *s = opaque;
+    hwaddr word = off & ~3ULL;
+    uint32_t v = (uint32_t)val;
+
+    if (size != 4) {
+        unsigned shift = (off & 3) * 8;
+        uint32_t mask = MAKE_64BIT_MASK(0, size * 8) << shift;
+
+        v = (s->r[word >> 2] & ~mask) | (((uint32_t)val << shift) & mask);
+    }
+    if (s->setclr) {
+        switch (word & 0xC) {
+        case 0x4:
+            s->r[(word & ~0xFULL) >> 2] |= v;
+            return;
+        case 0x8:
+            s->r[(word & ~0xFULL) >> 2] &= ~v;
+            return;
+        case 0x0:
+            s->r[word >> 2] = v;
+            return;
+        default:
+            return;
+        }
+    }
+    s->r[word >> 2] = v;
+}
+
+static const MemoryRegionOps a6700_regs_ops = {
+    .read = a6700_regs_read,
+    .write = a6700_regs_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 8 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+static void a6700_create_regs(MemoryRegion *sysmem, const char *name, hwaddr base,
+                              hwaddr size, bool setclr)
+{
+    A6700Regs *s = g_new0(A6700Regs, 1);
+
+    s->base = base;
+    s->setclr = setclr;
+    s->r = g_new0(uint32_t, size / 4);
+    memory_region_init_io(&s->mr, NULL, &a6700_regs_ops, s, name, size);
+    memory_region_add_subregion_overlap(sysmem, base, &s->mr, 1);
+}
+
 static void sony_a6700_init(MachineState *machine)
 {
     MemoryRegion *sysmem = get_system_memory();
@@ -166,12 +280,25 @@ static void sony_a6700_init(MachineState *machine)
     /* Unmodelled SoC windows: low priority, read as zero, every access logged. */
     create_unimplemented_device("a6700-soc", 0xF0000000, 0x02000000);
     create_unimplemented_device("a6700-fe", 0xFE000000, 0x01000000);
+    {
+        /* eSRAM, 16 MiB at 0xFE000000 (CXD900XX_ESRAM_BASE/SIZE) */
+        MemoryRegion *esram = g_new(MemoryRegion, 1);
+
+        memory_region_init_ram(esram, NULL, "a6700.esram", 16 * MiB, &error_fatal);
+        memory_region_add_subregion_overlap(sysmem, 0xFE000000, esram, 1);
+    }
+    a6700_create_regs(sysmem, "a6700-scu", 0xF1388000, 0x1000, true);
+    a6700_create_regs(sysmem, "a6700-ddrc", 0xF105A000, 0x4000, false);
+    a6700_create_regs(sysmem, "a6700-usbphy", 0xF1080000, 0x1000, false);
 
     for (i = 0; i < A6700_NUM_UARTS; i++) {
         pl011_create(A6700_UART0 + i * A6700_UART_STRIDE,
                      qdev_get_gpio_in(gic, A6700_UART_SPI0 + i),
                      serial_hd(i));
     }
+
+    a6700_create_pl330(sysmem, gic, 0xF1056000ULL, 0x50);
+    a6700_create_pl330(sysmem, gic, 0xF1057000ULL, 0x71);
 
     a6700_load_boot(machine);
 }

@@ -50,7 +50,26 @@ command-line override is looked up at `RAM_BASE + 0x1000`.
   online` and `check_cr_sram_init_done timed out` are unexplained or expected consequences.
 - This is not a verified model of the SoC and not a camera application boot: no UI, no
   USB gadget and no TCP or USB debugger exist for this body yet.
-- The kernel, initrd and device tree are proprietary and stay under `artifacts/`.
+- The kernel, initrd and device tree are proprietary and stay under `artifacts/`. The GPL source
+is Sony's and also stays there.
+
+## 4a. Update: Sony GPL source and the camera's own boot parameters
+
+Sony's public GPL package for ILCE-6700 Ver.2.00 (`linux-kernel.tar.gz`, 109,976,756 bytes,
+SHA-256 `fb39a21e67d6728e716adce36505f2b38ef8b37a76e3560025059371f373ec90`, downloaded from
+oss.sony.net under Sony's notice and kept under the git-ignored `artifacts/`) supplies the SoC map
+(`drivers/udif/mach-cxd900xx`): DDRC `0xF105A000`, SCU `0xF1388000` (DATA/SET/CLR groups), eSRAM
+`0xFE000000`, and its Linux clock, GIC and PHY drivers. The updater partition's
+`/boot/loadaddr.txt` gives the load addresses (kernel `0x400080000`, initrd `0x408000000`, command
+line `0x400001000`, device tree `0x400002000`) and `/setting/kemco.txt` the real kernel parameters
+(`mem=4G`, `memrsv=...:uc`, `adrs_conv.*`).
+
+With these, the machine adds the 16 MiB eSRAM, the SCU set/clear block, the DDRC INTSTAT done bits,
+the USB PHY SRAM-init bits and two `arm,pl330` controllers, and boots with `-m 4G`, the real
+parameter file and the camera's load addresses. Result: the USB PHY SRAM-init waits pass, the
+`dma330` module prepares both controllers (earlier it crashed), `crypt-emmc.ko` loads and then
+`cryptEmmc_setKeyCovertly` jumps to a bad address inside the module. The eMMC crypto engine and
+the SDHCI/eMMC controller are the next unmodelled blocks.
 
 ## 5. Next boundary
 
