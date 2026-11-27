@@ -13707,6 +13707,9 @@
     "external-a6000-emulator/README.md": [
       "qemu-a6400"
     ],
+    "external-ilce7c-usb-ids/README.md": [
+      "platform-multidevice"
+    ],
     "external-zve10-menu/README.md": [
       "mods"
     ],
