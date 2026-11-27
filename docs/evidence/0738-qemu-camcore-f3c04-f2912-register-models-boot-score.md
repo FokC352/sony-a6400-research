@@ -1,4 +1,4 @@
-# E0732 — Boot score for the register models at 0xF3C04000 and 0xF2912000-0xF2915FFF
+# E0738 — Boot score for the register models at 0xF3C04000 and 0xF2912000-0xF2915FFF
 
 Date: 2026-11-21. Recorded from merged pull request
 [#64](https://github.com/ivica00/bionz-x-research/pull/64)
