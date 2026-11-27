@@ -50,6 +50,7 @@ All listed cameras share Sony's **BIONZ X (`CXD90045`)** processor ([platform ov
 | **`ILCE-6700`** | **Research only (partition capture)** | BIONZ XR (`CXD90057`): ten partitions absent from the 2.00 update were read from the running camera ([E9201](docs/evidence/9201-a6700-camera-partition-capture-via-jiritsu.md)); no emulator runs them yet |
 | **`ZV-E10`** | **Verified (RAM Touch Mod)** | Full Main Menu + 12-tile Fn touch on physical hardware via direct RAM injection ([ZV-E10 guide](tools/native_camera/zve10/README.md)) |
 | **`ILCE-6600` · `ILCE-7C` · `ILCE-7M3` · `ILCE-7RM4A`** | **Reference Profiles** | Firmware symbols & USB IDs mapped offline; ready for contributors to verify mods |
+| **`ILCE-6000`** (`CXD90014`, not BIONZ X) | **Emulator (Experimental)** | `sony-a6000` QEMU machine boots firmware 3.21 to the camera UI from your own NAND dump; USB, NFC, Wi-Fi, HDMI, SD ([`emulators/a6000/`](emulators/a6000/README.md), [receipt](docs/evidence/external-a6000-emulator/README.md)) |
 
 ---
 
@@ -89,7 +90,7 @@ python -m unittest discover -s tests -q
 
 This project never reports fake "compatibility percentages." Every claim is backed by a dated evidence file and tracked against the **2091 tests** recorded in the integrated offline suite (2026-11-18, [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md); skip counts are tracked honestly and never counted as passes). Latest synced milestone: **[E9105](docs/evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md)**.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=65cc73b41466)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=3eebcc0f2f5f)
 
 [Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg)
 

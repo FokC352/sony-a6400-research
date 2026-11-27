@@ -1386,7 +1386,8 @@
         "C16",
         "C21",
         "C22",
-        "C23"
+        "C23",
+        "C25"
       ],
       "inactive_claims": []
     },
@@ -11305,6 +11306,13 @@
         "id": "C07",
         "file": "external-zve10-menu/README.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "qemu-a6400",
+        "kind": "claim",
+        "id": "C25",
+        "file": "external-a6000-emulator/README.md",
+        "status": "verified-offline"
       }
     ],
     "a6400-scalarwebapi-session": [
@@ -13666,6 +13674,9 @@
     "0738-qemu-camcore-f3c04-f2912-register-models-boot-score.md": [
       "qemu-a6400"
     ],
+    "0743-qemu-camcore-f302-0800-window-boot-score.md": [
+      "qemu-a6400"
+    ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"
     ],
@@ -13743,6 +13754,12 @@
       "wifi-and-remote"
     ],
     "cross_model/uvc-modules.tsv": [
+      "platform-multidevice"
+    ],
+    "external-a6000-emulator/README.md": [
+      "qemu-a6400"
+    ],
+    "external-ilce7c-usb-ids/README.md": [
       "platform-multidevice"
     ],
     "external-zve10-menu/README.md": [

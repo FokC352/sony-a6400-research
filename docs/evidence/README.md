@@ -17,12 +17,21 @@ snapshot or its recorded test count.
   original English menu pixels under an explicit AP-only adapter; selected-frame
   publication, init diagnostic ASID failure, local test receipts and unresolved
   stock `upm.ko` boundary. No upstream runtime integration or stock-menu boot claim.
+- [ILCE-6000 emulator receipt, 2026-11-27](external-a6000-emulator/README.md):
+  `sony-a6000` QEMU machine for the CXD90014 body, ported from voxivoid/a6000-qemu;
+  boot, UI, USB, NFC, Wi-Fi, HDMI and SD compared against the source build. Needs the
+  contributor's own NAND dump; no CXD90045 claim.
+- [ILCE-7C USB IDs receipt, 2026-11-21](external-ilce7c-usb-ids/README.md):
+  external contributor (`mavanha`, Issue #60) `pmca` MSC `model_code` (`0032852231`)
+  and Windows PnP USB PIDs (`054C:0D29`, `0D2A`, `0D2B`, `0DE6`, `bcdDevice 0x0200`)
+  observed on a stock FW 2.00 body.
 
 ## Latest records
 
 | ID | Date | Claim |
 | --- | --- | --- |
 | [E9201](9201-a6700-camera-partition-capture-via-jiritsu.md) | 2026-11-27 | ILCE-6700 live partition capture: ten partitions absent from the 2.00 update (547,291,136 bytes) read from the running camera through Jiritsu GET_FILE and a RAM worker, per-chunk SHA-1, first 2 MiB of nflasha7 equal to the update, nflasha23 not read; GET_FILE fails on 4096-multiple sizes, one helper launch per power cycle, the uploaded helper files are written to nflasha6 and removed again |
+| [E0743](0743-qemu-camcore-f302-0800-window-boot-score.md) | 2026-11-21 | Boot score for the merged CamCore `0xF3020800` window at `0xF3020000` (pull request #71; oracle v3, camera-captured inputs not in the repository): 88 `ZERO` and one read-back rule retire 90 of 938 distinct unmodelled pairs (938 to 848, 89 offsets — 88 write-only plus the read-modify-write word `+0xB80`), with the same final sequencer step (42 of 43, `0x897F`, 0 mismatches); unmodelled reads 95 to 94; coverage, not new behaviour; the saved boots were not re-run for the record |
 | [E0736](0736-qemu-camcore-unlisted-access-logging.md) | 2026-11-27 | CamCore rule windows log unlisted reads and writes as unmodelled accesses with unchanged returned and stored values: three CamCore qtests that fail on `main` pass; one of six boots with the change stopped early at sequencer index 32 (six of six on `main` reached 42), too few runs to tell the builds apart; no scored boot reached an unlisted CamCore offset; offline emulator only |
 | [E0738](0738-qemu-camcore-f3c04-f2912-register-models-boot-score.md) | 2026-11-21 | Contributor boot score for the merged register models at the `0xF3C04000-0xF3C08FFF`, `0xF2912000`, `0xF2914000` and `0xF2915000` windows (PR #64): same step 26 and final state, distinct unmodelled device addresses 421 to 330 (reads 193 to 154, accesses 60,053 to 20,320); default-on read-back of 23 read-modify-write words and 16 zero words; a `0xF2400000` window from the first version was removed after review; not re-run here |
 | [E0709](0709-qemu-f30a0-read-back-window-boot-score.md) | 2026-11-25 | Boot score for a read-back window on two config words at `0xF30A0004`/`0xF30A0008` (oracle v3): distinct unmodelled pairs 72 to 68 at the same final sequencer step (42 of 43); the scored rerun was contended and its two runs disagreed on one request bit, the two quiet promotion runs agreed; coverage, not new behaviour |

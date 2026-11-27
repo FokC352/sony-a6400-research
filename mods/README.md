@@ -29,6 +29,9 @@ See the [firmware qualification matrix and replay receipts](../docs/evidence/mod
 | **ModsTabLook** | `SMOD v2` | Renders the custom `MODS` tab icon artwork (`E0522`) instead of reusing the 6th tab's ★ icon | Auto-enabled in QEMU mod-dev mode ([E0522](../docs/evidence/0522-mods-tab-icon-and-uxd-image-container.md), [MOD_DEVELOPMENT.md](../qemu-a6400/MOD_DEVELOPMENT.md)) |
 | **Open Gate (3:2) Recording** | Shelved | Candidate `IMX284` 3:2 (`1620×1080` / `3240×2160`) recording path via `DMM` & `ZIMA DVENC` | [Original buffer selection and recording limits](../docs/evidence/mods/2026-11-19-firmware-qualification.md#stock-recording-and-open-gate). No runnable recording mod or playable camera/guest clip has been demonstrated. |
 
+
+**ILCE-6000 (`CXD90014`, not this loader):** [`a6000/look/`](a6000/look/README.md) is a RAM-only root-shell kit that writes the ILCE-6000 ISP gamma and colour matrix through `/dev/mem`. Gamma and matrix writes are verified on a real ILCE-6000 (firmware 3.21); the other tools are experimental.
+
 ---
 
 ### Command items (`SMOD_V2_FLAG_ACTION`)
