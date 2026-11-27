@@ -75,6 +75,16 @@ In a static read of a third-party AF lens image (TTArtisan AF 35 mm F1.8 II E, n
 - The lens-side bitmap that a given third-party lens reports.
 - Whether a lens that claims `0x41…0x4A` gets better AF behaviour on the body. No physical test was done.
 
+### Superseded by E0693 / E0694 (kept for provenance, not deleted)
+
+| Item above | Status | Where |
+| --- | --- | --- |
+| `0x1D` field meaning | **resolved**: the mode is three bits (wire values 0, 3, 4, 6) and the operand kind tracks the mode; the `0x1D` builder packs `[4]` from four caller arguments, not from a "bit 2 flag" | E0693 |
+| Speed/position units | **partly resolved**: positions are Q14-normalised or distance codes (`384 + 64·log2(D)`, `0x700` = infinity); the `0x49` velocity unit is still unknown | E0693 |
+| Lens-side bitmap | **negative for the TTArtisan**: no 32-byte bitmap exists in that image; the body's `0x09` item is status-only, so this record's "STARTUP_INFO produces the bitmap" is **corrected** | E0693, E0694 |
+| 11-byte `0x41` block | **partly resolved**: `[0..1]` is the position sample and `[2..8]` is a 7-byte unread window of exactly the in-frame trace width; `[9..10]` unknown | E0693 |
+| "Better AF with `0x41…0x4A`" | **still open, and now blocked differently**: the body would allow it (the mask has no lens-ID dimension), but the lens cannot answer the commands and the payload has no room | E0693, E0694 |
+
 ## Next boundary
 
 Decode the producer of `BL_LENS_DATA` (STARTUP_INFO, ID `0x09`, `0x6385CA80`) to read the bitmap layout. Then compare with a passive mount-bus capture of a lens that is known to use the second-generation commands.

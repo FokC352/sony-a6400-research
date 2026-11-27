@@ -34,6 +34,7 @@ For subject lookups (an address, symbol, device, or "is E0xxx still valid?") use
 | [QEMU workflow](../qemu-a6400/README.md) | Reproducible captured boot inputs (`ILCE-6400` and `ILCE-6400A` [E0678](evidence/0678-qemu-ilce-6400a-captured-firmware-boot.md)), native eMMC regression checks, and the later device-model records through the viewfinder console |
 | [TOOLCHAIN.md](TOOLCHAIN.md) | Qualified current/legacy research tools, dependency pins, QEMU compatibility checks and rollback |
 | [DEPENDENCY_WORKFLOW.md](DEPENDENCY_WORKFLOW.md) | Dependency and call-chain tracing workflow |
+| [TCG_TRACE_WORKFLOW.md](TCG_TRACE_WORKFLOW.md) | Standard workflow: QEMU `savevm`/`loadvm` instant-resume, parameterized TCG tracing (`qemu_tcg_trace`), persistent SQLite/Ghidra symbol index (`symbol_index`), and 13-body signature scanner (`signature_scanner`) |
 | [VALIDATION.md](VALIDATION.md) | Differential validation and fidelity rules |
 | [GLES TGID completion and shared-memory boundary](evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md) | Original completion/reset and recovery branches; guarded software-shared versus GPU mappings, repeated real-process stop and no claimed frame |
 | [Unicorn L3 allocator, GLES init & Sugilite GPU](evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md) | Thumb-2 stale-`ITSTATE` root cause (`1.50B` insns, `0` ownership errors without padding), `sugilite_open` 4-byte + `rm_rqueue_init` 128 KiB init, `24` Sugilite GPU/IRQ 76 jobs, and transparent `viewRootPowerSw.uxc` OSD A/B boundary |

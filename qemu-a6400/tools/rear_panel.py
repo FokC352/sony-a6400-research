@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 from pathlib import Path
+import re
 import socket
 from struct import pack
 import subprocess
@@ -243,6 +244,39 @@ UPLOADS = Path.home() / "a6400-moddev" / "mods"
 MAX_MOD = 1 << 20
 
 
+SNAP_TAG_RE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
+
+
+def validate_snap_tag(tag):
+    if not tag or not SNAP_TAG_RE.match(tag):
+        raise ValueError("snapshot tag must match ^[A-Za-z0-9_.-]{1,32}$")
+    return tag
+
+
+def hmp_cmd(qmp, command_line):
+    out = qmp.command("human-monitor-command", **{"command-line": command_line})
+    if isinstance(out, str):
+        low = out.lower()
+        for bad in ("error", "does not exist", "does not have", "not found", "not writable", "could not", "failed", "unknown"):
+            if bad in low:
+                raise ValueError(out.strip() or f"HMP command failed: {command_line}")
+    return out or ""
+
+
+def resolve_snapshot_input(spec, tag):
+    p = Path(spec).expanduser().resolve()
+    if p.is_dir():
+        manifest = p / "snapshot-manifest.json"
+        qcow = p / "snapshot.qcow2"
+        if manifest.is_file():
+            meta = json.loads(manifest.read_text(encoding="utf-8"))
+            tag = tag or meta.get("tag") or "ready"
+            if meta.get("snapshot_qcow2"):
+                qcow = (p / meta["snapshot_qcow2"]).resolve()
+        return qcow, validate_snap_tag(tag or "ready")
+    return p, validate_snap_tag(tag or "ready")
+
+
 def check_smod(data):
     if len(data) < 68 or data[:4] != b"SMOD" or data[4:8] not in (b"\1\0\0\0", b"\2\0\0\0"):
         raise ValueError("not an SMOD v1/v2 file")
@@ -261,6 +295,12 @@ def serve(args, scratch, server):
                TOUCHSCREEN="0" if getattr(args, "no_touchscreen", False) else "1",
                REAR_LCD_DIAGNOSTIC=str(int(bool(getattr(args, "diagnostic_lcd", False)))),
                QEMU_EXTRA=f"{timing} -qmp unix:{monitor},server=on,wait=off")
+    if getattr(args, "from_snapshot", None):
+        snap_qcow, snap_tag = resolve_snapshot_input(args.from_snapshot, getattr(args, "loadvm", None))
+        env["SNAPSHOT_OVERLAY"] = str(snap_qcow)
+        env["LOADVM"] = snap_tag
+    elif getattr(args, "loadvm", None):
+        env["LOADVM"] = validate_snap_tag(args.loadvm)
     if getattr(args, "camera_model", None):
         env["CAMERA_MODEL"] = args.camera_model
     if getattr(args, "peripherals", False):
@@ -405,6 +445,9 @@ def serve(args, scratch, server):
                         handler.reply("application/json", json.dumps(dev.status).encode())
                 elif handler.path == "/emu":
                     handler.reply("application/json", json.dumps(emu_state()).encode())
+                elif handler.path == "/emu/snapshots":
+                    handler.reply("application/json", json.dumps(
+                        {"snapshots": hmp_cmd(qmp, "info snapshots")}).encode())
                 elif handler.path == "/uvc":
                     view = {k: v for k, v in uvc_state.items() if k != "jpeg"}
                     view["jpeg_bytes"] = len(uvc_state.get("jpeg", b""))
@@ -486,6 +529,14 @@ def serve(args, scratch, server):
                 elif path in ("/emu/pause", "/emu/resume"):
                     qmp.command("stop" if path == "/emu/pause" else "cont")
                     handler.reply("application/json", json.dumps(emu_state()).encode())
+                elif path in ("/emu/savevm", "/emu/loadvm"):
+                    tag = validate_snap_tag(parse_qs(url.query).get("tag", ["quick"])[0])
+                    t0 = time.monotonic()
+                    verb = "savevm" if path == "/emu/savevm" else "loadvm"
+                    out = hmp_cmd(qmp, f"{verb} {tag}")
+                    handler.reply("application/json", json.dumps(
+                        {"action": verb, "tag": tag, "seconds": round(time.monotonic() - t0, 3),
+                         "output": out.strip()}).encode())
                 elif path == "/emu/restart":
                     server.restart = True
                     handler.reply("application/json", b'{"restarting": true}')
@@ -668,6 +719,10 @@ def main():
                         help="Enable DWC3 gadget, PL330 DMA, UVC host listener, and stage USB Streaming Test")
     parser.add_argument("--uvc-plug-delay", type=float, default=0.0,
                         help="Wait for uvc_mod_on and delay N seconds before asserting usb-vbus and connecting host")
+    parser.add_argument("--from-snapshot", type=Path, default=None,
+                        help="Snapshot bundle directory or snapshot.qcow2 for instant resume")
+    parser.add_argument("--loadvm", default=None,
+                        help="Snapshot tag to restore via QEMU -loadvm")
     repo_root = Path(__file__).resolve().parents[2]
     parser.add_argument("--uvc-ko", type=Path,
                         default=repo_root / "artifacts/native/qemu-uvc-coherent-15/usbg_video_a6400.ko")

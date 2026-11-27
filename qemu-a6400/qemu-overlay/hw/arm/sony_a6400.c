@@ -52,6 +52,7 @@
 #include "system/address-spaces.h"
 #include "system/memory.h"
 #include "system/system.h"
+#include "migration/vmstate.h"
 #include "exec/translation-block.h"
 #include "target/arm/cpu.h"
 #include "ui/input.h"
@@ -420,7 +421,20 @@ typedef struct CxdRwStub {
     MemoryRegion mmio;
     uint32_t *regs;
     size_t num_regs;
+    uint32_t mig_nregs;
 } CxdRwStub;
+
+static const VMStateDescription vmstate_cxd_rw_stub = {
+    .name = "cxd90045-rw-stub",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(mig_nregs, CxdRwStub),
+        VMSTATE_VARRAY_UINT32(regs, CxdRwStub, mig_nregs, 0,
+                              vmstate_info_uint32, uint32_t),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static uint64_t cxd90045_rw_stub_read(void *opaque, hwaddr offset, unsigned size)
 {
@@ -453,9 +467,11 @@ static CxdRwStub *cxd90045_create_rw_stub(MemoryRegion *sysmem, const char *name
 {
     CxdRwStub *s = g_new0(CxdRwStub, 1);
     s->num_regs = size / sizeof(uint32_t);
+    s->mig_nregs = (uint32_t)s->num_regs;
     s->regs = g_new0(uint32_t, s->num_regs);
     memory_region_init_io(&s->mmio, NULL, &cxd90045_rw_stub_ops, s, name, size);
     memory_region_add_subregion_overlap(sysmem, base, &s->mmio, priority);
+    vmstate_register(NULL, (int)(base >> 12), &vmstate_cxd_rw_stub, s);
     return s;
 }
 
@@ -533,18 +549,33 @@ static void cxd90045_dfs_reset(void *opaque)
     s->divider_staged = false;
 }
 
+static const VMStateDescription vmstate_cxd_dfs_ctrl = {
+    .name = "cxd90045-dfs-ctrl",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(stub.mig_nregs, CxdDfsControl),
+        VMSTATE_VARRAY_UINT32(stub.regs, CxdDfsControl, stub.mig_nregs, 0,
+                              vmstate_info_uint32, uint32_t),
+        VMSTATE_BOOL(divider_staged, CxdDfsControl),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void cxd90045_create_dfs(MemoryRegion *sysmem)
 {
     CxdDfsControl *s = g_new0(CxdDfsControl, 1);
     CxdRwStub *stub = &s->stub;
 
     stub->num_regs = 0x1000 / sizeof(*stub->regs);
+    stub->mig_nregs = (uint32_t)stub->num_regs;
     stub->regs = g_new0(uint32_t, stub->num_regs);
     memory_region_init_io(&stub->mmio, NULL, &cxd90045_dfs_ops, s,
                           "cxd90045.dfs_ctrl", 0x1000);
     memory_region_add_subregion_overlap(sysmem, CXD90045_DFS_CTRL_BASE,
                                        &stub->mmio, 0);
     qemu_register_reset(cxd90045_dfs_reset, s);
+    vmstate_register(NULL, 0, &vmstate_cxd_dfs_ctrl, s);
 }
 
 static bool sony_get_dfs_control(Object *obj, Error **errp)
@@ -575,7 +606,38 @@ typedef struct CxdLdec {
     uint8_t *in_buf;
     size_t in_cap;
     size_t in_len;
+    uint32_t mig_in_len;
 } CxdLdec;
+
+static int cxd_ldec_pre_save(void *opaque)
+{
+    CxdLdec *s = opaque;
+    s->mig_in_len = (uint32_t)s->in_len;
+    return 0;
+}
+
+static int cxd_ldec_post_load(void *opaque, int version_id)
+{
+    CxdLdec *s = opaque;
+    s->in_len = s->mig_in_len;
+    s->in_cap = s->mig_in_len;
+    return 0;
+}
+
+static const VMStateDescription vmstate_cxd_ldec = {
+    .name = "cxd90045-ldec",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .pre_save = cxd_ldec_pre_save,
+    .post_load = cxd_ldec_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, CxdLdec, 0x100 >> 2),
+        VMSTATE_UINT32(mig_in_len, CxdLdec),
+        VMSTATE_VARRAY_UINT32_ALLOC(in_buf, CxdLdec, mig_in_len, 0,
+                                    vmstate_info_uint8, uint8_t),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static CxdLdec *s_cxd_ldec;
 
@@ -813,6 +875,7 @@ static void cxd90045_create_ldec(MemoryRegion *sysmem, hwaddr base, qemu_irq irq
     memory_region_init_io(&s->mmio, NULL, &cxd90045_ldec_ops, s,
                           "cxd90045.ldec", 0x1000);
     memory_region_add_subregion(sysmem, base, &s->mmio);
+    vmstate_register(NULL, 0, &vmstate_cxd_ldec, s);
 }
 
 typedef struct CxdXdmac {
@@ -820,6 +883,16 @@ typedef struct CxdXdmac {
     qemu_irq irqs[4];
     uint32_t regs[0x100 >> 2];
 } CxdXdmac;
+
+static const VMStateDescription vmstate_cxd_xdmac = {
+    .name = "cxd90045-xdmac",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, CxdXdmac, 0x100 >> 2),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static uint64_t cxd90045_xdmac_read(void *opaque, hwaddr offset, unsigned size)
 {
@@ -890,6 +963,7 @@ static void cxd90045_create_xdmac(MemoryRegion *sysmem, hwaddr base,
     memory_region_init_io(&s->mmio, NULL, &cxd90045_xdmac_ops, s,
                           "cxd90045.xdmac", 0x10000);
     memory_region_add_subregion(sysmem, base, &s->mmio);
+    vmstate_register(NULL, (int)(base >> 16), &vmstate_cxd_xdmac, s);
 }
 
 /*
@@ -926,6 +1000,19 @@ typedef struct CxdWorkDma {
     uint32_t regs[0x1000 >> 2];
     uint64_t copies, bytes, refused;
 } CxdWorkDma;
+
+static const VMStateDescription vmstate_cxd_work_dma = {
+    .name = "cxd90045-work-dma",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, CxdWorkDma, 0x1000 >> 2),
+        VMSTATE_UINT64(copies, CxdWorkDma),
+        VMSTATE_UINT64(bytes, CxdWorkDma),
+        VMSTATE_UINT64(refused, CxdWorkDma),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static uint64_t cxd90045_wdma_read(void *opaque, hwaddr offset, unsigned size)
 {
@@ -999,6 +1086,7 @@ static void cxd90045_create_work_dma(MemoryRegion *sysmem)
     memory_region_init_io(&s->mmio, NULL, &cxd90045_wdma_ops, s,
                           "cxd90045.work-dma", 0x1000);
     memory_region_add_subregion_overlap(sysmem, CXD90045_WDMA_BASE, &s->mmio, 0);
+    vmstate_register(NULL, 0, &vmstate_cxd_work_dma, s);
 }
 
 static bool sony_get_work_dma(Object *obj, Error **errp)
@@ -1134,6 +1222,19 @@ static const MemoryRegionOps cxd90045_f30a_ops = {
     .valid = { .min_access_size = 4, .max_access_size = 4 },
 };
 
+static const VMStateDescription vmstate_cxd_f30a = {
+    .name = "cxd90045-f30a-fill",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, CxdF30aFill, CXD90045_F30A_WIN_SIZE >> 2),
+        VMSTATE_UINT64(fills, CxdF30aFill),
+        VMSTATE_UINT64(bytes, CxdF30aFill),
+        VMSTATE_UINT64(refused, CxdF30aFill),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void cxd90045_create_f30a_fill(MemoryRegion *sysmem)
 {
     CxdF30aFill *s = g_new0(CxdF30aFill, 1);
@@ -1148,6 +1249,7 @@ static void cxd90045_create_f30a_fill(MemoryRegion *sysmem)
      * container's other addresses have no leaf and stay transparent. */
     memory_region_add_subregion_overlap(sysmem, CXD90045_F30A_BASE,
                                         &s->container, -100);
+    vmstate_register(NULL, 0, &vmstate_cxd_f30a, s);
 }
 
 static bool sony_get_f30a_fill(Object *obj, Error **errp)
@@ -1418,6 +1520,21 @@ static void cxd90045_ddrb_reset(void *opaque)
     s->limit[1] = 0;
 }
 
+static const VMStateDescription vmstate_cxd_ddrb = {
+    .name = "cxd90045-ddrb",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(rank_config, CxdDdrbControl),
+        VMSTATE_UINT32(gate, CxdDdrbControl),
+        VMSTATE_UINT32(control, CxdDdrbControl),
+        VMSTATE_UINT32(status, CxdDdrbControl),
+        VMSTATE_UINT32(mode, CxdDdrbControl),
+        VMSTATE_UINT32_ARRAY(limit, CxdDdrbControl, 2),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void cxd90045_create_ddrb_at(MemoryRegion *sysmem, hwaddr base,
                                     const char *name, bool self_refresh)
 {
@@ -1428,6 +1545,7 @@ static void cxd90045_create_ddrb_at(MemoryRegion *sysmem, hwaddr base,
     memory_region_init_io(&s->mmio, NULL, &cxd90045_ddrb_ops, s, name, 0x21c);
     memory_region_add_subregion_overlap(sysmem, base, &s->mmio, 0);
     qemu_register_reset(cxd90045_ddrb_reset, s);
+    vmstate_register(NULL, 0, &vmstate_cxd_ddrb, s);
 }
 
 static bool sony_get_ddrb_control(Object *obj, Error **errp)
@@ -2416,6 +2534,19 @@ static void sony_sgc1_reset(void *opaque)
     sony_sgc1_update_irq(sg);
 }
 
+static const VMStateDescription vmstate_sony_sgc1 = {
+    .name = "cxd90045-sgc1-event-a",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, SonySgc1, SGC1_REGISTER_COUNT),
+        VMSTATE_TIMER_PTR(timer, SonySgc1),
+        VMSTATE_INT64(frame_end, SonySgc1),
+        VMSTATE_BOOL(compare_pending, SonySgc1),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void sony_sgc1_create(MachineState *machine, qemu_irq irq)
 {
     static const hwaddr offsets[SGC1_REGISTER_COUNT] = {
@@ -2438,6 +2569,7 @@ static void sony_sgc1_create(MachineState *machine, qemu_irq irq)
                                             &word->mr, -500);
     }
     qemu_register_reset(sony_sgc1_reset, sg);
+    vmstate_register(NULL, 0, &vmstate_sony_sgc1, sg);
 }
 
 static bool sony_a6400_get_sgc1_event_a(Object *obj, Error **errp)
@@ -2625,6 +2757,16 @@ static void sony_usb_vbus_reset(void *opaque)
     qemu_irq_lower(vbus->irq);
 }
 
+static const VMStateDescription vmstate_sony_usb_vbus = {
+    .name = "cxd90045-usb-vbus",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_BOOL(present, SonyUsbVbus),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void sony_usb_vbus_create(MachineState *machine, qemu_irq irq)
 {
     SonyUsbVbus *vbus = g_new0(SonyUsbVbus, 1);
@@ -2635,6 +2777,7 @@ static void sony_usb_vbus_create(MachineState *machine, qemu_irq irq)
     memory_region_add_subregion_overlap(get_system_memory(), 0xF2920010ULL,
                                         &vbus->status, 0);
     qemu_register_reset(sony_usb_vbus_reset, vbus);
+    vmstate_register(NULL, 0, &vmstate_sony_usb_vbus, vbus);
     sony_a6400_usb_vbus = vbus;
 }
 
@@ -2754,6 +2897,20 @@ static void sony_a6400_set_liveview_source(Object *obj, const char *value,
     g_free(sony_a6400_liveview_source);
     sony_a6400_liveview_source = g_strdup(value);
 }
+
+typedef struct CxdRegBlock400 {
+    uint32_t regs[0x400];
+} CxdRegBlock400;
+
+static const VMStateDescription vmstate_cxd_regblock400 = {
+    .name = "cxd90045-regblock400",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, CxdRegBlock400, 0x400),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static uint64_t cxd90045_sif_read(void *opaque, hwaddr off, unsigned size)
 {
@@ -4614,7 +4771,7 @@ static void sony_a6400_create_liveview_pipeline(MachineState *machine,
     };
     DeviceState *sg, *frames, *pig[2], *fe_aif[2];
     MemoryRegion *sif_mmio = g_new(MemoryRegion, 1);
-    uint32_t *sif_regs = g_new0(uint32_t, 0x400);
+    CxdRegBlock400 *sif_blk = g_new0(CxdRegBlock400, 1);
 
     cxd90045_liveview_source_parse(&sony_a6400_lv_src,
                                    sony_a6400_liveview_source, &error_fatal);
@@ -4633,8 +4790,9 @@ static void sony_a6400_create_liveview_pipeline(MachineState *machine,
     sony_a6400_frames_split = frames;
 
     memory_region_init_io(sif_mmio, OBJECT(machine), &cxd90045_sif_ops,
-                          sif_regs, "cxd90045.sif", 0x1000);
+                          sif_blk->regs, "cxd90045.sif", 0x1000);
     memory_region_add_subregion_overlap(sysmem, 0xF3122000ULL, sif_mmio, -400);
+    vmstate_register(NULL, 100, &vmstate_cxd_regblock400, sif_blk);
 
     for (int u = 0; u < 2; u++) {
         hwaddr fe_base = 0xF3000000ULL + (hwaddr)u * 0x100000ULL;
@@ -5049,6 +5207,97 @@ static void sony_a6400_set_sm_file(Object *obj, const char *value,
     g_free(sony_a6400_sm_file);
     sony_a6400_sm_file = g_strdup(value);
 }
+
+typedef struct SonyA6400BoardMig {
+    QEMUTimer *sm_timer;
+    int32_t sm_step;
+    uint8_t sm_frames[384];
+    bool sm_loaded;
+    uint16_t front_pressed;
+    bool power_off;
+    bool af_lever_low;
+    bool eye_sensor_low;
+    bool shutter_half;
+    bool shutter_full;
+    uint16_t wheel_count;
+    int32_t adc_owner[2];
+} SonyA6400BoardMig;
+
+static SonyA6400BoardMig sony_a6400_board_mig;
+
+static int sony_a6400_board_pre_save(void *opaque)
+{
+    SonyA6400BoardMig *m = opaque;
+    m->sm_timer = sony_a6400_sm_timer;
+    m->sm_step = sony_a6400_sm_step;
+    memcpy(m->sm_frames, sony_a6400_sm_frames, sizeof(m->sm_frames));
+    m->sm_loaded = sony_a6400_sm_loaded;
+    m->front_pressed = sony_a6400_front_pressed;
+    m->power_off = sony_a6400_power_off;
+    m->af_lever_low = sony_a6400_af_lever_low;
+    m->eye_sensor_low = sony_a6400_eye_sensor_low;
+    m->shutter_half = sony_a6400_shutter_half;
+    m->shutter_full = sony_a6400_shutter_full;
+    m->wheel_count = sony_a6400_wheel_count;
+    m->adc_owner[0] = (int32_t)sony_a6400_adc_owner[0];
+    m->adc_owner[1] = (int32_t)sony_a6400_adc_owner[1];
+    return 0;
+}
+
+static int sony_a6400_board_post_load(void *opaque, int version_id)
+{
+    SonyA6400BoardMig *m = opaque;
+    sony_a6400_sm_step = m->sm_step;
+    memcpy(sony_a6400_sm_frames, m->sm_frames, sizeof(m->sm_frames));
+    sony_a6400_sm_loaded = m->sm_loaded;
+    sony_a6400_front_pressed = m->front_pressed;
+    sony_a6400_power_off = m->power_off;
+    sony_a6400_af_lever_low = m->af_lever_low;
+    sony_a6400_eye_sensor_low = m->eye_sensor_low;
+    sony_a6400_shutter_half = m->shutter_half;
+    sony_a6400_shutter_full = m->shutter_full;
+    sony_a6400_wheel_count = m->wheel_count;
+    sony_a6400_adc_owner[0] = (QKeyCode)m->adc_owner[0];
+    sony_a6400_adc_owner[1] = (QKeyCode)m->adc_owner[1];
+    return 0;
+}
+
+static const VMStateDescription vmstate_sony_a6400_board = {
+    .name = "sony-a6400-board",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .pre_save = sony_a6400_board_pre_save,
+    .post_load = sony_a6400_board_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_TIMER_PTR(sm_timer, SonyA6400BoardMig),
+        VMSTATE_INT32(sm_step, SonyA6400BoardMig),
+        VMSTATE_UINT8_ARRAY(sm_frames, SonyA6400BoardMig, 384),
+        VMSTATE_BOOL(sm_loaded, SonyA6400BoardMig),
+        VMSTATE_UINT16(front_pressed, SonyA6400BoardMig),
+        VMSTATE_BOOL(power_off, SonyA6400BoardMig),
+        VMSTATE_BOOL(af_lever_low, SonyA6400BoardMig),
+        VMSTATE_BOOL(eye_sensor_low, SonyA6400BoardMig),
+        VMSTATE_BOOL(shutter_half, SonyA6400BoardMig),
+        VMSTATE_BOOL(shutter_full, SonyA6400BoardMig),
+        VMSTATE_UINT16(wheel_count, SonyA6400BoardMig),
+        VMSTATE_INT32_ARRAY(adc_owner, SonyA6400BoardMig, 2),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+typedef struct CxdOptTimerMig {
+    QEMUTimer *t;
+} CxdOptTimerMig;
+
+static const VMStateDescription vmstate_cxd_opt_timer = {
+    .name = "cxd90045-opt-timer",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_TIMER_PTR(t, CxdOptTimerMig),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 /*
  * Multi-body CXD90045 hardware catalog matching DEFAULT_REGISTRY in
@@ -5637,14 +5886,20 @@ static void sony_a6400_init(MachineState *machine)
         sony_sgc1_create(machine, pic[35 - 32]);
     }
     if (sony_a6400_gate_force_probe) {
+        CxdOptTimerMig *tm = g_new0(CxdOptTimerMig, 1);
         sony_a6400_gate_force_timer =
             timer_new_ns(QEMU_CLOCK_VIRTUAL, sony_a6400_gate_force_tick, NULL);
+        tm->t = sony_a6400_gate_force_timer;
+        vmstate_register(NULL, 1, &vmstate_cxd_opt_timer, tm);
         timer_mod(sony_a6400_gate_force_timer,
                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + GATE_FORCE_PERIOD_NS);
     }
     if (sony_a6400_entry_force_probe) {
+        CxdOptTimerMig *tm = g_new0(CxdOptTimerMig, 1);
         sony_a6400_entry_force_timer =
             timer_new_ns(QEMU_CLOCK_VIRTUAL, sony_a6400_entry_force_tick, NULL);
+        tm->t = sony_a6400_entry_force_timer;
+        vmstate_register(NULL, 2, &vmstate_cxd_opt_timer, tm);
         timer_mod(sony_a6400_entry_force_timer,
                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                   ENTRY_FORCE_PERIOD_NS);
@@ -6137,7 +6392,7 @@ static void sony_a6400_init(MachineState *machine)
      */
     {
         DeviceState *rf = qdev_new("cxd90014-regfile");
-        uint32_t *leo = g_new0(uint32_t, 0x400);
+        CxdRegBlock400 *leo = g_new0(CxdRegBlock400, 1);
         MemoryRegion *leo_mmio = g_new(MemoryRegion, 1);
 
         qdev_prop_set_string(rf, "name", "cxd90045.imager");
@@ -6145,10 +6400,11 @@ static void sony_a6400_init(MachineState *machine)
         qdev_prop_set_uint64(rf, "base", 0xFC000000ULL);
         sysbus_realize_and_unref(SYS_BUS_DEVICE(rf), &error_fatal);
         sysbus_mmio_map_overlap(SYS_BUS_DEVICE(rf), 0, 0xFC000000ULL, -500);
-        memory_region_init_io(leo_mmio, NULL, &cxd90045_leo_ops, leo,
+        memory_region_init_io(leo_mmio, NULL, &cxd90045_leo_ops, leo->regs,
                               "cxd90045.leo_clk", 0x1000);
         memory_region_add_subregion_overlap(sysmem, 0xFC021000ULL,
                                             leo_mmio, 0);
+        vmstate_register(NULL, 101, &vmstate_cxd_regblock400, leo);
     }
 
     /* GPIO p0..p17; pin IRQs p0.0-15 -> 121+, p0.16 -> 144, p1.0-6 -> 137+ */
@@ -6487,11 +6743,12 @@ static void sony_a6400_init(MachineState *machine)
             0xF2A21000ULL, 0xF2A22000ULL, 0xF2A30000ULL
         };
         for (size_t k = 0; k < ARRAY_SIZE(f2a_bases); k++) {
-            uint32_t *regs = g_new0(uint32_t, 0x400);
+            CxdRegBlock400 *blk = g_new0(CxdRegBlock400, 1);
             MemoryRegion *mmio = g_new(MemoryRegion, 1);
-            memory_region_init_io(mmio, NULL, &cxd90045_f2a01_ops, regs,
+            memory_region_init_io(mmio, NULL, &cxd90045_f2a01_ops, blk->regs,
                                   "cxd90045.f2a_clk", 0x1000);
             memory_region_add_subregion(sysmem, f2a_bases[k], mmio);
+            vmstate_register(NULL, (int)(102 + k), &vmstate_cxd_regblock400, blk);
         }
     }
 
@@ -6591,6 +6848,9 @@ static void sony_a6400_init(MachineState *machine)
     if (sony_a6400_miscreg) {
         cxd90045_create_miscreg(sysmem);
     }
+
+    sony_a6400_board_mig.sm_timer = sony_a6400_sm_timer;
+    vmstate_register(NULL, 0, &vmstate_sony_a6400_board, &sony_a6400_board_mig);
 
     sony_a6400_load_boot_contract(machine, cpus, ncpu);
 }

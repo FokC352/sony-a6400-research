@@ -330,10 +330,17 @@
       "name": "Body-lens (BL) interface",
       "kind": "device",
       "address": null,
-      "aliases": [],
+      "aliases": [
+        "BL_LENS_DATA",
+        "0x642FE7B8",
+        "capability gate",
+        "0x63855F94"
+      ],
       "anchor": "hardware-live.md#dev-lens",
       "active_claims": [
         "C08",
+        "C40",
+        "C41",
         "C35",
         "C36",
         "C37"
@@ -11084,6 +11091,24 @@
         "file": "0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md"
       }
     ],
+    "E0718": [
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C40",
+        "file": "0718-ilce6400-bl-gate-bitmap-and-1d-mode.md",
+        "status": "verified-offline"
+      }
+    ],
+    "E0719": [
+      {
+        "area": "hardware-live",
+        "kind": "claim",
+        "id": "C41",
+        "file": "0719-ttartisan-af35-command-surface-and-patch-feasibility.md",
+        "status": "verified-offline"
+      }
+    ],
     "E9001": [
       {
         "area": "l3-userspace",
@@ -13425,6 +13450,12 @@
     "0683-arri-shoulder-and-fujifilm-simulations.md": [
       "imaging-pipeline"
     ],
+    "0684-ilce-6400-ram-only-deadman-handover-bundle.md": [
+      "hardware-live"
+    ],
+    "0685-full-custom-os-camera-handover-and-ui-path.md": [
+      "hardware-live"
+    ],
     "0686-photo-movie-modes-and-dual-variant-presets.md": [
       "imaging-pipeline"
     ],
@@ -13502,6 +13533,15 @@
     "0709-qemu-f30a0-read-back-window-boot-score.md": [
       "qemu-a6400"
     ],
+    "0710-custom-kernel-qemu-gate-f30a-fill-and-liro-contract.md": [
+      "qemu-a6400"
+    ],
+    "0711-qemu-vph-panel-composition-and-ui-buffer-ownership.md": [
+      "qemu-a6400"
+    ],
+    "0712-qemu-ui-liveview-window-and-sdio-cmd5.md": [
+      "qemu-a6400"
+    ],
     "0713-qemu-ntsc-notice-press-and-black-centre.md": [
       "qemu-a6400"
     ],
@@ -13510,6 +13550,45 @@
     ],
     "0715-qemu-f01-playback-capture-uhs-mmio-and-kexec-prereqs.md": [
       "qemu-a6400"
+    ],
+    "0716-custom-os-usb-dwc3-phase1-diagnosis-and-composite-model.md": [
+      "qemu-a6400"
+    ],
+    "0717-camera-loader-branch-avcam-oops-deadman60.md": [
+      "hardware-live"
+    ],
+    "0718-ilce6400-bl-gate-bitmap-and-1d-mode.md": [
+      "hardware-live"
+    ],
+    "0719-ttartisan-af35-command-surface-and-patch-feasibility.md": [
+      "hardware-live"
+    ],
+    "0720-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md": [
+      "imaging-pipeline"
+    ],
+    "0721-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md": [
+      "imaging-pipeline"
+    ],
+    "0722-a6400-open-gate-upper-ceiling-static-analysis.md": [
+      "imaging-pipeline"
+    ],
+    "0723-a6400-open-gate-camout-v-plus24-root-cause.md": [
+      "imaging-pipeline"
+    ],
+    "0724-a6400-open-gate-plus8-and-rcv-isolation-live.md": [
+      "imaging-pipeline"
+    ],
+    "0725-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md": [
+      "imaging-pipeline"
+    ],
+    "0726-a6400-open-gate-r4-refutation-live.md": [
+      "imaging-pipeline"
+    ],
+    "0727-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md": [
+      "imaging-pipeline"
+    ],
+    "0728-a6400-open-gate-f3851-mmio-live.md": [
+      "imaging-pipeline"
     ],
     "9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md": [
       "l3-userspace"

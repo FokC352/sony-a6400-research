@@ -27,6 +27,7 @@
 #include "qemu/osdep.h"
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "qom/object.h"
@@ -134,9 +135,21 @@ static void sio_init(Object *obj)
     }
 }
 
+static const VMStateDescription vmstate_cxd_sio = {
+    .name = "cxd90014-sio",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_2DARRAY(reg, SioState, NCH, 0x200 / 4),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void sio_class_init(ObjectClass *klass, const void *data)
 {
-    device_class_set_legacy_reset(DEVICE_CLASS(klass), sio_reset);
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->vmsd = &vmstate_cxd_sio;
+    device_class_set_legacy_reset(dc, sio_reset);
 }
 
 static const TypeInfo sio_info = {

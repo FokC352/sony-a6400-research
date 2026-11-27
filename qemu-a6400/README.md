@@ -74,8 +74,13 @@ browser at `http://127.0.0.1:8641/`. With prepared camera inputs and a
 layout-aware loader build present it starts in mod-development mode, and
 the page toolbar loads, watches and hot-reloads mods and pauses, resumes
 or restarts the emulator (see [MOD_DEVELOPMENT.md](MOD_DEVELOPMENT.md)). Running it while the panel is
-already open reuses that instance. The LCD starts displaying when
-firmware publishes its first frame.
+runs it while the panel is already open reuses that instance. The LCD starts displaying when firmware publishes its first frame.
+
+## Instant-Resume Snapshots & Targeted TCG Tracing
+
+All `sony-a6400` peripheral devices implement QEMU `VMState` serialization (`savevm`/`loadvm`). Instead of cold-booting per probe, capture a snapshot once and attach parameterized QEMU v7 TCG observers (`tools/tcg_trace.c`):
+- `tools.research.qemu_snapshot` (`create`, `resume`, `save-live`, `load-live`), `tools/warm.py` (`save`, `load`, `--from-snapshot`), `rear_panel.html` (`Save` / `Restore`), and `run.sh` (`SNAPSHOT_OVERLAY`, `LOADVM`).
+- `tools.research.qemu_tcg_trace` (`build`, `run --from-snapshot ...`, `symbolize`) auto-resolving PCs and `lr` via `tools.research.symbol_index`. See [../docs/TCG_TRACE_WORKFLOW.md](../docs/TCG_TRACE_WORKFLOW.md).
 
 Rebuild QEMU with the current board overlay. From the repository root in WSL,
 start a new run with a fresh log path:

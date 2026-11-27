@@ -16,6 +16,7 @@
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
 #include "hw/core/qdev-properties-system.h"
+#include "migration/vmstate.h"
 #include "chardev/char-fe.h"
 #include "system/dma.h"
 #include "system/address-spaces.h"
@@ -1521,9 +1522,64 @@ static const Property cxd_dwc3_props[] = {
     DEFINE_PROP_BOOL("allow-setup-abort", CxdDwc3State, allow_setup_abort, false),
 };
 
+static const VMStateDescription vmstate_cxd_dwc3_ep = {
+    .name = "cxd90045-dwc3-ep",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(par2, CxdDwc3Ep),
+        VMSTATE_UINT32(par1, CxdDwc3Ep),
+        VMSTATE_UINT32(par0, CxdDwc3Ep),
+        VMSTATE_UINT32(cmd, CxdDwc3Ep),
+        VMSTATE_UINT32(cfg0, CxdDwc3Ep),
+        VMSTATE_UINT32(cfg1, CxdDwc3Ep),
+        VMSTATE_UINT64(trb_addr, CxdDwc3Ep),
+        VMSTATE_BOOL(trb_active, CxdDwc3Ep),
+        VMSTATE_BOOL(stalled, CxdDwc3Ep),
+        VMSTATE_UINT8_ARRAY(pending_out, CxdDwc3Ep, 1024),
+        VMSTATE_UINT32(pending_out_len, CxdDwc3Ep),
+        VMSTATE_BOOL(has_pending_out, CxdDwc3Ep),
+        VMSTATE_BOOL(nrdy_pending, CxdDwc3Ep),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_cxd_dwc3 = {
+    .name = "cxd90045-dwc3",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(gctl, CxdDwc3State),
+        VMSTATE_UINT32(ggpio, CxdDwc3State),
+        VMSTATE_UINT32(guid, CxdDwc3State),
+        VMSTATE_UINT32(gusb2phycfg0, CxdDwc3State),
+        VMSTATE_UINT32(gusb3pipectl0, CxdDwc3State),
+        VMSTATE_UINT32(gevntadrlo, CxdDwc3State),
+        VMSTATE_UINT32(gevntadrhi, CxdDwc3State),
+        VMSTATE_UINT32(gevntsiz, CxdDwc3State),
+        VMSTATE_UINT32(gevntcount, CxdDwc3State),
+        VMSTATE_UINT32(gevnt_head, CxdDwc3State),
+        VMSTATE_UINT32(dcfg, CxdDwc3State),
+        VMSTATE_UINT32(dctl, CxdDwc3State),
+        VMSTATE_UINT32(devten, CxdDwc3State),
+        VMSTATE_UINT32(dsts, CxdDwc3State),
+        VMSTATE_UINT32(dgcmdpar, CxdDwc3State),
+        VMSTATE_UINT32(dgcmd, CxdDwc3State),
+        VMSTATE_UINT32(dalepena, CxdDwc3State),
+        VMSTATE_BOOL(host_connected, CxdDwc3State),
+        VMSTATE_UINT8(control_stage, CxdDwc3State),
+        VMSTATE_BOOL(control_data_in, CxdDwc3State),
+        VMSTATE_BOOL(control_has_data, CxdDwc3State),
+        VMSTATE_STRUCT_ARRAY(eps, CxdDwc3State, DWC3_MAX_EPS, 1,
+                             vmstate_cxd_dwc3_ep, CxdDwc3Ep),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void cxd_dwc3_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->vmsd = &vmstate_cxd_dwc3;
     device_class_set_legacy_reset(dc, cxd_dwc3_reset);
     dc->realize = cxd_dwc3_realize;
     device_class_set_props(dc, cxd_dwc3_props);

@@ -2,7 +2,7 @@
 
 ## REA-assisted firmware research
 
-Use REA with Ghidra through WSL as the preferred analysis tool for substantial ARM/Thumb function, dispatcher, call-chain and data-layout investigation. Start from the current unsupported boundary and a concrete question. Reuse hash-matched retained evidence when it already answers the question; use targeted ELF parsing, `rg` and disassembly for small checks. REA assists research; it is not part of the guest execution backend.
+Use REA with Ghidra through WSL as the preferred analysis tool for substantial ARM/Thumb function, dispatcher, call-chain and data-layout investigation. Start from the current unsupported boundary and a concrete question. Reuse hash-matched retained evidence when it already answers the question; use `tools.research.symbol_index` (Tier-1 SQLite symbol/callgraph/IPC index + Tier-2 persistent WSL2 Headless Ghidra RPC daemon) or targeted ELF parsing for fast lookups and single-function decompilation; see [TCG_TRACE_WORKFLOW.md](TCG_TRACE_WORKFLOW.md). REA assists research; it is not part of the guest execution backend.
 
 ### Verified project environment (2026-11-15)
 

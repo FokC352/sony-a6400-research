@@ -86,6 +86,10 @@ def cmd_start(a):
         args += ["--setting-file", f"mode/dmode={mode_file}", "--bare"]
     for spec in a.setting_file:
         args += ["--setting-file", spec]
+    if a.from_snapshot:
+        args += ["--from-snapshot", a.from_snapshot]
+    if a.loadvm:
+        args += ["--loadvm", a.loadvm]
     env = dict(os.environ)
     # The host window needs a QEMU built from the current overlay (hostwin machine option).
     env.setdefault("A6400_QEMU_DIR", os.path.expanduser("~/sony-a6400-qemu-11.1.3"))
@@ -123,6 +127,16 @@ def cmd_press(a):
         time.sleep(a.gap)
 
 
+def cmd_save(a):
+    r = json.loads(http(f"/emu/savevm?tag={a.tag}", b"", timeout=120))
+    print(f"saved {r['tag']} in {r['seconds']}s")
+
+
+def cmd_load(a):
+    r = json.loads(http(f"/emu/loadvm?tag={a.tag}", b"", timeout=120))
+    print(f"loaded {r['tag']} in {r['seconds']}s")
+
+
 def cmd_stop(a):
     pid_file = STATE / "panel.pid"
     if pid_file.exists():
@@ -151,14 +165,21 @@ def main():
                         "application); implies the panel's --bare mode (no Sony UI, no mod loader)")
     s.add_argument("--hostwin-helper", default="artifacts/tests/hostwin-build-1/hostwin_get",
                    help="hostwin_get build ('' disables the host window: serial transfers only)")
+    s.add_argument("--from-snapshot", default=None,
+                   help="snapshot bundle dir or qcow2 file for instant resume")
+    s.add_argument("--loadvm", default=None,
+                   help="snapshot tag to restore via QEMU -loadvm (default from manifest or 'ready')")
     sub.add_parser("status")
+    sv = sub.add_parser("save"); sv.add_argument("tag", nargs="?", default="quick")
+    ld = sub.add_parser("load"); ld.add_argument("tag", nargs="?", default="quick")
     p = sub.add_parser("put"); p.add_argument("src"); p.add_argument("dst")
     c = sub.add_parser("sh"); c.add_argument("command")
     l = sub.add_parser("lcd"); l.add_argument("out")
     k = sub.add_parser("press"); k.add_argument("keys", nargs="+"); k.add_argument("--gap", type=float, default=1.5)
     sub.add_parser("stop")
     a = ap.parse_args()
-    {"start": cmd_start, "status": cmd_status, "put": cmd_put, "sh": cmd_sh, "lcd": cmd_lcd,
+    {"start": cmd_start, "status": cmd_status, "save": cmd_save, "load": cmd_load,
+     "put": cmd_put, "sh": cmd_sh, "lcd": cmd_lcd,
      "press": cmd_press, "stop": cmd_stop}[a.cmd](a)
 
 

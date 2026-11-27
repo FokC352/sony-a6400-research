@@ -4,7 +4,7 @@
 
 - **Scope:** av-cam CC 3D LUT and gamma, the Arrivederci/ARRI color work, debayer/PSF/detail stages, RAW develop, IMX284, Open Gate and high-bit-depth paths, AIF DMA, the RCRAW probes, and the candidate mobile GPU 36-exposure ARW roll pipelines (SpektraFilm and fotufilm-engine).
 - **Evidence span:** see record index; last reviewed 2026-11-24.
-- **Deep review:** 0 of 45 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 0 of 54 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -139,7 +139,7 @@ Current knowledge:
 
 Related: [av-cam CC 3D LUT, color matrix and EC gamma](#img-cc-lut), [Debayer, dcv_psf / spica and detail stages](#img-detail-psf), [CinemaHUD Android SpektraFilm engine (candidate)](#app-android-spektrafilm)
 
-## Record index (45 files)
+## Record index (54 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -189,4 +189,13 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0687](../evidence/0687-photo-movie-fixes.md) | 2026-11-22 | Photo/Movie fixes: bypass precedence, Movie-domain fit, locked Gamma path |  |  |
 | [E0688](../evidence/0688-android-gpu-spektrafilm-film-roll-architecture.md) | 2026-11-24 | Candidate SpektraFilm Mobile GPU & 36-Exposure Film Roll Architecture for CinemaHUD Android |  |  |
 | [E0689](../evidence/0689-fotufilm-engine-mobile-gpu-film-roll-architecture.md) | 2026-11-24 | Candidate `fotufilm-engine` Mobile GPU & 36-Exposure Film Roll Architecture |  | Iterative chemical reaction-diffusion PDEs or Metal compute shaders inside LayeredMetalTransport.swift were hypothesized prior to source inspection and refuted by reading Sources/FotufilmCore/, Sources/FotufilmHalide/, a |
+| [E0720](../evidence/0720-a6400-squeezed-open-gate-a7iii-port-mapping-and-unicorn-verification.md) | 2026-11-26 | ILCE-6400 Squeezed 3:2 Open Gate Mapping (`a7iii-open-gate-test` Port) and Unicorn Verification |  |  |
+| [E0721](../evidence/0721-a6400-squeezed-open-gate-live-ram-preflight-and-test4.md) | 2026-11-26 | ILCE-6400 Squeezed 3:2 Open Gate Live RAM Preflight, Isolation Matrix, and Cleanup |  |  |
+| [E0722](../evidence/0722-a6400-open-gate-upper-ceiling-static-analysis.md) | 2026-11-26 | ILCE-6400 Open Gate upper ceiling: static ruling of S-Ele, SGC, FE/RCV, DMM, and IMX284 |  |  |
+| [E0723](../evidence/0723-a6400-open-gate-camout-v-plus24-root-cause.md) | 2026-11-26 | ILCE-6400 Open Gate `plus24`: `Lost CAMOUT_V` root cause and the upward-only vertical ceiling |  | test4` has the same 35-line margin as stock and still fails.** Therefore the `3480`/`2 x v` line-budget theory is *refuted*: a comfortable margin does not rescue an upward move, and `timing4` proves that a large margin w / 5. FE record layout: the "unpatched height" premise is refuted |
+| [E0724](../evidence/0724-a6400-open-gate-plus8-and-rcv-isolation-live.md) | 2026-11-26 | ILCE-6400 Open Gate `plus8` Bisect, `rcv_desc` Isolation (`plus24_norcv` vs `plus24_rcvonly`), and Live `sgc1_win` Capture |  | Therefore **`R1` (`rcv_desc` mismatch) is refuted**. The upward `Lost CAMOUT_V` trigger resides **100% inside the `FE` (`fe_rec_0a`/`fe_rec_19`) + `size_rows[16,17]+0x3c` (`rt_t14+0x50`) write group**. |
+| [E0725](../evidence/0725-a6400-open-gate-fe-input-cap-and-002-mmio-trace.md) | 2026-11-26 | ILCE-6400 Open Gate: the FE band registers, the `+0x002` MMIO trace, and the exonerated upstream stages |  | 1. The FE record **format** supports far more than 3442 lines: table records idx 5/8/12 carry `+0x002/+0x00A/+0x190 = 4108/4024/4111` in stock configurations, so "3442 is an FE-format limit" is refuted. / 0x6454AB60` is not a height list.** It has a real reader, `0x6376E518` (called from `0x63CD0C66`), which treats it as a 19-entry **struct byte-offset** table: `r4 = [r1+r3+0x3D8]`, `r2 = table[r3]`, `[r0+r2] = r4`, `r3 + |
+| [E0726](../evidence/0726-a6400-open-gate-r4-refutation-live.md) | 2026-11-26 | ILCE-6400 Open Gate `plus24_r4` Live Test: Refutation of `R4` (FE Band Clamp Pair `rec+0x194`) |  | 3. Conclusion - `R4` Refuted Live / R4` is therefore refuted.** Only two candidates from `E0725` survive: |
+| [E0727](../evidence/0727-a6400-open-gate-r5-r6-and-still-vs-4k-diff.md) | 2026-11-26 | ILCE-6400 Open Gate: FE band arithmetic, the 13-column sensor map, and the cross-body contract |  | \| 1 \| FE band clamp pair `+0x428`/`+0x42C` (R4) \| **Refuted live** (`E0726`, black screen). \| / \| 2 \| An FE vertical field outside the 66 offsets \| **Refuted**: every vertical end/line count is inside the set (section 4). \| |
+| [E0728](../evidence/0728-a6400-open-gate-f3851-mmio-live.md) | 2026-11-26 | ILCE-6400 Open Gate `0xF3851xxx` / `0xF3951xxx` Live MMIO Read During `plus8` |  |  |
 | [E9105](../evidence/9105-a6100-rcraw-aif-w2-and-fopd-gates.md) | 2026-11-26 | ILCE-6100 `RCRAW` / `AIF0 W2` (`0xF3002480`) and `S_SetFOPD` Gate Chain |  |  |

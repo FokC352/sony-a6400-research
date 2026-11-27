@@ -4,7 +4,7 @@
 
 - **Scope:** Read-only observations of the physical ILCE-6400: GPIO, bus power, HDMI/CEC, touch input, display/OSD, GPES BAR, MISCREG and the /dev/mem safety boundary, lens interface.
 - **Evidence span:** E0068-E0075, E0084, E0297-E0298, E0313-E0314, E0647-E0649; last reviewed 2026-11-26.
-- **Deep review:** 15 of 15 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 15 of 20 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -140,11 +140,15 @@ Current knowledge:
 
 `dev.lens` | device
 
-Body-lens focus command IDs and the capability gate; lens capability data is not readable from the Linux side.
+Body-lens focus command IDs, the capability bitmap at BL_LENS_DATA+1, the body mask that admits 0x41-0x4A for any lens, and the three-bit 0x1D mode; the TTArtisan lens implements only the legacy items.
+
+Aliases: `BL_LENS_DATA`, `0x642FE7B8`, `capability gate`, `0x63855F94`
 
 Current knowledge:
 
 - **C08** `PHYSICAL` Body-lens focus command IDs and a capability gate exist; with a Sigma 18-50 F2.8 DC DN attached, lens capability data is not readable from the Linux side. ([E0648](../evidence/0648-ilce6400-bl-lens-focus-command-ids.md), [E0649](../evidence/0649-ilce6400-live-lens-info-linux-side-negative.md))
+- **C40** `OFFLINE` The capability bitmap is 32 bytes at BL_LENS_DATA+1 (bit id-1) and is intersected per query with a body mask at 0x63F0439B that allows 0x01-0x4C and 0x4E-0x5C for every lens; the only identity block is a three-ID inhibit. The 0x1D record carries a three-bit mode with wire values 0, 3, 4 and 6, so E0648's 'bit 2 flag' is mode bit 2, and the 0x09 STARTUP_INFO item carries status only, not the bitmap. ([E0718](../evidence/0718-ilce6400-bl-gate-bitmap-and-1d-mode.md))
+- **C41** `OFFLINE` The TTArtisan AF 35/1.8 II E implements eight frame IDs plus the legacy items 0x1C/0x1D/0x1F/0x22/0x2E/0x2F/0x3C/0x3D, has no handler or reply for 0x41-0x4A, ignores the 0x1D mode byte, ships no capability bitmap or lens ID, and runs a controller with no deadband whose settle test requires exact position equality; the container encoding is undecoded, so no .fir can currently be rebuilt. ([E0719](../evidence/0719-ttartisan-af35-command-surface-and-patch-feasibility.md))
 - **C35** `OFFLINE` Body-lens frames use a 0x320-byte slot with an item count at +0x18 and item pointers from +0x1C. Second-generation focus IDs are 0x41 POS_CYCLE_A, 0x43 MOVE_FC_2 (12-byte request), 0x44 FC_DRIVE_CYCLE, 0x45 search2 (17 bytes), 0x49 MoveFcVel2 (4 bytes), 0x4A MOVE_FC_CAP2 and 0x5B IS_LENS_SHIFT_CYCLE_A; first-generation items are 0x1C, 0x1D (5 bytes), 0x1F and 0x3C. ([E0648](../evidence/0648-ilce6400-bl-lens-focus-command-ids.md))
 - **C36** `OFFLINE` Each MOVE_FC_2 wrapper calls 0x63D12860(0x43) -> 0x63855F80 and falls back to the 5-byte 0x1D item when it returns 0; 0x63855F94 tests bit (id-1) of the bitmap at BL_LENS_DATA+1, IDs 0x41-0x49 also require [+0x20FC]+0x20 and a clear inhibit byte at 0x6448B4A0, and a camera-side mask table at 0x6448B366 gives the final answer. ([E0648](../evidence/0648-ilce6400-bl-lens-focus-command-ids.md)) *Note: Inference (E0648 [I]): the lens's startup data selects second- or first-generation commands; the field meanings and units are not established.*
 - **C37** `PHYSICAL` With a Sigma 18-50 F2.8 DC DN attached, /proc/iomem lists System RAM 0x00000000-0x3FFFFFFF and 0x80000000-0x8FFFFFFF and no process maps the ORIL window 0x6xxxxxxx, so BL_LENS_DATA is unreachable through process memory; captured libObj data/bss and heap contain no lens name strings and no key 0xC06A paired with 0x2285/0x2286, and /lens (/dev/nflasha18) holds only Sony VX*_lensfile.bin correction files. ([E0649](../evidence/0649-ilce6400-live-lens-info-linux-side-negative.md))
@@ -269,7 +273,7 @@ Current knowledge:
 
 - **C33** `PHYSICAL` A single-page read of PA 0x000F8000 faults with FSR 0x008 (external abort on non-linefetch). Uncaught, it reaches force_sig_info(SIGBUS), the default core-dump path and em_exception_monitor, which warm-reboots; ro_page v2 with SIGBUS handling reported 'bus error caught: signal 7' at 0x000F8000 and the camera stayed up (uptime 3,198.8 -> 3,243.9 s). Imprecise aborts and kernel-mode faults still reboot. ([E0647](../evidence/0647-ilce6400-devmem-reboot-root-cause-and-policy.md))
 
-## Record index (15 files)
+## Record index (20 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
@@ -288,5 +292,10 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E0313](../evidence/0313-readonly-physical-gpes-bar-and-grm-state.md) | 2026-11-10 | read-only physical observation of GPES BAR, GRM state and OSAL tables | yes |  |
 | [E0314](../evidence/0314-gpes-bar-irq-contract-engine-model.md) | 2026-11-10 | GPES BAR/IRQ contract decoded; opt-in engine-completion model | yes | Process-shared ctx correction / Corrected the Linux ARM affinity syscall mapping (**241 = |
 | [E0647](../evidence/0647-ilce6400-devmem-reboot-root-cause-and-policy.md) | 2026-11-19 | Why a single-page `/dev/mem` read rebooted the ILCE-6400, and what may be read | yes |  |
-| [E0648](../evidence/0648-ilce6400-bl-lens-focus-command-ids.md) | 2026-11-20 | ILCE-6400 body–lens ("BL") focus command IDs and capability gate | yes |  |
-| [E0649](../evidence/0649-ilce6400-live-lens-info-linux-side-negative.md) | 2026-11-20 | Live ILCE-6400 with Sigma 18-50 F2.8 DC DN: lens capability data is not readable from the Linux side | yes | 4. `/lens` (`/dev/nflasha18`) holds only Sony `VX*_lensfile.bin` correction files. `/log` holds only `feeder.log`. The SD card is not mounted on the Linux side in MSC mode, and Windows showed no drive letter for it in th |
+| [E0648](../evidence/0648-ilce6400-bl-lens-focus-command-ids.md) | 2026-11-20 | ILCE-6400 body–lens ("BL") focus command IDs and capability gate | yes | Superseded by E0693 / E0694 (kept for provenance, not deleted) / \| Lens-side bitmap \| **negative for the TTArtisan**: no 32-byte bitmap exists in that image; the body's `0x09` item is status-only, so this record's "STARTUP_INFO produces the bitmap" is **corrected** \| E0693, E0694 \ |
+| [E0649](../evidence/0649-ilce6400-live-lens-info-linux-side-negative.md) | 2026-11-20 | Live ILCE-6400 with Sigma 18-50 F2.8 DC DN: lens capability data is not readable from the Linux side | yes | 4. `/lens` (`/dev/nflasha18`) holds only Sony `VX*_lensfile.bin` correction files. `/log` holds only `feeder.log`. The SD card is not mounted on the Linux side in MSC mode, and Windows showed no drive letter for it in th / The static half of the first boundary is now settled **in the negative**: `libObj.0xA35258` builds its parameter map as a **stack-local** object at `r7+0x650` (`r7 = sp+8`, frame `0xE2C`) and destroys it before returning |
+| [E0684](../evidence/0684-ilce-6400-ram-only-deadman-handover-bundle.md) | 2026-11-22 | ILCE-6400 RAM-only deadman handover of the Custom Kernel #5 bundle (MSC mode) |  |  |
+| [E0685](../evidence/0685-full-custom-os-camera-handover-and-ui-path.md) | 2026-11-22 | Full Custom OS on a physical ILCE-6400 (MSC): handover, av-cam load, Wi-Fi-branch crash, loader-branch liveview |  | The OSD mapping itself was then corrected against the captured stock contract: E0298 records one |
+| [E0717](../evidence/0717-camera-loader-branch-avcam-oops-deadman60.md) | 2026-11-23 | Physical camera loader-branch run (`deadman=60`): av-cam oops before the Custom UI |  |  |
+| [E0718](../evidence/0718-ilce6400-bl-gate-bitmap-and-1d-mode.md) | 2026-11-26 | ILCE-6400 BL protocol: capability gate, lens bitmap, and the three-bit `0x1D` mode |  | The bitmap lives at **`BL_LENS_DATA + 1`**, where `BL_LENS_DATA` is the pointer variable at **`0x642FE7B8`** (literal slot `0x645A9088` = module base `0x645A21E4` + `0x6EA4`; the same slot the gate null-tests, and the co / libObj` publishes lens fields as `(0xC0xx key → enum value)` to observers and keeps **no persistent handler-map or lens-state table**; the temporary map is a stack object at `r7+0x650` (`r7 = sp+8`), which corrects E0649 |
+| [E0719](../evidence/0719-ttartisan-af35-command-surface-and-patch-feasibility.md) | 2026-11-26 | TTArtisan AF 35 mm F1.8 II E: command surface, controller, offline harness, and patch feasibility |  |  |

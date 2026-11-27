@@ -51,6 +51,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/timer.h"
 #include "qemu/module.h"
 #include "qom/object.h"
@@ -310,9 +311,38 @@ static const Property ev_props[] = {
     DEFINE_PROP_UINT32("late-us2", EvselState, late_us2, 0),
 };
 
+static const VMStateDescription vmstate_evsel_cmp = {
+    .name = "cxd90014-evsel-cmp",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_TIMER_PTR(t, Cmp),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_cxd_evsel = {
+    .name = "cxd90014-evsel",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(r, EvselState, EV_SIZE / 4),
+        VMSTATE_UINT32(sta, EvselState),
+        VMSTATE_UINT32(stb, EvselState),
+        VMSTATE_TIMER_PTR(vd, EvselState),
+        VMSTATE_UINT32(late_pending, EvselState),
+        VMSTATE_TIMER_PTR(late, EvselState),
+        VMSTATE_UINT32(late_pending2, EvselState),
+        VMSTATE_TIMER_PTR(late2, EvselState),
+        VMSTATE_STRUCT_ARRAY(cmp, EvselState, NCMP, 1, vmstate_evsel_cmp, Cmp),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void ev_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    dc->vmsd = &vmstate_cxd_evsel;
     device_class_set_legacy_reset(dc, ev_reset);
     device_class_set_props(dc, ev_props);
 }
