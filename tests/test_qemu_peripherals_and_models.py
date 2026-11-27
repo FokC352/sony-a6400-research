@@ -32,6 +32,7 @@ import importlib.util
 import os
 from pathlib import Path
 import select
+import socket
 import struct
 import subprocess
 import sys
@@ -439,6 +440,26 @@ class QemuBcm4339WifiBluetoothTests(_QTestQmpHarness):
         rx_bytes = b"".join(struct.pack("<I", self.rd32(proc, pending, fw_dst + i)) for i in range(0, 40, 4))
         self.assertEqual(rx_bytes[28:34], bytes([0x02, 0x43, 0x39, 0x64, 0x00, 0x01]))
 
+        # 5b. SDPCM Data Channel (chan=2) TX Ethernet frame -> netdev
+        eth_frame = (
+            b"\xff\xff\xff\xff\xff\xff"
+            + bytes([0x02, 0x43, 0x39, 0x64, 0x00, 0x01])
+            + b"\x08\x00"
+            + b"QEMU-WIFI-TX-TEST"
+        )
+        data_total = 12 + 4 + len(eth_frame)
+        sdpcm_tx = struct.pack("<HHBBBBBBBB", data_total, (~data_total) & 0xFFFF, 1, 2, 0, 12, 0, 0, 0, 0)
+        bcdc_hdr = b"\x20\x00\x00\x00"
+        tx_pkt = sdpcm_tx + bcdc_hdr + eth_frame
+        while len(tx_pkt) % 4:
+            tx_pkt += b"\x00"
+        for i in range(0, len(tx_pkt), 4):
+            self.wr32(proc, pending, fw_src + i, struct.unpack_from("<I", tx_pkt, i)[0])
+        self.wr32(proc, pending, self.MMC1 + 0x00, fw_src)
+        self._sdio_cmd(proc, pending, 53, (1 << 31) | (2 << 28) | (1 << 26) | len(tx_pkt), xfer=0x0001)
+        tx_pkts = qmp.command("qom-get", path="/machine/cxd90045-bcm4339-sdio", property="tx-packets")
+        self.assertEqual(tx_pkts, 1)
+
         # 6. Bluetooth H4 HCI + Broadcom .hcd download over PL011 UART3 (0xF2003000)
         self.wr32(proc, pending, self.UART3 + 0x2C, 0x70)   # LCR_H: 8N1 + FIFOs
         self.wr32(proc, pending, self.UART3 + 0x30, 0x0301) # CR: UARTEN|TXE|RXE
@@ -464,6 +485,56 @@ class QemuBcm4339WifiBluetoothTests(_QTestQmpHarness):
         self.assertEqual(hci_xfer(b"\x01\x4C\xFC\x08\x00\x80\x08\x00\xDE\xAD\xBE\xEF")[6], 0)
         self.assertEqual(hci_xfer(b"\x01\x4E\xFC\x04\x00\x80\x08\x00")[6], 0)
         self.assertTrue(qmp.command("qom-get", path="/chardevs/bcm4339-bt", property="fw-launched"))
+
+    def test_bcm4339_netdev_rx_to_sdio_cmd53(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("127.0.0.1", 0))
+        py_port = sock.getsockname()[1]
+        qemu_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        qemu_sock.bind(("127.0.0.1", 0))
+        qemu_port = qemu_sock.getsockname()[1]
+        qemu_sock.close()
+        try:
+            proc, pending, qmp, _ = self.start_harness(
+                "sony-a6400,bcm4339=on",
+                extra_args=[
+                    "-netdev", f"dgram,id=w0,local.type=inet,local.host=127.0.0.1,local.port={qemu_port},"
+                               f"remote.type=inet,remote.host=127.0.0.1,remote.port={py_port}",
+                    "-global", "cxd90045-bcm4339-sdio.netdev=w0",
+                ],
+            )
+            self.wr16(proc, pending, self.MMC1 + 0x34, 0x01FF)
+            self._sdio_cmd(proc, pending, 5, 0x00FF8000)
+            self._sdio_cmd(proc, pending, 3, 0)
+            self._sdio_cmd(proc, pending, 7, 1 << 16)
+            self._cmd52(proc, pending, True, 0, 0x02, 0x06)
+            self._cmd52(proc, pending, True, 0, 0x04, 0x07)
+
+            eth_rx = (
+                bytes([0x02, 0x43, 0x39, 0x64, 0x00, 0x01])
+                + bytes([0x02, 0x00, 0x00, 0x00, 0x00, 0x02])
+                + b"\x08\x00"
+                + b"QEMU-WIFI-RX-TEST"
+            )
+            sock.sendto(eth_rx, ("127.0.0.1", qemu_port))
+            deadline = time.monotonic() + 2.0
+            rx_pkts = 0
+            while time.monotonic() < deadline:
+                rx_pkts = qmp.command("qom-get", path="/machine/cxd90045-bcm4339-sdio", property="rx-packets")
+                if rx_pkts >= 1:
+                    break
+                self.clock_step_ns(proc, pending, 50_000)
+            self.assertEqual(rx_pkts, 1)
+            self.assertNotEqual(self.rd16(proc, pending, self.MMC1 + 0x30) & 0x0100, 0)
+
+            fw_dst = 0x02003000
+            self.wr32(proc, pending, self.MMC1 + 0x00, fw_dst)
+            self._sdio_cmd(proc, pending, 53, (0 << 31) | (2 << 28) | (1 << 26) | 64, xfer=0x0011)
+            rx_buf = b"".join(struct.pack("<I", self.rd32(proc, pending, fw_dst + i)) for i in range(0, 16 + len(eth_rx) + 4, 4))
+            self.assertEqual(rx_buf[5] & 0x0F, 2)  # SDPCM_DATA_CHANNEL
+            self.assertEqual(rx_buf[16:16 + len(eth_rx)], eth_rx)
+        finally:
+            sock.close()
 
 
 @unittest.skipUnless(NATIVE_AVAILABLE, "Optional WSL/Linux sony-a6400 QEMU build absent")
@@ -809,6 +880,30 @@ class QemuSubmicroSyntheticAndHdmiHotplugTests(_QTestQmpHarness):
             qmp.command("qom-get", path="/machine/cxd90045-hdmi-cec", property="tmds-active")
         )
 
+    def test_synthetic_submicro_slot_a_tracks_hdmi_hotplug_without_fixture(self):
+        from src.a6400.execution.submicro_link import verify_frame_crc
+
+        proc, pending, qmp, _ = self.start_harness(
+            "sony-a6400,hdmi-cec=on,hdmi-plugged=off,submicro-synthetic=on"
+        )
+        tx = b"\x21" + bytes(127)
+
+        unplugged = self._sio3_xfer(proc, pending, tx)
+        self.assertEqual(unplugged[0], 0x20)
+        self.assertTrue(verify_frame_crc(unplugged))
+        self.assertEqual(unplugged[29] & 0x40, 0)
+
+        qmp.command("qom-set", path="/machine", property="hdmi-plugged", value=True)
+        plugged = self._sio3_xfer(proc, pending, tx)
+        self.assertEqual(plugged[0], 0x20)
+        self.assertTrue(verify_frame_crc(plugged))
+        self.assertEqual(plugged[29] & 0x40, 0x40)
+
+        qmp.command("qom-set", path="/machine", property="hdmi-plugged", value=False)
+        unplugged_again = self._sio3_xfer(proc, pending, tx)
+        self.assertTrue(verify_frame_crc(unplugged_again))
+        self.assertEqual(unplugged_again[29] & 0x40, 0)
+
 
 @unittest.skipUnless(NATIVE_AVAILABLE, "Optional WSL/Linux sony-a6400 QEMU build absent")
 class QemuRemovableSdUhsU3Tests(_QTestQmpHarness):
@@ -901,7 +996,7 @@ class QemuRemovableSdUhsU3Tests(_QTestQmpHarness):
 
                     if not uhs_on:
                         self.assertEqual(ssr_4bit[1:], bytes(63))
-                        self.assertEqual((scr[1] >> 4) & 0x7, 2)
+                        self.assertEqual((scr[1] >> 4) & 0x7, 3)  # SDHC Security v2.00
                         self.assertEqual(scr[2] & 0x04, 0)
                     else:
                         self.assertEqual(ssr_4bit[8], 0x04)   # Class 10
@@ -910,7 +1005,7 @@ class QemuRemovableSdUhsU3Tests(_QTestQmpHarness):
                         self.assertEqual(ssr_4bit[14], 0x39)  # U3 + 4 MiB UHS_AU_SIZE
                         self.assertEqual(ssr_4bit[15], 0x1E)  # V30
                         self.assertEqual((scr[1] >> 4) & 0x7, 3)  # SDHC Security v2.00
-                        self.assertEqual(scr[2] & 0x84, 0x84)     # SD_SPEC3 | SD_SPEC4
+                        self.assertEqual(scr[2] & 0x80, 0x80)     # SD_SPEC3
 
                     # Eject + re-insert preserves UHS U3 status cleanly
                     sd_event(qmp, "eject")

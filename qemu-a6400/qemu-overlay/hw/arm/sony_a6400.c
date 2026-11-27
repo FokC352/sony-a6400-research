@@ -5023,20 +5023,6 @@ static void sony_a6400_set_sm_synthetic(Object *obj, bool enabled, Error **errp)
     sony_a6400_sm_synthetic = enabled;
 }
 
-static bool sony_get_sd_uhs_u3(Object *obj, Error **errp)
-{
-    return sony_a6400_sd_uhs_u3;
-}
-
-static void sony_set_sd_uhs_u3(Object *obj, bool enabled, Error **errp)
-{
-    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
-        error_setg(errp, "sd-uhs-u3 is a startup option");
-        return;
-    }
-    sony_a6400_sd_uhs_u3 = enabled;
-}
-
 /*
  * "hostwin" (developer option, not a hardware model): a host file mapped as shared RAM at
  * PA 0x50000000 (16 MiB, between RAM bank 0 and bank 1, unused by the CXD90045 map). The host
@@ -6636,12 +6622,6 @@ static void sony_cxd90045_common_machine_init(MachineClass *mc,
                                    sony_a6400_set_sm_lens_power);
     object_class_property_set_description(OBJECT_CLASS(mc), "submicro-lens-power",
         "Model the sub-micro lens power rail status (no lens protocol)");
-    object_class_property_add_bool(OBJECT_CLASS(mc), "sd-uhs-u3",
-                                   sony_get_sd_uhs_u3,
-                                   sony_set_sd_uhs_u3);
-    object_class_property_set_description(OBJECT_CLASS(mc), "sd-uhs-u3",
-        "Advertise virtual UHS-I U3 / Class 10 / V30 in removable SD ACMD13 "
-        "SD Status");
     object_class_property_add_str(OBJECT_CLASS(mc), "hostwin",
                                   sony_a6400_get_hostwin, sony_a6400_set_hostwin);
     object_class_property_set_description(OBJECT_CLASS(mc), "hostwin",

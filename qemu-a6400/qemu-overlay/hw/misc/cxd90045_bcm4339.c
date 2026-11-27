@@ -24,8 +24,10 @@
 #include "qapi/visitor.h"
 #include "hw/core/sysbus.h"
 #include "hw/core/irq.h"
+#include "hw/core/qdev-properties.h"
 #include "hw/misc/cxd90045_peripherals.h"
 #include "chardev/char.h"
+#include "net/net.h"
 #include "system/address-spaces.h"
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
@@ -163,12 +165,18 @@ struct Bcm4339SdioState {
     uint8_t sdpcm_tx_max_seq;
     uint8_t sdpcm_rx_seq;
 
+    /* 802.11 data plane bridged to QEMU netdev */
+    NICState *nic;
+    NICConf conf;
+
     /* Telemetry */
     uint64_t cmd5_count;
     uint64_t cmd52_count;
     uint64_t cmd53_count;
     uint64_t fw_bytes_written;
     uint64_t bcdc_ioctls;
+    uint64_t tx_packets;
+    uint64_t rx_packets;
 };
 
 /* SOCI_AI EROM table describing ChipCommon, SDIO, ARM CR4, D11, and SOCRAM */
@@ -464,7 +472,27 @@ static void bcm4339_handle_f2_write(Bcm4339SdioState *s, const uint8_t *buf,
     }
     chan = buf[5] & 0x0F;
     hdr_len = buf[7];
-    if (chan != 0 || hdr_len < 12 || (uint32_t)hdr_len + 16 > frm_len) {
+    if (hdr_len < 12 || hdr_len > frm_len) {
+        return;
+    }
+
+    if (chan == 2) { /* SDPCM_DATA_CHANNEL: 4-byte BCDC header + Ethernet frame */
+        if ((uint32_t)hdr_len + 4u > frm_len) {
+            return;
+        }
+        const uint8_t *bcdc = buf + hdr_len;
+        uint32_t eth_off = (uint32_t)hdr_len + 4u + (uint32_t)bcdc[3] * 4u;
+        if (eth_off + 14u <= frm_len) {
+            if (s->nic) {
+                qemu_send_packet(qemu_get_queue(s->nic),
+                                 buf + eth_off, frm_len - eth_off);
+            }
+            s->tx_packets++;
+        }
+        return;
+    }
+
+    if (chan != 0 || (uint32_t)hdr_len + 16 > frm_len) {
         return;
     }
 
@@ -485,7 +513,9 @@ static void bcm4339_handle_f2_write(Bcm4339SdioState *s, const uint8_t *buf,
     } else if (cdc_cmd == 262 && pay_in_len > 0) { /* WLC_GET_VAR */
         if (memcmp(payload, "cur_etheraddr",
                    MIN(pay_in_len, (uint32_t)sizeof("cur_etheraddr"))) == 0) {
-            memcpy(resp_pay, default_mac, 6);
+            const uint8_t *mac = s->conf.macaddr.a;
+            bool nonzero = (mac[0] | mac[1] | mac[2] | mac[3] | mac[4] | mac[5]) != 0;
+            memcpy(resp_pay, nonzero ? mac : default_mac, 6);
             resp_pay_len = 6;
         } else if (memcmp(payload, "ver", MIN(pay_in_len, 4u)) == 0) {
             static const char ver[] = "BCM4339 QEMU SDIO 6.37.32\n";
@@ -546,6 +576,9 @@ static void bcm4339_exec_cmd53_buf(Bcm4339SdioState *s, bool is_write,
                 memcpy(buf, s->f2_rx, copy);
                 s->f2_rx_len = 0;
                 s->sdio_intstatus &= ~0x00000040u;
+                if (s->nic) {
+                    qemu_flush_queued_packets(qemu_get_queue(s->nic));
+                }
             }
             return;
         }
@@ -1091,8 +1124,59 @@ static void bcm4339_sdio_reset(DeviceState *dev)
     qemu_set_irq(s->irq, 0);
 }
 
+static bool bcm4339_net_can_receive(NetClientState *nc)
+{
+    Bcm4339SdioState *s = qemu_get_nic_opaque(nc);
+    return s->f2_rx_len == 0;
+}
+
+static ssize_t bcm4339_net_receive(NetClientState *nc, const uint8_t *buf,
+                                   size_t size)
+{
+    Bcm4339SdioState *s = qemu_get_nic_opaque(nc);
+    uint32_t total;
+
+    if (s->f2_rx_len > 0) {
+        return 0;
+    }
+    if (size < 14 || 12u + 4u + size > sizeof(s->f2_rx)) {
+        return size;
+    }
+    total = (uint32_t)(12u + 4u + size);
+    memset(s->f2_rx, 0, 16);
+    stw_le_p(&s->f2_rx[0], (uint16_t)total);
+    stw_le_p(&s->f2_rx[2], (uint16_t)~total);
+    s->f2_rx[4] = s->sdpcm_rx_seq++;
+    s->f2_rx[5] = 2;  /* SDPCM_DATA_CHANNEL */
+    s->f2_rx[6] = 0;
+    s->f2_rx[7] = 12; /* data offset */
+    s->f2_rx[8] = 0;
+    s->f2_rx[9] = s->sdpcm_tx_max_seq;
+
+    /* 4-byte BCDC data header (version=2 << 4 = 0x20, dataOffset=0) */
+    s->f2_rx[12] = 0x20;
+    s->f2_rx[13] = 0x00;
+    s->f2_rx[14] = 0x00;
+    s->f2_rx[15] = 0x00;
+    memcpy(&s->f2_rx[16], buf, size);
+
+    s->f2_rx_len = total;
+    s->sdio_intstatus |= 0x00000040u; /* I_HMB_FRAME_IND */
+    s->rx_packets++;
+    bcm4339_sdio_update_irq(s);
+    return size;
+}
+
+static NetClientInfo net_bcm4339_info = {
+    .type = NET_CLIENT_DRIVER_NIC,
+    .size = sizeof(NICState),
+    .can_receive = bcm4339_net_can_receive,
+    .receive = bcm4339_net_receive,
+};
+
 static void bcm4339_sdio_realize(DeviceState *dev, Error **errp)
 {
+    static const uint8_t default_mac[6] = { 0x02, 0x43, 0x39, 0x64, 0x00, 0x01 };
     Bcm4339SdioState *s = CXD90045_BCM4339_SDIO(dev);
 
     s->tcm = g_malloc0(BCM4339_TCM_SIZE);
@@ -1100,6 +1184,16 @@ static void bcm4339_sdio_realize(DeviceState *dev, Error **errp)
                           "cxd90045.bcm4339-sdio", BCM4339_MMIO_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
+
+    if ((s->conf.macaddr.a[0] | s->conf.macaddr.a[1] | s->conf.macaddr.a[2] |
+         s->conf.macaddr.a[3] | s->conf.macaddr.a[4] | s->conf.macaddr.a[5]) == 0) {
+        memcpy(s->conf.macaddr.a, default_mac, 6);
+    }
+    qemu_macaddr_default_if_unset(&s->conf.macaddr);
+    s->nic = qemu_new_nic(&net_bcm4339_info, &s->conf,
+                          object_get_typename(OBJECT(dev)), dev->id,
+                          &dev->mem_reentrancy_guard, s);
+    qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 }
 
 static void bcm4339_get_u64(Object *obj, Visitor *v, const char *name,
@@ -1118,9 +1212,17 @@ static void bcm4339_get_u64(Object *obj, Visitor *v, const char *name,
         val = s->fw_bytes_written;
     } else if (strcmp(name, "bcdc-ioctls") == 0) {
         val = s->bcdc_ioctls;
+    } else if (strcmp(name, "tx-packets") == 0) {
+        val = s->tx_packets;
+    } else if (strcmp(name, "rx-packets") == 0) {
+        val = s->rx_packets;
     }
     visit_type_uint64(v, name, &val, errp);
 }
+
+static const Property bcm4339_sdio_properties[] = {
+    DEFINE_NIC_PROPERTIES(Bcm4339SdioState, conf),
+};
 
 static void bcm4339_sdio_class_init(ObjectClass *klass, const void *data)
 {
@@ -1128,6 +1230,7 @@ static void bcm4339_sdio_class_init(ObjectClass *klass, const void *data)
 
     dc->realize = bcm4339_sdio_realize;
     device_class_set_legacy_reset(dc, bcm4339_sdio_reset);
+    device_class_set_props(dc, bcm4339_sdio_properties);
     object_class_property_add(klass, "cmd5-count", "uint64",
                               bcm4339_get_u64, NULL, NULL, NULL);
     object_class_property_add(klass, "cmd52-count", "uint64",
@@ -1137,6 +1240,10 @@ static void bcm4339_sdio_class_init(ObjectClass *klass, const void *data)
     object_class_property_add(klass, "fw-bytes-written", "uint64",
                               bcm4339_get_u64, NULL, NULL, NULL);
     object_class_property_add(klass, "bcdc-ioctls", "uint64",
+                              bcm4339_get_u64, NULL, NULL, NULL);
+    object_class_property_add(klass, "tx-packets", "uint64",
+                              bcm4339_get_u64, NULL, NULL, NULL);
+    object_class_property_add(klass, "rx-packets", "uint64",
                               bcm4339_get_u64, NULL, NULL, NULL);
 }
 
@@ -1156,6 +1263,7 @@ DeviceState *cxd90045_bcm4339_sdio_create(MemoryRegion *sysmem, hwaddr base,
     s->gpio = gpio;
     object_property_add_child(OBJECT(qdev_get_machine()),
                               "cxd90045-bcm4339-sdio", OBJECT(dev));
+    qemu_configure_nic_device(dev, true, NULL);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map_overlap(SYS_BUS_DEVICE(dev), 0, base, -400);
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq);
